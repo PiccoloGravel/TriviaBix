@@ -85,6 +85,13 @@ function render(s) {
     $("#r-text").textContent = right ? "Correct!" : result.choice == null ? "Too slow!" : "Nope!";
     $("#r-points").textContent = right ? `+${result.points}` : "";
     $("#r-answer").textContent = `Answer: ${s.question.choices[s.reveal.correct]}`;
+    // If the host called you out on the TV, you get the badge too.
+    const mine = s.host && s.host.callouts.find((c) => c.player_id === you.player_id);
+    $("#r-badge").classList.toggle("hidden", !mine);
+    if (mine) {
+      $("#r-badge").textContent = mine.label;
+      $("#r-badge").classList.toggle("good", !["roast", "asleep", "streak_broken", "last_place"].includes(mine.kind));
+    }
     if (fresh && navigator.vibrate) navigator.vibrate(right ? 80 : [60, 60, 60]);
   } else if (s.phase === "scoreboard") {
     $("#s-rank").textContent = ordinal(you.rank) + " place";

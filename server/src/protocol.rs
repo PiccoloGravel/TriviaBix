@@ -55,6 +55,8 @@ pub struct StateView<'a> {
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
     pub reveal: Option<RevealView>,
+    /// What the host is saying right now, with graphics for the TV to show alongside it.
+    pub host: Option<HostView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
 }
@@ -93,6 +95,26 @@ pub struct ResultView {
     pub player_id: u32,
     pub choice: Option<usize>,
     pub points: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HostView<'a> {
+    pub name: &'a str,
+    /// Changes with every new line, so the TV speaks each one once.
+    pub id: u64,
+    pub text: &'a str,
+    pub callouts: &'a [Callout],
+}
+
+/// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
+#[derive(Debug, Serialize, Clone)]
+pub struct Callout {
+    /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
+    /// leader, tie, last_place, winner.
+    pub kind: &'static str,
+    pub player_id: Option<u32>,
+    /// Short overlay text, like "3 IN A ROW".
+    pub label: String,
 }
 
 #[derive(Debug, Serialize)]

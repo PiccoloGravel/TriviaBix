@@ -29,6 +29,8 @@
     .verdict { font-size: 72px; }
     .points { font-family: "Bungee", sans-serif; font-size: 40px; color: var(--accent); }
     .vip { background: var(--panel); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    .badge { font-family: "Bungee", sans-serif; font-size: 22px; background: var(--bad); color: #fff; padding: 8px 16px; border-radius: 14px; transform: rotate(-4deg); animation: pop .4s .6s ease-out both; }
+    .badge.good { background: var(--accent); color: #1a0b3d; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
   </style>
 </head>
@@ -65,6 +67,16 @@
     </div>
   </section>
 
+  <section id="intro" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="center" style="flex:1;display:flex;flex-direction:column;gap:16px">
+      <div class="verdict">🎤</div>
+      <div class="status">Here we go!</div>
+      <div class="muted">Eyes on the TV. Phones at the ready.</div>
+    </div>
+    <button class="secondary hidden" data-vip-next>Skip intro ⏭</button>
+  </section>
+
   <section id="question" class="screen hidden" data-screen>
     <div class="me" data-me></div>
     <div class="timer" style="height:10px"><div class="timer-track"><div class="timer-fill" id="q-timer"></div></div></div>
@@ -79,6 +91,7 @@
       <div class="verdict" id="r-verdict"></div>
       <div class="status" id="r-text"></div>
       <div class="points" id="r-points"></div>
+      <div class="badge hidden" id="r-badge"></div>
       <div class="muted" id="r-answer"></div>
     </div>
     <button class="secondary hidden" data-vip-next>Next ⏭</button>

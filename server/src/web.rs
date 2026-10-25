@@ -35,7 +35,11 @@ struct AppState {
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
     tracing::info!("question bank has {} questions", db.question_count().await?);
-    let rooms = Rooms::new(db.clone(), config.timing.clone(), config.max_players, config.max_rooms);
+    let script = match &config.host_script {
+        Some(path) => crate::host::Script::load(path)?,
+        None => crate::host::Script::builtin(),
+    };
+    let rooms = Rooms::new(db.clone(), script, config.timing.clone(), config.max_players, config.max_rooms);
     let state = AppState { rooms, db, public_url: config.public_url.clone() };
 
     let dir = &config.static_dir;

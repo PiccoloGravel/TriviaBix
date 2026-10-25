@@ -2,12 +2,14 @@
 //! the room's state; WebSocket connections talk to it through a channel.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
 
 use crate::db::{Db, Question, Rating, Standing};
+use crate::host::{self, Host, Script};
 use crate::protocol::*;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
@@ -26,6 +28,11 @@ pub struct Timing {
     pub question: Duration,
     pub reveal: Duration,
     pub scoreboard: Duration,
+    /// The host's opening before the first question.
+    pub intro: Duration,
+    /// How fast the TV's voice talks, in characters per second. Phases stretch so the host can finish
+    /// a line before the game moves on; 0 turns that off.
+    pub talk_cps: f64,
     /// A room with no connections is closed after this long.
     pub idle_timeout: Duration,
 }
@@ -89,6 +96,7 @@ impl RoomHandle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Lobby,
+    Intro,
     Question,
     Reveal,
     Scoreboard,
@@ -99,6 +107,7 @@ impl Phase {
     fn name(self) -> &'static str {
         match self {
             Phase::Lobby => "lobby",
+            Phase::Intro => "intro",
             Phase::Question => "question",
             Phase::Reveal => "reveal",
             Phase::Scoreboard => "scoreboard",
@@ -113,6 +122,8 @@ struct Player {
     token: String,
     score: i64,
     color: &'static str,
+    /// Correct answers in a row.
+    streak: u32,
     /// Number of open sockets for this player (a phone may briefly have two).
     conns: usize,
 }
@@ -128,6 +139,12 @@ struct Conn {
     role: Role,
 }
 
+struct HostLine {
+    id: u64,
+    text: String,
+    callouts: Vec<Callout>,
+}
+
 struct Answer {
     choice: usize,
     after: Duration,
@@ -140,6 +157,9 @@ pub struct Room {
     timing: Timing,
     max_players: usize,
     db: Db,
+    host: Host,
+    host_line: Option<HostLine>,
+    host_seq: u64,
 
     players: Vec<Player>,
     next_player_id: u32,
@@ -153,6 +173,9 @@ pub struct Room {
     used_question_ids: Vec<i64>,
     round: usize,
     question_started: Instant,
+    question_len: Duration,
+    /// Who was alone in first at the last scoreboard, to call out a new leader.
+    leader: Option<u32>,
     answers: HashMap<u32, Answer>,
     last_points: HashMap<u32, i64>,
     game_id: Option<i64>,
@@ -168,16 +191,20 @@ impl Room {
         timing: Timing,
         max_players: usize,
         db: Db,
+        script: Arc<Script>,
         on_close: impl FnOnce() + Send + 'static,
     ) -> RoomHandle {
         let (tx, rx) = mpsc::unbounded_channel();
-        let room = Room {
+        let mut room = Room {
             code,
             host_token,
             settings,
             timing,
             max_players,
             db,
+            host: Host::new(script),
+            host_line: None,
+            host_seq: 0,
             players: Vec::new(),
             next_player_id: 1,
             conns: HashMap::new(),
@@ -189,11 +216,16 @@ impl Room {
             used_question_ids: Vec::new(),
             round: 0,
             question_started: Instant::now(),
+            question_len: Duration::ZERO,
+            leader: None,
             answers: HashMap::new(),
             last_points: HashMap::new(),
             game_id: None,
             empty_since: Some(Instant::now()),
         };
+        let spelled = room.code.chars().map(String::from).collect::<Vec<_>>().join(", ");
+        let line = room.line("room_open", &[("code", &spelled)]);
+        room.speak(vec![line], Vec::new());
         tokio::spawn(async move {
             room.run(rx).await;
             on_close();
@@ -300,7 +332,9 @@ impl Room {
                     self.next_player_id += 1;
                     let color = self.free_color();
                     let token = uuid::Uuid::new_v4().to_string();
-                    self.players.push(Player { id, name, token: token.clone(), score: 0, color, conns: 1 });
+                    let line = self.line("join", &[("name", &name)]);
+                    self.speak(vec![line], Vec::new());
+                    self.players.push(Player { id, name, token: token.clone(), score: 0, color, streak: 0, conns: 1 });
                     (Role::Player(id), token)
                 }
             }
@@ -370,7 +404,7 @@ impl Room {
                 if !is_leader {
                     return Err("Only the host or the VIP can skip ahead.".into());
                 }
-                if matches!(self.phase, Phase::Question | Phase::Reveal | Phase::Scoreboard) {
+                if matches!(self.phase, Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard) {
                     self.advance().await;
                 }
             }
@@ -384,6 +418,8 @@ impl Room {
                 for p in &mut self.players {
                     p.score = 0;
                 }
+                let line = self.line("rematch", &[]);
+                self.speak(vec![line], Vec::new());
                 self.set_phase(Phase::Lobby, None);
                 self.broadcast();
             }
@@ -465,7 +501,9 @@ impl Room {
         self.questions = questions;
         for p in &mut self.players {
             p.score = 0;
+            p.streak = 0;
         }
+        self.leader = None;
         self.game_id = match self.db.start_game(&self.code, self.questions.len(), self.players.len()).await {
             Ok(id) => Some(id),
             Err(e) => {
@@ -474,30 +512,58 @@ impl Room {
             }
         };
         self.round = 0;
-        self.begin_question();
+        self.answers.clear();
+        self.last_points.clear();
+        let names: Vec<&str> = self.players.iter().map(|p| p.name.as_str()).collect();
+        let (count, rounds, names) = (names.len().to_string(), self.questions.len().to_string(), host::name_list(&names));
+        let line = self.line("intro", &[("count", &count), ("rounds", &rounds), ("names", &names)]);
+        self.speak(vec![line], Vec::new());
+        self.set_phase(Phase::Intro, Some(self.timing.intro.max(self.talk())));
+        self.broadcast();
         Ok(())
     }
 
     fn begin_question(&mut self) {
         self.answers.clear();
         self.last_points.clear();
+        let total = self.questions.len();
+        let event = match self.round {
+            0 => "question_first",
+            r if r + 1 == total => "question_last",
+            _ => "question",
+        };
+        let (round, total, category) =
+            ((self.round + 1).to_string(), total.to_string(), self.questions[self.round].category.clone());
+        let line = self.line(event, &[("round", &round), ("total", &total), ("category", &category)]);
+        self.speak(vec![line], Vec::new());
+        // The clock starts now, but players get extra time while the host does the intro banter.
+        self.question_len = self.timing.question + self.talk();
         self.question_started = Instant::now();
-        self.set_phase(Phase::Question, Some(self.timing.question));
+        self.set_phase(Phase::Question, Some(self.question_len));
         self.broadcast();
     }
 
     /// Moves to the next phase, either because a timer ran out or someone skipped.
     async fn advance(&mut self) {
+        let pause = Duration::from_millis(1500);
         match self.phase {
+            Phase::Intro => {
+                self.begin_question();
+                return;
+            }
             Phase::Question => {
                 self.score_question();
-                self.set_phase(Phase::Reveal, Some(self.timing.reveal));
+                self.set_phase(Phase::Reveal, Some(self.timing.reveal.max(self.talk() + pause)));
             }
             Phase::Reveal if self.round + 1 >= self.questions.len() => {
+                self.finale();
                 self.set_phase(Phase::Final, None);
                 self.record_results().await;
             }
-            Phase::Reveal => self.set_phase(Phase::Scoreboard, Some(self.timing.scoreboard)),
+            Phase::Reveal => {
+                self.score_update();
+                self.set_phase(Phase::Scoreboard, Some(self.timing.scoreboard.max(self.talk() + pause)));
+            }
             Phase::Scoreboard => {
                 self.round += 1;
                 self.begin_question();
@@ -508,12 +574,15 @@ impl Room {
         self.broadcast();
     }
 
-    /// Correct answers earn 500 points plus up to 500 more for speed.
+    /// Correct answers earn 500 points plus up to 500 more for speed. Then the host reacts: the answer,
+    /// who got it, and one extra beat (a streak, a broken streak, or a roast of a wrong answer).
     fn score_question(&mut self) {
         let q = &self.questions[self.round];
-        let limit = self.timing.question.as_secs_f64().max(0.001);
+        let limit = self.question_len.as_secs_f64().max(0.001);
+        let (mut right, mut wrong, mut silent, mut streaks, mut broken) = (vec![], vec![], vec![], vec![], vec![]);
         for p in &mut self.players {
-            let points = match self.answers.get(&p.id) {
+            let answer = self.answers.get(&p.id);
+            let points = match answer {
                 Some(a) if a.choice == q.answer => {
                     let speed = (1.0 - a.after.as_secs_f64() / limit).clamp(0.0, 1.0);
                     500 + (500.0 * speed).round() as i64
@@ -522,7 +591,147 @@ impl Room {
             };
             p.score += points;
             self.last_points.insert(p.id, points);
+            if points > 0 {
+                p.streak += 1;
+                right.push((p.id, points));
+                if p.streak >= 3 {
+                    streaks.push((p.id, p.streak));
+                }
+            } else {
+                if p.streak >= 3 {
+                    broken.push((p.id, p.streak));
+                }
+                p.streak = 0;
+                match answer {
+                    Some(a) => wrong.push((p.id, q.choices[a.choice].clone())),
+                    None if p.conns > 0 => silent.push(p.id),
+                    None => {}
+                }
+            }
         }
+
+        let answer = q.choices[q.answer].clone();
+        let n = self.players.len();
+        let mut parts = vec![self.line("reveal_answer", &[("answer", &answer)])];
+        let mut callouts = Vec::new();
+        let mut call = |kind, player_id, label: &str| callouts.push(Callout { kind, player_id, label: label.into() });
+
+        if right.is_empty() {
+            parts.push(self.line("nobody", &[("answer", &answer)]));
+            call("nobody", None, "NOBODY!");
+        } else if right.len() == n && n > 1 {
+            parts.push(self.line("everyone", &[]));
+            call("everyone", None, "CLEAN SWEEP");
+        } else if right.len() == 1 && n > 1 {
+            let id = right[0].0;
+            parts.push(self.line("only_one", &[("name", &self.name_of(id))]));
+            call("only_one", Some(id), "LONE GENIUS");
+        } else {
+            let id = right.iter().max_by_key(|r| r.1).unwrap().0;
+            parts.push(self.line("fastest", &[("name", &self.name_of(id))]));
+            call("fastest", Some(id), "FASTEST FINGER");
+        }
+
+        if let Some(&(id, streak)) = streaks.iter().max_by_key(|s| s.1) {
+            let streak = streak.to_string();
+            parts.push(self.line("streak", &[("name", &self.name_of(id)), ("streak", &streak)]));
+            call("streak", Some(id), &format!("{streak} IN A ROW"));
+        } else if let Some(&(id, streak)) = broken.iter().max_by_key(|s| s.1) {
+            let streak = streak.to_string();
+            parts.push(self.line("streak_broken", &[("name", &self.name_of(id)), ("streak", &streak)]));
+            call("streak_broken", Some(id), "STREAK OVER");
+        } else if !wrong.is_empty() {
+            let (id, choice) = &wrong[rand::random_range(0..wrong.len())];
+            parts.push(self.line("roast", &[("name", &self.name_of(*id)), ("wrong", choice)]));
+            call("roast", Some(*id), "ROASTED");
+        } else if !right.is_empty() && !silent.is_empty() {
+            let id = silent[rand::random_range(0..silent.len())];
+            parts.push(self.line("asleep", &[("name", &self.name_of(id))]));
+            call("asleep", Some(id), "ASLEEP?");
+        }
+        self.speak(parts, callouts);
+    }
+
+    /// The host's take on the scoreboard: who leads (or just took over), a tie, and sometimes a dig
+    /// at last place.
+    fn score_update(&mut self) {
+        let ranked: Vec<(usize, u32, String, i64)> =
+            self.ranked().into_iter().map(|(r, p)| (r, p.id, p.name.clone(), p.score)).collect();
+        let mut parts = Vec::new();
+        let mut callouts = Vec::new();
+        if ranked.len() > 1 {
+            let top: Vec<_> = ranked.iter().filter(|r| r.0 == 1).collect();
+            if top.len() > 1 {
+                let names: Vec<&str> = top.iter().map(|r| r.2.as_str()).collect();
+                parts.push(self.line("tie", &[("names", &host::name_list(&names))]));
+                callouts.push(Callout { kind: "tie", player_id: None, label: "TIED AT THE TOP".into() });
+                self.leader = None;
+            } else {
+                let (_, id, name, score) = top[0];
+                if self.leader.is_some_and(|l| l != *id) {
+                    parts.push(self.line("new_leader", &[("name", name)]));
+                    callouts.push(Callout { kind: "new_leader", player_id: Some(*id), label: "NEW LEADER".into() });
+                } else {
+                    let gap = (score - ranked[1].3).to_string();
+                    parts.push(self.line("leader", &[("name", name), ("gap", &gap)]));
+                    callouts.push(Callout { kind: "leader", player_id: Some(*id), label: "IN THE LEAD".into() });
+                }
+                self.leader = Some(*id);
+            }
+            let last = ranked.last().unwrap();
+            let alone_in_last = ranked.iter().filter(|r| r.0 == last.0).count() == 1;
+            if ranked.len() >= 3 && alone_in_last && rand::random_bool(0.5) {
+                parts.push(self.line("last_place", &[("name", &last.2)]));
+                callouts.push(Callout { kind: "last_place", player_id: Some(last.1), label: "LAST PLACE".into() });
+            }
+        }
+        if self.round + 2 == self.questions.len() {
+            parts.push(self.line("one_left", &[]));
+        }
+        self.speak(parts, callouts);
+    }
+
+    fn finale(&mut self) {
+        let ranked: Vec<(usize, u32, String, i64)> =
+            self.ranked().into_iter().map(|(r, p)| (r, p.id, p.name.clone(), p.score)).collect();
+        let mut parts = Vec::new();
+        let mut callouts = Vec::new();
+        let top: Vec<_> = ranked.iter().filter(|r| r.0 == 1).collect();
+        if top.len() == 1 {
+            let (_, id, name, score) = top[0];
+            parts.push(self.line("finale_win", &[("name", name), ("score", &score.to_string())]));
+            callouts.push(Callout { kind: "winner", player_id: Some(*id), label: "CHAMPION".into() });
+        } else if top.len() > 1 {
+            let names: Vec<&str> = top.iter().map(|r| r.2.as_str()).collect();
+            parts.push(self.line("finale_tie", &[("names", &host::name_list(&names))]));
+            callouts.push(Callout { kind: "tie", player_id: None, label: "SHARED CROWN".into() });
+        }
+        if let Some(last) = ranked.last().filter(|_| ranked.len() >= 3) {
+            if ranked.iter().filter(|r| r.0 == last.0).count() == 1 {
+                parts.push(self.line("finale_last", &[("name", &last.2)]));
+            }
+        }
+        parts.push(self.line("sign_off", &[]));
+        self.speak(parts, callouts);
+    }
+
+    fn line(&mut self, event: &'static str, vars: &[(&str, &str)]) -> String {
+        self.host.say(event, self.settings.max_rating, vars)
+    }
+
+    /// Sets what the host is saying. An empty line clears it.
+    fn speak(&mut self, parts: Vec<String>, callouts: Vec<Callout>) {
+        self.host_seq += 1;
+        self.host_line = (!parts.is_empty()).then(|| HostLine { id: self.host_seq, text: parts.join(" "), callouts });
+    }
+
+    /// How long the host's current line takes to say.
+    fn talk(&self) -> Duration {
+        self.host_line.as_ref().map_or(Duration::ZERO, |l| host::talk_time(&l.text, self.timing.talk_cps))
+    }
+
+    fn name_of(&self, id: u32) -> String {
+        self.players.iter().find(|p| p.id == id).map(|p| p.name.clone()).unwrap_or_default()
     }
 
     async fn record_results(&mut self) {
@@ -628,6 +837,12 @@ impl Room {
                             points: self.last_points.get(&p.id).copied().unwrap_or(0),
                         })
                         .collect(),
+                }),
+                host: self.host_line.as_ref().map(|l| HostView {
+                    name: self.host.name(),
+                    id: l.id,
+                    text: &l.text,
+                    callouts: &l.callouts,
                 }),
                 you,
             };
