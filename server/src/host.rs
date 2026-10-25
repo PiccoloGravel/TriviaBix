@@ -35,6 +35,13 @@ pub const EVENTS: &[(&str, &[&str])] = &[
     ("tie", &["names"]),
     ("last_place", &["name"]),
     ("one_left", &[]),
+    (
+        "round_intro",
+        &["round", "total", "category", "difficulty", "points"],
+    ),
+    ("round_final", &["category", "points"]),
+    ("recap", &["round", "name", "points"]),
+    ("recap_nobody", &["round"]),
     ("finale_win", &["name", "score"]),
     ("finale_tie", &["names"]),
     ("finale_last", &["name"]),

@@ -39,6 +39,8 @@ async fn start_server_with_db() -> (String, String) {
             hangman: Duration::from_secs(5),
             reveal: Duration::from_millis(200),
             scoreboard: Duration::from_millis(200),
+            round_intro: Duration::from_millis(200),
+            recap: Duration::from_millis(200),
             intro: Duration::from_millis(200),
             talk_cps: 0.0,
             idle_timeout: Duration::from_secs(60),
@@ -122,8 +124,10 @@ impl FakeItunes {
     }
 }
 
-async fn create_room(addr: &str, rounds: usize) -> (String, String) {
-    create_room_with(addr, json!({ "rounds": rounds })).await
+/// A trivia room of three rounds with `questions / 3` questions each (at least one).
+async fn create_room(addr: &str, questions: usize) -> (String, String) {
+    let per_round = (questions / 3).max(1);
+    create_room_with(addr, json!({ "trivia_rounds": 3, "per_round": per_round })).await
 }
 
 async fn create_room_with(addr: &str, body: Value) -> (String, String) {
@@ -367,7 +371,7 @@ async fn static_pages_are_served() {
 
 #[tokio::test]
 async fn ratings_filter_questions() {
-    use triviabix::db::{Db, Rating};
+    use triviabix::db::{Db, Difficulty, Rating};
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
     let db = Db::connect(&format!("sqlite://{}", path.display()))
         .await
@@ -381,6 +385,16 @@ async fn ratings_filter_questions() {
     let pg13 = db.random_questions(total, Rating::Pg13, &[]).await.unwrap();
     assert!(pg13.len() > pg.len());
     assert!(pg13.iter().all(|q| q.choices.len() == 4 && q.answer < 4));
+
+    // Every question has a difficulty, and the seed set has all three.
+    let pool = db.question_pool(Rating::Pg13).await.unwrap();
+    assert_eq!(pool.len(), pg13.len());
+    for d in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
+        assert!(pool.iter().any(|q| q.difficulty == d), "no {d:?} questions");
+    }
+    let ids: Vec<i64> = pool.iter().rev().take(5).map(|q| q.id).collect();
+    let loaded = db.questions_by_ids(&ids).await.unwrap();
+    assert_eq!(loaded.iter().map(|q| q.id).collect::<Vec<_>>(), ids);
 
     let r: Rating = serde_json::from_str("\"NC-17\"").unwrap();
     assert_eq!(r, Rating::Nc17);
@@ -1088,4 +1102,96 @@ async fn admin_sees_and_runs_every_room() {
         .unwrap();
     let (status, _) = admin(&addr, &cookie, "rooms", None).await;
     assert_eq!(status, 401);
+}
+
+#[tokio::test]
+async fn trivia_rounds_get_harder_with_recaps_between() {
+    let addr = start_server().await;
+    let (code, host_token) =
+        create_room_with(&addr, json!({ "trivia_rounds": 4, "per_round": 2 })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut ann = open(&addr, &format!("/ws/play?code={code}&name=Ann")).await;
+    recv(&mut ann).await;
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 1).await;
+    assert_eq!(lobby["settings"]["trivia_rounds"], 4);
+    assert_eq!(lobby["total_rounds"], 8);
+    send(&mut host, json!({ "type": "start" })).await;
+
+    let mut total_points = 0;
+    for stage in 1..=4u64 {
+        // Each round opens on a title card with its theme, difficulty and points.
+        let card = wait_state(&mut host, |s| {
+            s["phase"] == "round_intro" && s["stage"] == stage
+        })
+        .await;
+        assert!(card["question"].is_null(), "no question on the title card");
+        let ladder = card["stages"].as_array().unwrap();
+        assert_eq!(ladder.len(), 4);
+        let me = &ladder[stage as usize - 1];
+        assert!(me["category"].is_string());
+        let (difficulty, pct) =
+            [("easy", 100), ("medium", 150), ("hard", 200), ("hard", 300)][stage as usize - 1];
+        assert_eq!(me["difficulty"], difficulty);
+        assert_eq!(me["points_pct"], pct);
+        assert_eq!(me["final_round"], stage == 4);
+        for (i, r) in ladder.iter().enumerate() {
+            let want = match (i + 1) as u64 {
+                n if n < stage => "done",
+                n if n == stage => "current",
+                _ => "next",
+            };
+            assert_eq!(r["status"], want, "{r}");
+            if want == "next" {
+                assert!(r["category"].is_null(), "future themes stay secret: {r}");
+            }
+        }
+        let said = card["host"]["text"].as_str().unwrap();
+        assert!(!said.contains('{'), "unfilled placeholder: {said}");
+
+        for n in 1..=2u64 {
+            let q = wait_state(&mut host, |s| {
+                s["phase"] == "question" && s["stage"] == stage && s["stage_question"] == n
+            })
+            .await;
+            assert_eq!(q["round"], (stage - 1) * 2 + n);
+            send(&mut ann, json!({ "type": "answer", "choice": 0 })).await;
+            let reveal = wait_state(&mut ann, |s| s["phase"] == "reveal").await;
+            let correct = reveal["reveal"]["correct"].as_u64().unwrap();
+            let points = reveal["reveal"]["results"][0]["points"].as_i64().unwrap();
+            if correct == 0 {
+                // A right answer pays 500 to 1000, scaled up by the round.
+                let pct = pct as i64;
+                assert!(
+                    points >= 500 * pct / 100 && points <= 1000 * pct / 100,
+                    "{points}"
+                );
+            } else {
+                assert_eq!(points, 0);
+            }
+            total_points += points;
+        }
+
+        // After every round: the scores and what was asked.
+        let recap = wait_state(&mut host, |s| s["phase"] == "recap").await;
+        assert_eq!(recap["recap"]["stage"], stage);
+        let questions = recap["recap"]["questions"].as_array().unwrap();
+        assert_eq!(questions.len(), 2);
+        assert!(
+            questions
+                .iter()
+                .all(|q| q["answer"].is_string() && q["prompt"].is_string())
+        );
+        assert!(recap["question"].is_null());
+        assert!(!recap["host"]["text"].as_str().unwrap().contains('{'));
+    }
+
+    let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
+    assert_eq!(fin["players"][0]["score"].as_i64().unwrap(), total_points);
+    assert!(
+        fin["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == "done")
+    );
 }

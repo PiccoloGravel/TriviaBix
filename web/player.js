@@ -72,11 +72,12 @@ function render(s) {
 
   const team = s.teams.find((t) => t.id === you.team);
   document.querySelectorAll("[data-me]").forEach((box) => {
-    box.replaceChildren(
+    box.replaceChildren(...[
       TBX.avatar(player, "40px"),
       el("span", { class: "name" }, player.name, you.is_vip ? " 👑" : ""),
       team ? el("span", { class: "team-chip", style: `background:${team.color}` }, team.name) : null,
-      el("span", { class: "score" }, player.score.toLocaleString()));
+      el("span", { class: "score" }, player.score.toLocaleString()),
+    ].filter(Boolean));
   });
   document.querySelectorAll("[data-vip-next]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
 
@@ -136,6 +137,20 @@ function render(s) {
       $("#r-badge").classList.toggle("good", !["roast", "asleep", "streak_broken", "last_place"].includes(mine.kind));
     }
     if (fresh && navigator.vibrate) navigator.vibrate(right ? 80 : [60, 60, 60]);
+  } else if (s.phase === "round_intro") {
+    const st = s.stages[s.stage - 1];
+    $("#ri-title").textContent = st.final_round ? "Final round" : `Round ${st.number} of ${s.stages.length}`;
+    $("#ri-cat").textContent = st.category;
+    $("#ri-points").textContent = `×${st.points_pct / 100} points`;
+    $("#ri-diff").textContent = `${st.final_round ? "The hardest questions" : st.difficulty[0].toUpperCase() + st.difficulty.slice(1) + " questions"} · eyes on the TV!`;
+  } else if (s.phase === "recap") {
+    const st = s.stages[s.stage - 1];
+    const mine = s.recap.points.find((p) => p.player_id === you.player_id);
+    const right = s.recap.questions.filter((q) => q.right.includes(you.player_id)).length;
+    $("#rc-title").textContent = `${st.final_round ? "Final round" : "Round " + st.number} done`;
+    $("#rc-points").textContent = `+${(mine ? mine.points : 0).toLocaleString()}`;
+    $("#rc-right").textContent = `${right} of ${s.recap.questions.length} right`;
+    $("#rc-rank").textContent = `You're in ${ordinal(you.rank)} place`;
   } else if (s.phase === "scoreboard") {
     $("#s-rank").textContent = ordinal(you.rank) + " place";
   } else if (s.phase === "final") {
