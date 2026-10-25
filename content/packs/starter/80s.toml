@@ -1,0 +1,119 @@
+[pack]
+name = "Totally Rad 80s"
+author = "TriviaBix"
+category = "80s"
+tags = ["80s", "retro"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which arcade hero was originally called \"Puck-Man\" in Japan?"
+choices = ["Pac-Man", "Q*bert", "Frogger", "Dig Dug"]
+answer = "Pac-Man"
+difficulty = "easy"
+tags = ["video-games"]
+fun_fact = "The name was changed for the US because operators worried vandals would scratch the P into an F."
+host_quip = "Waka waka, you knew that one."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which 1985 movie turned a DeLorean into a time machine?"
+choices = ["Back to the Future", "WarGames", "Short Circuit", "Bill & Ted's Excellent Adventure"]
+answer = "Back to the Future"
+difficulty = "easy"
+tags = ["movies"]
+host_quip = "Great Scott! Eighty-eight miles per hour of correct answers."
+
+[[question]]
+type = "true_false"
+prompt = "The Rubik's Cube was invented by a Hungarian architecture professor."
+answer = true
+fun_fact = "Ernő Rubik built the first one in 1974, and it took him about a month to solve his own puzzle."
+
+[[question]]
+type = "type_answer"
+prompt = "What music channel launched in 1981 by playing \"Video Killed the Radio Star\"?"
+answers = ["MTV", "Music Television"]
+difficulty = "easy"
+tags = ["music", "tv"]
+host_quip = "Back when MTV actually played music. Ask your parents."
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did the Berlin Wall fall?"
+answer = 1989
+tags = ["history"]
+host_quip = "Tear down that scoreboard!"
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these 80s movies in order of release."
+items = ["E.T. the Extra-Terrestrial", "Ghostbusters", "Back to the Future", "Top Gun"]
+first_label = "Earliest"
+last_label = "Latest"
+tags = ["movies"]
+fun_fact = "1982, 1984, 1985, and 1986. The 80s did not take a year off."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which band sang \"Take On Me\"?"
+choices = ["a-ha", "Duran Duran", "Tears for Fears", "Eurythmics"]
+answer = "a-ha"
+difficulty = "easy"
+tags = ["music"]
+fun_fact = "The pencil-sketch video took months to make with a technique called rotoscoping."
+host_quip = "Taaake ON MEEE. Sorry, I'll stop. No I won't."
+
+[[question]]
+type = "multiple_choice"
+prompt = "What did Michael Jackson famously wear on just one hand?"
+choices = ["A sequined glove", "A gold watch", "A fingerless leather glove", "A mood ring"]
+answer = "A sequined glove"
+difficulty = "easy"
+tags = ["music", "pop-culture"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which toy line's slogan was \"More than meets the eye\"?"
+answers = ["Transformers"]
+tags = ["toys"]
+
+[[question]]
+type = "true_false"
+prompt = "The Nintendo Entertainment System launched in North America in 1985."
+answer = true
+tags = ["video-games"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which 80s TV show starred a talking car named KITT?"
+choices = ["Knight Rider", "The A-Team", "Airwolf", "MacGyver"]
+answer = "Knight Rider"
+difficulty = "easy"
+tags = ["tv"]
+
+[[question]]
+type = "closest_number"
+prompt = "How many songs are on Michael Jackson's original 1982 album \"Thriller\"?"
+answer = 9
+unit = "songs"
+difficulty = "hard"
+tags = ["music"]
+fun_fact = "Only nine tracks, and seven of them were released as singles."
+
+[[question]]
+type = "type_answer"
+prompt = "Finish the 1984 movie theme: \"If there's something strange in your neighborhood, who you gonna call?\""
+answers = ["Ghostbusters"]
+difficulty = "easy"
+tags = ["movies", "music"]
+host_quip = "I ain't afraid of no wrong answers."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these gadgets in order of first release."
+items = ["Sony Walkman", "Commodore 64", "Apple Macintosh", "Nintendo Game Boy"]
+first_label = "Earliest"
+last_label = "Latest"
+difficulty = "hard"
+tags = ["tech"]
+fun_fact = "1979, 1982, 1984, and 1989."

@@ -1,0 +1,89 @@
+[pack]
+name = "Pop Culture"
+author = "TriviaBix"
+category = "pop-culture"
+
+[[question]]
+type = "multiple_choice"
+prompt = "The original \"Bennifer\" was Ben Affleck and which star?"
+choices = ["Jennifer Lopez", "Jennifer Garner", "Jennifer Aniston", "Jennifer Lawrence"]
+answer = "Jennifer Lopez"
+tags = ["2000s", "celebrities"]
+host_quip = "And then again in 2022. Love is a sequel."
+
+[[question]]
+type = "true_false"
+prompt = "Taylor Swift's Eras Tour became the highest-grossing concert tour of all time."
+answer = true
+difficulty = "easy"
+tags = ["music", "2020s"]
+fun_fact = "It finished in December 2024 after grossing more than two billion dollars."
+
+[[question]]
+type = "type_answer"
+prompt = "What is the name of Barbie's longtime boyfriend?"
+answers = ["Ken", "Ken Carson"]
+difficulty = "easy"
+tags = ["toys", "movies"]
+host_quip = "He's just Ken. And you're just correct."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which movie opened the same weekend as \"Barbie\" in July 2023, creating \"Barbenheimer\"?"
+choices = ["Oppenheimer", "Dune", "Napoleon", "Tenet"]
+answer = "Oppenheimer"
+difficulty = "easy"
+tags = ["movies", "2020s"]
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these apps in order of launch."
+items = ["Facebook", "Twitter", "Instagram", "TikTok (outside China)"]
+first_label = "Earliest"
+last_label = "Latest"
+tags = ["tech"]
+fun_fact = "2004, 2006, 2010, and 2017."
+
+[[question]]
+type = "multiple_choice"
+prompt = "In internet slang, what does \"GOAT\" stand for?"
+choices = ["Greatest Of All Time", "Got Over All That", "Good On A Tuesday", "Gone Out All Tonight"]
+answer = "Greatest Of All Time"
+difficulty = "easy"
+tags = ["slang"]
+
+[[question]]
+type = "true_false"
+prompt = "The \"Face with Tears of Joy\" emoji 😂 was once named Oxford Dictionaries' Word of the Year."
+answer = true
+tags = ["internet"]
+fun_fact = "It won in 2015. Somewhere, a dictionary is still crying, and not from joy."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which royal married Meghan Markle in 2018?"
+choices = ["Prince Harry", "Prince William", "Prince Edward", "Prince Andrew"]
+answer = "Prince Harry"
+difficulty = "easy"
+tags = ["celebrities"]
+
+[[question]]
+type = "type_answer"
+prompt = "What breed of dog is the star of the \"Doge\" meme?"
+answers = ["Shiba Inu", "Shiba"]
+tags = ["internet"]
+host_quip = "Such trivia. Very correct. Wow."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which singer calls their fans \"Little Monsters\"?"
+choices = ["Lady Gaga", "Beyoncé", "Katy Perry", "Rihanna"]
+answer = "Lady Gaga"
+tags = ["music"]
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did the first \"Star Wars\" movie come out?"
+answer = 1977
+tags = ["movies"]
+host_quip = "A long time ago, in a living room very, very close."

@@ -27,7 +27,13 @@ pub enum Guess {
 
 impl Puzzle {
     pub fn new(id: i64, category: String, answer: String) -> Self {
-        Self { id, category, answer, guessed: Vec::new(), strikes: 0 }
+        Self {
+            id,
+            category,
+            answer,
+            guessed: Vec::new(),
+            strikes: 0,
+        }
     }
 
     /// Guesses one letter. A miss costs the room a strike.
@@ -40,7 +46,11 @@ impl Puzzle {
             return Guess::AlreadyGuessed;
         }
         self.guessed.push(letter);
-        let count = self.answer.chars().filter(|c| c.to_ascii_uppercase() == letter).count();
+        let count = self
+            .answer
+            .chars()
+            .filter(|c| c.to_ascii_uppercase() == letter)
+            .count();
         if count == 0 {
             self.strikes += 1;
             Guess::Miss
@@ -74,7 +84,10 @@ impl Puzzle {
 
     /// The phrase with unfound letters replaced by [`BLANK`].
     pub fn mask(&self) -> String {
-        self.answer.chars().map(|c| if self.is_hidden(c) { BLANK } else { c }).collect()
+        self.answer
+            .chars()
+            .map(|c| if self.is_hidden(c) { BLANK } else { c })
+            .collect()
     }
 
     pub fn hits(&self) -> String {
@@ -82,11 +95,16 @@ impl Puzzle {
     }
 
     pub fn misses(&self) -> String {
-        self.guessed.iter().filter(|l| !self.contains(**l)).collect()
+        self.guessed
+            .iter()
+            .filter(|l| !self.contains(**l))
+            .collect()
     }
 
     fn contains(&self, letter: char) -> bool {
-        self.answer.chars().any(|c| c.to_ascii_uppercase() == letter)
+        self.answer
+            .chars()
+            .any(|c| c.to_ascii_uppercase() == letter)
     }
 
     fn is_hidden(&self, c: char) -> bool {
@@ -95,7 +113,10 @@ impl Puzzle {
 }
 
 fn squash(s: &str) -> String {
-    s.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).collect()
+    s.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
 }
 
 #[cfg(test)]
@@ -115,7 +136,10 @@ mod tests {
         assert_eq!(p.guess('z'), Guess::Miss);
         assert_eq!(p.guess('2'), Guess::NotALetter);
         assert_eq!(p.mask(), "_a__ 2!");
-        assert_eq!((p.hits().as_str(), p.misses().as_str(), p.strikes), ("A", "Z", 1));
+        assert_eq!(
+            (p.hits().as_str(), p.misses().as_str(), p.strikes),
+            ("A", "Z", 1)
+        );
         for c in ['j', 'w', 's'] {
             p.guess(c);
         }

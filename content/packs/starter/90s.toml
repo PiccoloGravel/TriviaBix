@@ -1,0 +1,106 @@
+[pack]
+name = "All That and the 90s"
+author = "TriviaBix"
+category = "90s"
+tags = ["90s", "retro"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "What egg-shaped virtual pet took over playgrounds in 1997?"
+choices = ["Tamagotchi", "Furby", "Neopet", "Giga Pet"]
+answer = "Tamagotchi"
+difficulty = "easy"
+tags = ["toys"]
+host_quip = "Raise your hand if yours died during math class."
+
+[[question]]
+type = "type_answer"
+prompt = "Which sitcom's theme song is \"I'll Be There for You\"?"
+answers = ["Friends"]
+difficulty = "easy"
+tags = ["tv"]
+host_quip = "Clap clap clap clap."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which Spice Girl was known as \"Posh Spice\"?"
+choices = ["Victoria Beckham", "Geri Halliwell", "Mel B", "Emma Bunton"]
+answer = "Victoria Beckham"
+tags = ["music"]
+fun_fact = "She was Victoria Adams back then. She married David Beckham in 1999."
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did James Cameron's \"Titanic\" hit theaters?"
+answer = 1997
+tags = ["movies"]
+host_quip = "Near, far, wherever your guess is."
+
+[[question]]
+type = "true_false"
+prompt = "The first Harry Potter book was published in 1997."
+answer = true
+tags = ["books"]
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these consoles in order of North American release."
+items = ["Super Nintendo", "Sony PlayStation", "Nintendo 64", "Sega Dreamcast"]
+first_label = "Earliest"
+last_label = "Latest"
+tags = ["video-games"]
+fun_fact = "1991, 1995, 1996, and 1999."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which search engine was founded in 1998 by Larry Page and Sergey Brin?"
+choices = ["Google", "Yahoo!", "AltaVista", "Ask Jeeves"]
+answer = "Google"
+difficulty = "easy"
+tags = ["tech"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which Nirvana song begins \"Load up on guns, bring your friends\"?"
+answers = ["Smells Like Teen Spirit"]
+tags = ["music"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which group sang \"I Want It That Way\"?"
+choices = ["Backstreet Boys", "*NSYNC", "98 Degrees", "Boyz II Men"]
+answer = "Backstreet Boys"
+difficulty = "easy"
+tags = ["music"]
+host_quip = "Tell me why... you picked that."
+
+[[question]]
+type = "true_false"
+prompt = "\"The Fresh Prince of Bel-Air\" was set in Philadelphia."
+answer = false
+difficulty = "easy"
+tags = ["tv"]
+fun_fact = "Will was born and raised in West Philadelphia, but the show is set in Bel-Air, Los Angeles."
+
+[[question]]
+type = "type_answer"
+prompt = "What was the name of the sheep cloned in Scotland in 1996?"
+answers = ["Dolly", "Dolly the Sheep"]
+tags = ["science"]
+fun_fact = "She was named after Dolly Parton."
+
+[[question]]
+type = "closest_number"
+prompt = "How many Pokémon could you catch in the original Pokémon Red and Blue?"
+answer = 151
+unit = "Pokémon"
+tags = ["video-games"]
+host_quip = "Gotta guess 'em all."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which duo had a worldwide hit with \"Macarena\"?"
+choices = ["Los del Río", "Gipsy Kings", "Milli Vanilli", "Los Lobos"]
+answer = "Los del Río"
+tags = ["music"]
+host_quip = "Hey, Macarena! Everybody up, the TV demands it."

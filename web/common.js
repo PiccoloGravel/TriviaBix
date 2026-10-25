@@ -24,11 +24,40 @@ const TBX = {
     document.querySelectorAll("[data-screen]").forEach((s) => s.classList.toggle("hidden", s.id !== id));
   },
 
+  /** id -> { id, emoji, name }, filled by loadCharacters(). */
+  characters: {},
+  characterList: [],
+
+  async loadCharacters() {
+    try {
+      TBX.characterList = await (await fetch("/api/characters")).json();
+      TBX.characters = Object.fromEntries(TBX.characterList.map((c) => [c.id, c]));
+    } catch { /* avatars fall back to initials */ }
+  },
+
   avatar(player, size) {
+    const ch = TBX.characters[player.character];
     return TBX.el("span", {
       class: "avatar",
-      style: `background:${player.color};width:${size};height:${size};font-size:calc(${size} * 0.5)`,
-    }, (player.name[0] || "?").toUpperCase());
+      title: ch ? `${player.name} the ${ch.name}` : player.name,
+      style: `background:${player.color};width:${size};height:${size};font-size:calc(${size} * ${ch ? 0.62 : 0.5})`,
+    }, ch ? ch.emoji : (player.name[0] || "?").toUpperCase());
+  },
+
+  /** Fills `box` with character buttons. Taken ones are disabled. */
+  characterGrid(box, selected, taken, onPick) {
+    box.replaceChildren(...TBX.characterList.map((c) => {
+      const isTaken = taken.includes(c.id) && c.id !== selected;
+      const b = TBX.el("button", {
+        type: "button",
+        class: "char" + (c.id === selected ? " sel" : ""),
+        title: isTaken ? `${c.name} (taken)` : c.name,
+        "aria-label": c.name,
+        onclick: () => onPick(c.id),
+      }, c.emoji);
+      b.disabled = isTaken;
+      return b;
+    }));
   },
 
   load(key) {

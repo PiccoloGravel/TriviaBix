@@ -21,7 +21,16 @@ pub enum ClientMsg {
     /// Host or VIP: back to the lobby after the final scores.
     PlayAgain,
     /// Host only: change settings while in the lobby.
-    Settings { rounds: Option<usize>, max_rating: Option<Rating>, mode: Option<GameMode> },
+    Settings {
+        rounds: Option<usize>,
+        max_rating: Option<Rating>,
+        mode: Option<GameMode>,
+    },
+    /// Player, in the lobby: change your name and/or character.
+    Profile {
+        name: Option<String>,
+        character: Option<String>,
+    },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
@@ -51,7 +60,10 @@ pub enum ServerMsg<'a> {
     },
     State(Box<StateView<'a>>),
     /// `fatal` errors are followed by the server closing the socket.
-    Error { message: &'a str, fatal: bool },
+    Error {
+        message: &'a str,
+        fatal: bool,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +84,8 @@ pub struct StateView<'a> {
     pub reveal: Option<RevealView>,
     /// Only in speed hangman rounds.
     pub hangman: Option<HangmanView<'a>>,
+    /// What the host is saying right now, with graphics for the TV to show alongside it.
+    pub host: Option<HostView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
 }
@@ -82,6 +96,7 @@ pub struct PlayerView<'a> {
     pub name: &'a str,
     pub score: i64,
     pub color: &'static str,
+    pub character: &'a str,
     pub connected: bool,
     pub answered: bool,
 }
@@ -111,6 +126,26 @@ pub struct ResultView {
     pub player_id: u32,
     pub choice: Option<usize>,
     pub points: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HostView<'a> {
+    pub name: &'a str,
+    /// Changes with every new line, so the TV speaks each one once.
+    pub id: u64,
+    pub text: &'a str,
+    pub callouts: &'a [Callout],
+}
+
+/// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
+#[derive(Debug, Serialize, Clone)]
+pub struct Callout {
+    /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
+    /// leader, tie, last_place, winner.
+    pub kind: &'static str,
+    pub player_id: Option<u32>,
+    /// Short overlay text, like "3 IN A ROW".
+    pub label: String,
 }
 
 #[derive(Debug, Serialize)]

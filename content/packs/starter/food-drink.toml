@@ -1,0 +1,75 @@
+[pack]
+name = "Food and Drink"
+author = "TriviaBix"
+category = "food-drink"
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the main ingredient in guacamole?"
+choices = ["Avocado", "Tomatillo", "Lime", "Green pepper"]
+answer = "Avocado"
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "Peanuts are legumes, not true nuts."
+answer = true
+
+[[question]]
+type = "type_answer"
+prompt = "Which Italian dessert's name means \"pick me up\"?"
+answers = ["Tiramisu"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which spice is the most expensive by weight?"
+choices = ["Saffron", "Vanilla", "Cardamom", "Cinnamon"]
+answer = "Saffron"
+fun_fact = "Each crocus flower gives only three threads, picked by hand."
+
+[[question]]
+type = "closest_number"
+prompt = "How many teaspoons are in a tablespoon?"
+answer = 3
+unit = "teaspoons"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which pasta's name means \"little tongues\" in Italian?"
+choices = ["Linguine", "Penne", "Farfalle", "Orecchiette"]
+answer = "Linguine"
+difficulty = "hard"
+fun_fact = "Farfalle means butterflies, and orecchiette means little ears."
+
+[[question]]
+type = "true_false"
+prompt = "Honey can stay edible for thousands of years."
+answer = true
+fun_fact = "Archaeologists have found edible honey in ancient Egyptian tombs."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these peppers in order from mildest to hottest."
+items = ["Bell pepper", "Jalapeño", "Habanero", "Carolina Reaper"]
+first_label = "Mildest"
+last_label = "Hottest"
+difficulty = "easy"
+host_quip = "Anyone who's eaten a Reaper, blink twice."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which citrus fruit goes in a classic mojito?"
+choices = ["Lime", "Lemon", "Orange", "Grapefruit"]
+answer = "Lime"
+difficulty = "easy"
+rating = "PG-13"
+tags = ["cocktails"]
+
+[[question]]
+type = "type_answer"
+prompt = "What cocktail mixes rum, coconut cream, and pineapple juice?"
+answers = ["Piña Colada", "Pina Colada"]
+rating = "PG-13"
+tags = ["cocktails", "70s"]
+host_quip = "If you like getting caught in the rain, you probably got this one."

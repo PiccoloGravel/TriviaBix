@@ -1,0 +1,74 @@
+[pack]
+name = "TV"
+author = "TriviaBix"
+category = "tv"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which TV show is set at the Dunder Mifflin Paper Company?"
+choices = ["The Office", "Parks and Recreation", "Superstore", "30 Rock"]
+answer = "The Office"
+difficulty = "easy"
+tags = ["2000s"]
+host_quip = "That's what she said. Sorry. Contractually obligated."
+
+[[question]]
+type = "type_answer"
+prompt = "In \"Breaking Bad\", what alias does Walter White use?"
+answers = ["Heisenberg"]
+host_quip = "Say my name. Correctly, this time."
+
+[[question]]
+type = "true_false"
+prompt = "\"The Simpsons\" is the longest-running American scripted primetime series."
+answer = true
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "In \"Game of Thrones\", what is the name of Jon Snow's direwolf?"
+choices = ["Ghost", "Nymeria", "Summer", "Grey Wind"]
+answer = "Ghost"
+
+[[question]]
+type = "closest_number"
+prompt = "How many seasons of \"Friends\" were made?"
+answer = 10
+unit = "seasons"
+tags = ["90s"]
+
+[[question]]
+type = "type_answer"
+prompt = "What is the name of the coffee shop in \"Friends\"?"
+answers = ["Central Perk"]
+tags = ["90s"]
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these shows in order of their premiere."
+items = ["Seinfeld", "Friends", "The Sopranos", "Stranger Things"]
+first_label = "Earliest"
+last_label = "Latest"
+fun_fact = "1989, 1994, 1999, and 2016."
+
+[[question]]
+type = "multiple_choice"
+prompt = "In \"Stranger Things\", what is Eleven's favorite food?"
+choices = ["Eggo waffles", "Pizza", "Pop-Tarts", "Chocolate pudding"]
+answer = "Eggo waffles"
+difficulty = "easy"
+tags = ["80s"]
+
+[[question]]
+type = "true_false"
+prompt = "\"Squid Game\" is a South Korean series."
+answer = true
+difficulty = "easy"
+tags = ["2020s"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who hosted \"Jeopardy!\" for 37 seasons?"
+choices = ["Alex Trebek", "Pat Sajak", "Bob Barker", "Regis Philbin"]
+answer = "Alex Trebek"
+host_quip = "Please phrase your applause in the form of a question."
