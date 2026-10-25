@@ -1,0 +1,127 @@
+/* Cutscene player (see cutscenes.js). Sizes are in vh so scenes read from the couch on any TV. */
+.cutscene { position: fixed; inset: 0; z-index: 8; overflow: hidden; pointer-events: none; }
+.cutscene.leaving { animation: cs-leave .35s ease-in forwards; }
+@keyframes cs-leave { to { opacity: 0; transform: scale(1.06); } }
+
+/* ---------- Backdrops ---------- */
+.cs-backdrop { position: absolute; inset: 0; background: var(--c0); }
+.cs-bg-split { background: linear-gradient(115deg, var(--c0) 0 50%, var(--c1) 50% 100%); }
+.cs-bg-stripes { background: repeating-linear-gradient(115deg, var(--c0) 0 6vh, var(--c1) 6vh 12vh); background-size: 200% 200%; animation: cs-stripes 1.2s linear infinite; }
+@keyframes cs-stripes { to { background-position: 26vh 0; } }
+.cs-bg-sunburst { background: var(--c0); }
+.cs-bg-sunburst .cs-rays, .cs-bg-spotlight .cs-rays { position: absolute; left: 50%; top: 50%; width: 260vmax; height: 260vmax; margin: -130vmax 0 0 -130vmax; animation: cs-spin 14s linear infinite; }
+.cs-bg-sunburst .cs-rays { background: repeating-conic-gradient(var(--c1) 0 10deg, transparent 10deg 20deg); }
+.cs-bg-sunburst::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,0,0,.35)); }
+.cs-bg-spotlight { background: #0d0620; }
+.cs-bg-spotlight .cs-rays { background: radial-gradient(circle at 50% 50%, var(--c0) 0 9%, transparent 22%); animation: cs-search 3s ease-in-out infinite alternate; }
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+@keyframes cs-search { from { transform: translate(-12vw, 4vh); } to { transform: translate(12vw, -2vh); } }
+.cs-bg-curtains { background: radial-gradient(ellipse at 50% 40%, #3d1f7a, #0d0620 70%); }
+.cs-curtain { position: absolute; top: 0; bottom: 0; width: 52%; background: repeating-linear-gradient(90deg, #b3122e 0 3vw, #8c0b22 3vw 6vw); box-shadow: inset 0 0 6vh rgba(0,0,0,.6); animation: cs-open 1.1s cubic-bezier(.7,0,.3,1) var(--open) both; }
+.cs-curtain.l { left: 0; transform-origin: left; }
+.cs-curtain.r { right: 0; transform-origin: right; animation-name: cs-open-r; }
+.cs-valance { position: absolute; top: 0; left: 0; right: 0; height: 9vh; background: linear-gradient(#8c0b22, #b3122e); border-bottom: 1.2vh solid #d4a017; box-shadow: 0 1vh 2vh rgba(0,0,0,.5); z-index: 2; }
+@keyframes cs-open { to { transform: translateX(-88%) scaleX(.6); } }
+@keyframes cs-open-r { to { transform: translateX(88%) scaleX(.6); } }
+.cs-bg-none { background: none; }
+.cs-bg-dim { background: rgba(13, 6, 32, .72); }
+
+.cs-enter-wipe { animation: cs-wipe .45s cubic-bezier(.7,0,.3,1) both; }
+.cs-enter-fade { animation: cs-fade .3s ease-out both; }
+.cs-enter-iris { animation: cs-iris .55s cubic-bezier(.6,0,.3,1) both; }
+.cs-enter-none { animation: none; }
+@keyframes cs-wipe { from { clip-path: polygon(0 0, 0 0, -20% 100%, -20% 100%); } to { clip-path: polygon(0 0, 120% 0, 100% 100%, -20% 100%); } }
+@keyframes cs-fade { from { opacity: 0; } }
+@keyframes cs-iris { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(80% at 50% 50%); } }
+
+/* ---------- Layers ---------- */
+.cs-layer { position: absolute; transform: translate(-50%, -50%) rotate(var(--rot)); display: flex; justify-content: center; }
+.cs-in { animation-fill-mode: both; animation-timing-function: cubic-bezier(.2,1.5,.4,1); }
+.cs-loop { animation-duration: 1s; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out; }
+
+.cs-text { font-family: "Bungee", "Nunito", sans-serif; line-height: 1; text-align: center; color: #fff8f0; white-space: pre-line; overflow-wrap: anywhere; }
+.cs-text-title, .cs-text-stamp { white-space: pre; }
+.cs-text-title { text-shadow: 0 .08em 0 rgba(0,0,0,.35), 0 0 .3em rgba(0,0,0,.25); -webkit-text-stroke: .02em #1a0b3d; }
+.cs-text-sub { font-family: "Nunito", sans-serif; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; text-shadow: 0 .1em .2em rgba(0,0,0,.5); }
+.cs-text-stamp { padding: .15em .45em; border: .09em dashed currentColor; border-radius: .2em; background: rgba(0,0,0,.25); box-shadow: 0 .08em 0 rgba(0,0,0,.35); }
+.cs-text-bubble { font-family: "Nunito", sans-serif; font-weight: 900; color: #1a0b3d; background: #fff8f0; padding: .5em .8em; border-radius: .8em .8em .8em .15em; box-shadow: 0 .12em 0 rgba(0,0,0,.35); line-height: 1.15; }
+
+.cs-emoji { line-height: 1; filter: drop-shadow(0 1vh 0 rgba(0,0,0,.3)); }
+.cs-bix { filter: drop-shadow(0 1.2vh 0 rgba(0,0,0,.3)); }
+.cs-player { display: flex; flex-direction: column; align-items: center; gap: 1vh; position: relative; }
+.cs-player .avatar { box-shadow: 0 0 0 .8vh #fff8f0, 0 1.5vh 0 .8vh rgba(0,0,0,.3); }
+.cs-name { font-family: "Bungee", sans-serif; color: #fff8f0; text-shadow: 0 .4vh 0 rgba(0,0,0,.4); white-space: nowrap; max-width: 80vw; overflow: hidden; text-overflow: ellipsis; }
+.cs-hat { position: absolute; top: 0; left: 50%; line-height: 1; animation: cs-hat .7s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes cs-hat { from { transform: translate(-50%, -120vh) rotate(-30deg); } to { transform: translate(-50%, -62%) rotate(-8deg); } }
+.cs-lineup { display: flex; flex-wrap: wrap; justify-content: center; max-width: 92vw; }
+.cs-cell { display: flex; flex-direction: column; align-items: center; gap: .6vh; animation: cs-in-drop .6s cubic-bezier(.2,1.5,.4,1) both; }
+.cs-image { display: block; filter: drop-shadow(0 1vh 0 rgba(0,0,0,.3)); }
+
+.cs-fx-rain, .cs-fx-rise { position: relative; width: 100vw; height: 100vh; }
+.cs-fx-burst, .cs-fx-confetti { position: relative; width: 0; height: 0; }
+.cs-particle { position: absolute; line-height: 1; animation-fill-mode: both; animation-timing-function: linear; }
+.cs-fx-rain .cs-particle { left: var(--x); top: -10vh; animation-name: cs-rain; }
+.cs-fx-rise .cs-particle { left: var(--x); top: 100vh; animation-name: cs-rise; animation-timing-function: ease-out; }
+.cs-fx-burst .cs-particle, .cs-fx-confetti .cs-particle { left: 0; top: 0; animation-name: cs-burst; animation-timing-function: cubic-bezier(.1,.8,.3,1); }
+@keyframes cs-rain { from { transform: translateY(0) rotate(0); } to { transform: translateY(125vh) rotate(var(--r)); } }
+@keyframes cs-rise { from { transform: translateY(0); opacity: 1; } to { transform: translate(calc(var(--dx) * .2), -115vh) rotate(var(--r)); opacity: .2; } }
+@keyframes cs-burst { from { transform: translate(-50%, -50%) scale(.2); opacity: 1; } 80% { opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--r)) scale(1); opacity: 0; } }
+
+/* Entrances: "in" on a layer. */
+.cs-in-pop { animation-name: cs-in-pop; }
+.cs-in-slam { animation-name: cs-in-slam; }
+.cs-in-zoom { animation-name: cs-in-zoom; }
+.cs-in-drop { animation-name: cs-in-drop; }
+.cs-in-rise { animation-name: cs-in-rise; }
+.cs-in-left { animation-name: cs-in-left; }
+.cs-in-right { animation-name: cs-in-right; }
+.cs-in-spin { animation-name: cs-in-spin; }
+.cs-in-stamp { animation-name: cs-in-stamp; }
+.cs-in-flip { animation-name: cs-in-flip; }
+.cs-in-fade { animation-name: cs-fade; animation-timing-function: ease-out; }
+.cs-in-cut { animation-name: cs-cut; animation-duration: 1ms !important; }
+@keyframes cs-in-pop { from { transform: scale(0); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cs-in-slam { from { transform: scale(4) rotate(-8deg); opacity: 0; } 60% { opacity: 1; } to { transform: none; opacity: 1; } }
+@keyframes cs-in-zoom { from { transform: scale(.1) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cs-in-drop { from { transform: translateY(-110vh); } to { transform: none; } }
+@keyframes cs-in-rise { from { transform: translateY(110vh); } to { transform: none; } }
+@keyframes cs-in-left { from { transform: translateX(-120vw) skewX(20deg); } to { transform: none; } }
+@keyframes cs-in-right { from { transform: translateX(120vw) skewX(-20deg); } to { transform: none; } }
+@keyframes cs-in-spin { from { transform: rotate(-720deg) scale(0); } to { transform: none; } }
+@keyframes cs-in-stamp { from { transform: scale(3) rotate(-25deg); opacity: 0; } 60% { transform: scale(.9) rotate(-6deg); opacity: 1; } to { transform: rotate(-6deg); opacity: 1; } }
+@keyframes cs-in-flip { from { transform: perspective(80vh) rotateY(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cs-cut { from { opacity: 0; } to { opacity: 1; } }
+
+/* Idle loops: "loop" on a layer. */
+.cs-loop-bob { animation-name: cs-bob; }
+.cs-loop-wobble { animation-name: cs-wobble; animation-duration: .5s; }
+.cs-loop-pulse { animation-name: cs-pulse; animation-duration: .6s; }
+.cs-loop-spin { animation-name: cs-spin; animation-duration: 3s; animation-direction: normal; animation-timing-function: linear; }
+.cs-loop-shake { animation-name: cs-shake; animation-duration: .12s; }
+.cs-loop-float { animation-name: cs-float; animation-duration: 2s; }
+.cs-loop-swing { animation-name: cs-swing; animation-duration: 1.2s; }
+.cs-loop-flicker { animation-name: cs-flicker; animation-duration: .25s; }
+.cs-loop-crawl { animation-name: cs-crawl; animation-duration: 8s; animation-direction: normal; animation-timing-function: linear; animation-iteration-count: 1; animation-fill-mode: forwards; }
+@keyframes cs-bob { from { transform: translateY(-1.5vh); } to { transform: translateY(1.5vh); } }
+@keyframes cs-wobble { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes cs-pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+@keyframes cs-shake { from { transform: translateX(-1vh); } to { transform: translateX(1vh); } }
+@keyframes cs-float { from { transform: translateY(0) rotate(-3deg); } to { transform: translateY(-3vh) rotate(3deg); } }
+@keyframes cs-swing { from { transform: rotate(-15deg); } to { transform: rotate(15deg); } }
+@keyframes cs-flicker { from { transform: scale(1) rotate(-4deg); filter: brightness(1); } to { transform: scale(1.1) rotate(4deg); filter: brightness(1.3); } }
+@keyframes cs-crawl { to { transform: translateX(30vw); } }
+
+/* Exits: "leave" on a layer, at its "out" time. */
+.cs-layer[class*="cs-out-"] { animation-duration: .4s; animation-fill-mode: forwards; animation-timing-function: ease-in; }
+.cs-out-fade { animation-name: cs-out-fade; }
+.cs-out-zoom { animation-name: cs-out-zoom; }
+.cs-out-drop { animation-name: cs-out-drop; }
+.cs-out-up { animation-name: cs-out-up; }
+.cs-out-left { animation-name: cs-out-left; }
+.cs-out-right { animation-name: cs-out-right; }
+@keyframes cs-out-fade { to { opacity: 0; } }
+@keyframes cs-out-zoom { to { transform: translate(-50%, -50%) scale(3); opacity: 0; } }
+@keyframes cs-out-drop { to { transform: translate(-50%, 80vh) rotate(25deg); } }
+@keyframes cs-out-up { to { transform: translate(-50%, -120vh); } }
+@keyframes cs-out-left { to { transform: translate(-150vw, -50%); } }
+@keyframes cs-out-right { to { transform: translate(150vw, -50%); } }

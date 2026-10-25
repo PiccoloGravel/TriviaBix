@@ -269,6 +269,7 @@ struct HostLine {
     id: u64,
     text: String,
     callouts: Vec<Callout>,
+    cue: Option<&'static str>,
 }
 
 struct Answer {
@@ -432,7 +433,7 @@ impl Room {
             .collect::<Vec<_>>()
             .join(", ");
         let line = room.line("room_open", &[("code", &spelled)]);
-        room.speak(vec![line], Vec::new());
+        room.speak(vec![line], Vec::new(), None);
         tokio::spawn(async move {
             room.run(rx).await;
             on_close();
@@ -581,7 +582,7 @@ impl Room {
                         tracing::info!(code = %self.code, %name, "player joining mid-game");
                     }
                     let line = self.line("join", &[("name", &name)]);
-                    self.speak(vec![line], Vec::new());
+                    self.speak(vec![line], Vec::new(), None);
                     self.players.push(Player {
                         id,
                         name,
@@ -807,7 +808,7 @@ impl Room {
                     return Err("The game isn't over yet.".into());
                 }
                 let line = self.line("rematch", &[]);
-                self.speak(vec![line], Vec::new());
+                self.speak(vec![line], Vec::new(), None);
                 self.back_to_lobby();
             }
             ClientMsg::Settings {
@@ -1132,7 +1133,7 @@ impl Room {
             "intro",
             &[("count", &count), ("rounds", &rounds), ("names", &names)],
         );
-        self.speak(vec![line], Vec::new());
+        self.speak(vec![line], Vec::new(), Some("intro"));
         self.set_phase(Phase::Intro, Some(self.timing.intro.max(self.talk())));
         self.broadcast();
         Ok(())
@@ -1316,10 +1317,12 @@ impl Room {
         self.last_points.clear();
         self.hm = HangmanRound::default();
         let total = self.game_len();
-        let event = match self.round {
-            0 => "question_first",
-            r if r + 1 == total => "question_last",
-            _ => "question",
+        let (event, cue) = match self.round {
+            0 => ("question_first", "round"),
+            // In trivia rounds the final round's title card already played the final-round scene.
+            r if r + 1 == total && self.stages.is_empty() => ("question_last", "final_round"),
+            r if r + 1 == total => ("question_last", "round"),
+            _ => ("question", "round"),
         };
         let category = match self.settings.mode {
             GameMode::Trivia | GameMode::Songs => self.questions[self.round].category.clone(),
@@ -1344,7 +1347,7 @@ impl Room {
             let own = &self.questions[self.round].lines.lead_in;
             parts.extend(self.host.say_own(own, self.settings.max_rating));
         }
-        self.speak(parts, Vec::new());
+        self.speak(parts, Vec::new(), Some(cue));
         // The clock starts now, but players get extra time while the host does the intro banter.
         let base = match self.settings.mode {
             GameMode::Trivia => self.timing.question,
@@ -1402,7 +1405,8 @@ impl Room {
             }
             Phase::Reveal => {
                 let (parts, callouts) = self.score_update();
-                self.speak(parts, callouts);
+                let cue = headline(&callouts);
+                self.speak(parts, callouts, cue);
                 self.set_phase(
                     Phase::Scoreboard,
                     Some(self.timing.scoreboard.max(self.talk() + pause)),
@@ -1526,7 +1530,8 @@ impl Room {
             parts.push(self.line("asleep", &[("name", &self.name_of(id))]));
             call("asleep", Some(id), "ASLEEP?");
         }
-        self.speak(parts, callouts);
+        let cue = headline(&callouts);
+        self.speak(parts, callouts, cue);
     }
 
     /// The host's reaction to a finished hangman puzzle: the phrase, then who cracked it or that nobody did.
@@ -1552,7 +1557,8 @@ impl Room {
                 });
             }
         }
-        self.speak(parts, callouts);
+        let cue = headline(&callouts);
+        self.speak(parts, callouts, cue);
     }
 
     /// The host's take on the scoreboard: who leads (or just took over), a tie, and sometimes a dig
@@ -1646,7 +1652,9 @@ impl Room {
                 ],
             )
         };
-        self.speak(vec![line], Vec::new());
+        // The TV has its own title card for a round; only the final round gets a cutscene too.
+        let cue = final_round.then_some("final_round");
+        self.speak(vec![line], Vec::new(), cue);
         let pause = Duration::from_millis(1000);
         self.set_phase(
             Phase::RoundIntro,
@@ -1696,7 +1704,8 @@ impl Room {
             parts.extend(more);
             callouts.extend(more_callouts);
         }
-        self.speak(parts, callouts);
+        let cue = headline(&callouts);
+        self.speak(parts, callouts, cue);
     }
 
     fn finale(&mut self) {
@@ -1707,6 +1716,7 @@ impl Room {
             .collect();
         let mut parts = Vec::new();
         let mut callouts = Vec::new();
+        let mut cue = "winner";
         let top: Vec<_> = ranked.iter().filter(|r| r.0 == 1).collect();
         if top.len() == 1 {
             let (_, id, name, score) = top[0];
@@ -1720,6 +1730,7 @@ impl Room {
                 label: "CHAMPION".into(),
             });
         } else if top.len() > 1 {
+            cue = "finale_tie";
             let names: Vec<&str> = top.iter().map(|r| r.2.as_str()).collect();
             parts.push(self.line("finale_tie", &[("names", &host::name_list(&names))]));
             callouts.push(Callout {
@@ -1734,20 +1745,22 @@ impl Room {
             }
         }
         parts.push(self.line("sign_off", &[]));
-        self.speak(parts, callouts);
+        self.speak(parts, callouts, Some(cue));
     }
 
     fn line(&mut self, event: &'static str, vars: &[(&str, &str)]) -> String {
         self.host.say(event, self.settings.max_rating, vars)
     }
 
-    /// Sets what the host is saying. An empty line clears it.
-    fn speak(&mut self, parts: Vec<String>, callouts: Vec<Callout>) {
+    /// Sets what the host is saying. An empty line clears it. `cue` names the moment so the TV can
+    /// play a cutscene and pick Bix's face for it.
+    fn speak(&mut self, parts: Vec<String>, callouts: Vec<Callout>, cue: Option<&'static str>) {
         self.host_seq += 1;
         self.host_line = (!parts.is_empty()).then(|| HostLine {
             id: self.host_seq,
             text: parts.join(" "),
             callouts,
+            cue,
         });
     }
 
@@ -2205,6 +2218,7 @@ impl Room {
                     id: l.id,
                     text: &l.text,
                     callouts: &l.callouts,
+                    cue: l.cue,
                 }),
                 you,
             };
@@ -2213,6 +2227,29 @@ impl Room {
                 .send(serde_json::to_string(&ServerMsg::State(Box::new(view))).unwrap());
         }
     }
+}
+
+/// The biggest moment among a line's callouts, which becomes its cue. A streak beats a clean sweep,
+/// which beats a roast, and so on.
+fn headline(callouts: &[Callout]) -> Option<&'static str> {
+    const ORDER: &[&str] = &[
+        "streak",
+        "everyone",
+        "nobody",
+        "only_one",
+        "streak_broken",
+        "roast",
+        "fastest",
+        "asleep",
+        "new_leader",
+        "last_place",
+        "tie",
+        "leader",
+    ];
+    ORDER
+        .iter()
+        .find(|k| callouts.iter().any(|c| c.kind == **k))
+        .copied()
 }
 
 fn clean_name(raw: &str) -> Result<String, String> {

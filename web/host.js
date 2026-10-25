@@ -78,6 +78,8 @@ const voice = {
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", () => voice.choose());
 
 const hostBar = $("#host-bar");
+const bixFace = Bix.create("happy");
+$("#host-face").append(bixFace);
 let spokenId = null;
 let typeTimer = null;
 
@@ -110,6 +112,50 @@ function hostSays(s, extra) {
   const last = (extra && voice.say(extra)) || first;
   if (last) last.addEventListener("end", () => voice.lineDone(h.id));
   showCallouts(s);
+  react(s);
+}
+
+// ---------- Cutscenes and Bix's reactions ----------
+// The server tags each line with a cue; web/cutscenes/index.json maps cues to scenes and faces.
+
+/** Pulls Bix's face for the line's cue and plays its cutscene, if it has one. */
+function react(s) {
+  const cue = s.host.cue;
+  Bix.mood(bixFace, Cutscenes.moodFor(cue) || "happy");
+  hostBar.classList.remove("react");
+  void hostBar.offsetWidth;
+  hostBar.classList.add("react");
+  // Not on the first state after a refresh: a scene popping up mid-question would just be in the way.
+  if (cue && prev) Cutscenes.cue(cue, cutsceneContext(s));
+}
+
+/** What a scene needs to fill in names, faces and numbers. */
+function cutsceneContext(s) {
+  const h = s.host;
+  const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
+  // The player the moment is about: the callout matching the cue, or else the first one about someone.
+  const kind = h.cue === "winner" ? "winner" : h.cue;
+  const callout = h.callouts.find((c) => c.kind === kind) || h.callouts.find((c) => c.player_id != null) || null;
+  const subject = callout && callout.player_id != null ? byId[callout.player_id] || null : null;
+  let players = h.cue === "intro" ? s.players : sortedPlayers(s);
+  if (h.cue === "finale_tie") players = players.filter((p) => p.score === players[0].score);
+  const item = s.question || s.hangman;
+  const stage = s.stage ? (s.stages || [])[s.stage - 1] : null;
+  return {
+    players,
+    subject,
+    vars: {
+      host: h.name,
+      // In trivia rounds, count questions within the current round.
+      round: s.stage_question || s.round,
+      total: (stage && stage.questions) || s.total_rounds,
+      kind: s.hangman || s.settings.mode === "hangman" ? "Puzzle" : s.settings.mode === "songs" ? "Song" : "Question",
+      category: item ? item.category : "",
+      name: subject ? subject.name : "",
+      score: subject ? subject.score.toLocaleString() : "",
+      label: callout ? callout.label : "",
+    },
+  };
 }
 
 // ---------- Name That Tune audio ----------
@@ -199,17 +245,6 @@ function showCallouts(s) {
       p ? TBX.avatar(p, "7vh") : null,
       el("span", {}, c.label, p ? el("span", { class: "who" }, p.name) : null)));
   });
-}
-
-/** The full-screen "QUESTION 3" card that sweeps across before the question appears. */
-function sweepCard(s) {
-  const last = s.round === s.total_rounds && s.total_rounds > 1;
-  const card = el("div", { class: "card-sweep" + (last ? " final-q" : "") },
-    el("div", { class: "small" }, last ? (s.hangman ? "Final puzzle" : "Final question") : roundLabel(s)),
-    el("div", { class: "big" }, last ? "LAST ONE" : `Q${s.stage_question || s.round}`),
-    el("div", { class: "small" }, (s.question || s.hangman).category));
-  document.body.append(card);
-  setTimeout(() => card.remove(), 1700);
 }
 
 /** Restarts the entry animations on a screen. */
@@ -345,6 +380,7 @@ function render(s) {
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
   $("#skip-btn").classList.toggle("hidden", !["intro", "round_intro", "question", "reveal", "scoreboard", "recap"].includes(s.phase));
   if (phaseChanged) {
+    Cutscenes.stop();
     $("#callouts").replaceChildren();
     tune.stop();
     clearTimeout(replayTimer);
@@ -529,7 +565,6 @@ function renderQuestion(s, changed) {
     $("#q-choices").replaceChildren(...s.question.choices.map(choiceTile));
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
     startSecs($("#q-secs"), s.ms_left);
-    sweepCard(s);
     enter($("#question"));
     if (song) playClip(s);
   }
@@ -669,7 +704,6 @@ function renderHangman(s, changed) {
     TBX.runTimer($("#h-timer"), s.ms_left, s.phase_ms);
     if (live) {
       startSecs($("#h-secs"), s.ms_left, 10);
-      sweepCard(s);
     } else {
       clearInterval(secsTimer);
       $("#h-secs").textContent = "";
@@ -779,6 +813,7 @@ $("#skip-btn").addEventListener("click", () => send({ type: "next" }));
 
 function toggleVoice() {
   voice.on = !voice.on;
+  Cutscenes.sound = voice.on;
   if (!voice.on) voice.hush();
   TBX.save("tbx:voice", voice.on);
   $("#mute-btn").textContent = voice.on ? "🔊 Host voice" : "🔇 Host voice";
@@ -808,6 +843,8 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     // If the browser blocked the clip, this press turns sound on instead of skipping.
     if (tune.unlock()) return;
+    // During a cutscene, the first press just ends the scene.
+    if (Cutscenes.playing) return Cutscenes.stop();
     primaryAction();
   } else if ((e.key === "r" || e.key === "R") && state && state.phase === "question") {
     tune.replay();
@@ -820,7 +857,8 @@ document.addEventListener("keydown", (e) => {
 
 (async function boot() {
   renderSetup();
-  await TBX.loadCharacters();
+  Cutscenes.sound = voice.on;
+  await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
   try {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");

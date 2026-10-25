@@ -1,0 +1,67 @@
+{
+  "duration": 3000,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#ff3d00",
+      "#ffb400"
+    ]
+  },
+  "layers": [
+    {
+      "type": "effect",
+      "kind": "rain",
+      "chars": [
+        "🔥"
+      ],
+      "count": 28,
+      "size": 7,
+      "spread": 1600
+    },
+    {
+      "type": "player",
+      "who": "subject",
+      "y": 50,
+      "size": 30,
+      "at": 200,
+      "in": "zoom",
+      "loop": "pulse"
+    },
+    {
+      "type": "text",
+      "text": "{label}",
+      "y": 16,
+      "size": 12,
+      "at": 500,
+      "in": "slam"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "{name} is on fire",
+      "y": 88,
+      "size": 5,
+      "at": 900,
+      "in": "rise"
+    },
+    {
+      "type": "bix",
+      "mood": "excited",
+      "x": 86,
+      "y": 70,
+      "size": 26,
+      "at": 400,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 0
+    },
+    {
+      "sound": "airhorn",
+      "at": 500
+    }
+  ]
+}

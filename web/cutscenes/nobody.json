@@ -1,0 +1,61 @@
+{
+  "duration": 3000,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#fff8f0"
+    ],
+    "enter": "fade"
+  },
+  "layers": [
+    {
+      "type": "bix",
+      "mood": "shocked",
+      "y": 58,
+      "size": 36,
+      "at": 100,
+      "in": "pop"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "NOBODY?!",
+      "y": 22,
+      "size": 11,
+      "at": 400,
+      "in": "stamp",
+      "color": "#ff4f6d"
+    },
+    {
+      "type": "effect",
+      "kind": "rise",
+      "chars": [
+        "🦗"
+      ],
+      "count": 6,
+      "size": 7,
+      "at": 600,
+      "spread": 1500,
+      "life": 2400
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "*crickets*",
+      "y": 88,
+      "size": 4,
+      "at": 900,
+      "in": "fade"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 400
+    },
+    {
+      "sound": "crickets",
+      "at": 900
+    }
+  ]
+}

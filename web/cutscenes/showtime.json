@@ -1,0 +1,57 @@
+{
+  "duration": 4200,
+  "backdrop": {
+    "kind": "curtains",
+    "open": 500,
+    "enter": "fade"
+  },
+  "layers": [
+    {
+      "type": "bix",
+      "mood": "excited",
+      "y": 50,
+      "size": 38,
+      "at": 900,
+      "in": "rise"
+    },
+    {
+      "type": "text",
+      "text": "IT'S SHOWTIME!",
+      "y": 22,
+      "size": 12,
+      "at": 1300,
+      "in": "slam",
+      "color": "#ffd23f"
+    },
+    {
+      "type": "effect",
+      "kind": "burst",
+      "chars": [
+        "✨",
+        "⭐",
+        "🎉"
+      ],
+      "x": 50,
+      "y": 45,
+      "count": 30,
+      "at": 1300,
+      "size": 6
+    },
+    {
+      "type": "players",
+      "y": 86,
+      "at": 1900,
+      "stagger": 110
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "drumroll",
+      "at": 0
+    },
+    {
+      "sound": "tada",
+      "at": 1300
+    }
+  ]
+}

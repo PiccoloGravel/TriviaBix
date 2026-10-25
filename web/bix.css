@@ -1,0 +1,77 @@
+/* Bix the host (see bix.js). The svg fills its container's width. */
+.bix { display: block; width: 100%; height: auto; overflow: visible; }
+.bix .bix-handle { fill: #5b3fb0; stroke: #2a1760; stroke-width: 3; }
+.bix .bix-band { fill: #9d85ff; stroke: #2a1760; stroke-width: 3; }
+.bix .bix-shine { fill: #fff; opacity: .55; }
+.bix .bix-tie { fill: #e63973; }
+.bix .bix-cheek { fill: #ff7aa2; opacity: .45; }
+.bix .bix-arm path { fill: none; stroke: #ffc21a; stroke-width: 9; stroke-linecap: round; }
+.bix .bix-arm circle { fill: #fff8f0; stroke: #3a2470; stroke-width: 3; }
+.bix .bix-arm.left { transform-origin: 34px 128px; }
+.bix .bix-arm.right { transform-origin: 166px 128px; }
+.bix .white { fill: #fff; stroke: #3a2470; stroke-width: 3; }
+.bix .pupil { fill: #1a0b3d; }
+.bix .glint { fill: #fff; }
+.bix .lid { fill: #f7c12e; stroke: none; }
+.bix .line, .bix .brow { fill: none; stroke: #3a2470; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.bix .brow { stroke-width: 8; }
+.bix .open { fill: #4a0f2e; }
+.bix .teeth { fill: #fff; }
+.bix .tongue { fill: #ff6f91; }
+.bix .shades { fill: #1a0b3d; stroke: #3a2470; stroke-width: 3; }
+.bix .shine-line { stroke: #fff; stroke-width: 4; stroke-linecap: round; opacity: .7; }
+.bix .tear { fill: #6fd3ff; }
+.bix .sweat { fill: #9fe4ff; }
+.bix .sparkles { fill: #fff8f0; }
+
+/* Each mood shows only its own parts. */
+.bix .v { display: none; }
+.bix.mood-happy .happy, .bix.mood-excited .excited, .bix.mood-smug .smug, .bix.mood-shocked .shocked,
+.bix.mood-sad .sad, .bix.mood-laugh .laugh, .bix.mood-cool .cool { display: inline; }
+
+/* Talking swaps in a flapping mouth (the host bar adds .talking while the voice is speaking). */
+.bix .mouth-talk { display: none; }
+.talking .bix .mouth { display: none; }
+.talking .bix .mouth-talk { display: inline; transform-box: fill-box; transform-origin: center; animation: bix-talk .16s ease-in-out infinite alternate; }
+@keyframes bix-talk { from { transform: scaleY(.25); } to { transform: scaleY(1); } }
+
+/* Life: blinking, and a body animation per mood. */
+.bix .bix-eyes { transform-box: fill-box; transform-origin: center; animation: bix-blink 4.5s infinite; }
+@keyframes bix-blink { 0%, 94%, 100% { transform: none; } 97% { transform: scaleY(.1); } }
+.bix .bix-body { transform-origin: 100px 220px; animation: bix-idle 2.4s ease-in-out infinite; }
+@keyframes bix-idle { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
+
+.bix.mood-excited .bix-body { animation: bix-hop .5s ease-in-out infinite alternate; }
+.bix.mood-excited .bix-arm.left { animation: bix-wave-l .3s ease-in-out infinite alternate; }
+.bix.mood-excited .bix-arm.right { animation: bix-wave-r .3s ease-in-out infinite alternate; }
+.bix.mood-excited .sparkles { animation: bix-twinkle .6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+@keyframes bix-hop { from { transform: translateY(0) scale(1.03, .97); } to { transform: translateY(-14px) scale(.98, 1.02); } }
+@keyframes bix-wave-l { from { transform: rotate(120deg); } to { transform: rotate(150deg); } }
+@keyframes bix-wave-r { from { transform: rotate(-120deg); } to { transform: rotate(-150deg); } }
+@keyframes bix-twinkle { from { opacity: .3; transform: scale(.7); } to { opacity: 1; transform: scale(1.1); } }
+
+.bix.mood-laugh .bix-body { animation: bix-laugh .14s ease-in-out infinite alternate; }
+.bix.mood-laugh .bix-arm.left { transform: rotate(-40deg); }
+.bix.mood-laugh .bix-arm.right { transform: rotate(40deg); }
+@keyframes bix-laugh { from { transform: rotate(-4deg) translateY(0); } to { transform: rotate(4deg) translateY(-3px); } }
+
+.bix.mood-shocked .bix-body { animation: bix-jump .5s cubic-bezier(.3,1.8,.5,1) both, bix-tremble .08s .5s linear infinite alternate; }
+.bix.mood-shocked .bix-arm.left { transform: rotate(100deg); }
+.bix.mood-shocked .bix-arm.right { transform: rotate(-100deg); }
+@keyframes bix-jump { from { transform: scale(.85, 1.15) translateY(10px); } to { transform: none; } }
+@keyframes bix-tremble { from { transform: translateX(-1.5px); } to { transform: translateX(1.5px); } }
+
+.bix.mood-sad .bix-body { animation: bix-droop 3s ease-in-out infinite; }
+.bix.mood-sad .bix-arm.left { transform: rotate(-12deg); }
+.bix.mood-sad .bix-arm.right { transform: rotate(12deg); }
+.bix.mood-sad .tear { animation: bix-tear 1.6s ease-in infinite; }
+@keyframes bix-droop { 0%, 100% { transform: translateY(6px) rotate(-3deg); } 50% { transform: translateY(8px) rotate(-6deg); } }
+@keyframes bix-tear { from { transform: translateY(0); opacity: 1; } to { transform: translateY(40px); opacity: 0; } }
+
+.bix.mood-smug .bix-body { animation: bix-lean 2.6s ease-in-out infinite; }
+.bix.mood-smug .bix-arm.right { transform: rotate(-60deg); }
+@keyframes bix-lean { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(-4deg) translateY(-3px); } }
+
+.bix.mood-cool .bix-body { animation: bix-nod .9s ease-in-out infinite; }
+.bix.mood-cool .bix-arm.right { transform: rotate(-150deg); }
+@keyframes bix-nod { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateY(4px); } }

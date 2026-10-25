@@ -1,0 +1,90 @@
+{
+  "_readme": "Which cutscene each cue plays and the face Bix pulls. Cues come from the server with every host line (see README.md). 'scenes' lists scene files in this folder (one is picked at random), 'chance' is how often one plays (default 1), 'mood' is Bix's face: happy, excited, smug, shocked, sad, laugh or cool.",
+  "cues": {
+    "intro": {
+      "mood": "excited",
+      "scenes": [
+        "showtime"
+      ]
+    },
+    "round": {
+      "mood": "happy",
+      "scenes": [
+        "round"
+      ]
+    },
+    "final_round": {
+      "mood": "excited",
+      "scenes": [
+        "final-round"
+      ]
+    },
+    "streak": {
+      "mood": "excited",
+      "scenes": [
+        "on-fire"
+      ]
+    },
+    "everyone": {
+      "mood": "excited",
+      "scenes": [
+        "clean-sweep"
+      ]
+    },
+    "nobody": {
+      "mood": "shocked",
+      "scenes": [
+        "nobody"
+      ]
+    },
+    "only_one": {
+      "mood": "excited"
+    },
+    "fastest": {
+      "mood": "happy"
+    },
+    "streak_broken": {
+      "mood": "laugh"
+    },
+    "roast": {
+      "mood": "smug",
+      "scenes": [
+        "roasted"
+      ],
+      "chance": 0.35
+    },
+    "asleep": {
+      "mood": "smug"
+    },
+    "new_leader": {
+      "mood": "excited",
+      "scenes": [
+        "new-leader"
+      ]
+    },
+    "leader": {
+      "mood": "happy"
+    },
+    "tie": {
+      "mood": "shocked"
+    },
+    "last_place": {
+      "mood": "laugh",
+      "scenes": [
+        "last-place"
+      ]
+    },
+    "winner": {
+      "mood": "cool",
+      "scenes": [
+        "champion"
+      ]
+    },
+    "finale_tie": {
+      "mood": "shocked",
+      "scenes": [
+        "tie"
+      ]
+    }
+  }
+}

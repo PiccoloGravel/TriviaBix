@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TriviaBix · Cutscenes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/bix.css">
+  <link rel="stylesheet" href="/cutscenes.css">
+  <style>
+    body { padding: 3vh 4vw; font-size: 2.2vh; }
+    h1 { margin: 0 0 1vh; color: var(--accent); }
+    h2 { margin: 4vh 0 1.5vh; font-size: 3vh; }
+    .moods { display: flex; flex-wrap: wrap; gap: 2vw; }
+    .mood { width: 14vh; text-align: center; color: var(--muted); cursor: pointer; }
+    .cues { display: grid; grid-template-columns: repeat(auto-fill, minmax(26vh, 1fr)); gap: 1.5vh; }
+    .cues button { text-align: left; display: flex; flex-direction: column; gap: .3vh; font-size: 2.2vh; }
+    .cues small { font-weight: 700; opacity: .8; }
+    .opts { display: flex; gap: 1vw; align-items: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h1>Cutscenes</h1>
+  <p class="muted">Every cue the server sends, and the scene and face it gets. Click one to play it with made-up players.
+    Scenes live in <code>web/cutscenes/</code>; reload this page after editing one. Press Enter or click to end a scene early.</p>
+  <div class="opts">
+    <span>Players</span>
+    <button class="secondary" data-n="2">2</button>
+    <button class="secondary" data-n="6">6</button>
+    <button class="secondary" data-n="12">12</button>
+    <label><input type="checkbox" id="sound" checked> Sound effects</label>
+  </div>
+
+  <h2>Bix's moods</h2>
+  <div class="moods" id="moods"></div>
+
+  <h2>Cues</h2>
+  <div class="cues" id="cues"></div>
+
+  <script src="/common.js"></script>
+  <script src="/bix.js"></script>
+  <script src="/cutscenes.js"></script>
+  <script>
+    const NAMES = ["Jess", "Big Mike", "Priya", "Tomás", "Rory", "Danielle", "Kofi", "Mei", "Sasha", "Ollie", "Bea", "Zed"];
+    const COLORS = ["#e63973", "#2f80ed", "#f2a900", "#27ae60", "#7b5cff", "#ff6b35", "#00b8a9", "#c06c84", "#3fa9f5", "#ff4f81", "#8bc34a", "#9c27b0"];
+    let count = 6;
+
+    function players() {
+      return NAMES.slice(0, count).map((name, i) => ({
+        id: i + 1, name, color: COLORS[i], score: (count - i) * 850,
+        character: (TBX.characterList[i] || {}).id,
+      }));
+    }
+
+    function context(cue) {
+      const ps = players();
+      const subject = cue === "last_place" ? ps[ps.length - 1] : ps[Math.min(1, ps.length - 1)];
+      return {
+        players: cue === "finale_tie" ? ps.slice(0, 2) : ps,
+        subject,
+        vars: { host: "Bix", round: 4, total: 10, kind: "Question", category: "Movie Quotes", name: subject.name,
+          score: subject.score.toLocaleString(), label: { streak: "4 IN A ROW", winner: "CHAMPION", new_leader: "NEW LEADER" }[cue] || "" },
+      };
+    }
+
+    function renderCues() {
+      const cues = Cutscenes.manifest.cues;
+      $("#cues").replaceChildren(...Object.entries(cues).map(([cue, c]) => {
+        const scenes = c.scenes || [];
+        const b = TBX.el("button", { class: scenes.length ? "" : "secondary" },
+          TBX.el("span", {}, cue),
+          TBX.el("small", {}, `${scenes.length ? scenes.join(", ") : "no scene"} · Bix ${c.mood || "happy"}` +
+            (c.chance != null && c.chance < 1 ? ` · ${Math.round(c.chance * 100)}% of the time` : "")));
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (scenes.length) Cutscenes.play(scenes[Math.floor(Math.random() * scenes.length)], context(cue));
+        });
+        return b;
+      }));
+    }
+
+    const { $ } = TBX;
+    document.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => {
+      count = Number(b.dataset.n);
+      document.querySelectorAll("[data-n]").forEach((x) => x.classList.toggle("secondary", x !== b));
+    }));
+    document.querySelector('[data-n="6"]').classList.remove("secondary");
+    $("#sound").addEventListener("change", (e) => { Cutscenes.sound = e.target.checked; });
+    document.addEventListener("click", () => Cutscenes.stop());
+    document.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "Escape") Cutscenes.stop(); });
+
+    $("#moods").replaceChildren(...Bix.MOODS.map((m) => {
+      const box = TBX.el("div", { class: "mood" });
+      const face = Bix.create(m);
+      box.append(face, TBX.el("div", {}, m));
+      // Click a face to see it talk.
+      box.addEventListener("click", (e) => { e.stopPropagation(); box.classList.toggle("talking"); });
+      return box;
+    }));
+
+    (async () => {
+      await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
+      renderCues();
+    })();
+  </script>
+</body>
+</html>

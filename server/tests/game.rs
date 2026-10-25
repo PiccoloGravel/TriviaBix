@@ -236,6 +236,8 @@ async fn eight_players_play_a_full_game() {
         intro["host"]["text"].as_str().unwrap().len() > 10,
         "{intro}"
     );
+    // Each line carries a cue so the TV knows which cutscene to play.
+    assert_eq!(intro["host"]["cue"], "intro");
 
     for round in 1..=3 {
         let q = wait_state(&mut host, |s| {
@@ -245,6 +247,9 @@ async fn eight_players_play_a_full_game() {
         // Multiple choice has four choices, true/false two.
         let choices = q["question"]["choices"].as_array().unwrap().len();
         assert!(choices == 4 || choices == 2, "{q}");
+        // Trivia plays the question card scene before every question; the final round's title
+        // card plays the final-round scene instead.
+        assert_eq!(q["host"]["cue"], "round");
         assert!(
             q["reveal"].is_null(),
             "answer must not leak during the question"
@@ -273,11 +278,13 @@ async fn eight_players_play_a_full_game() {
         assert!(said.contains(answer), "host should say the answer: {said}");
         assert!(!said.contains('{'), "unfilled placeholder: {said}");
         assert!(!reveal["host"]["callouts"].as_array().unwrap().is_empty());
+        assert!(reveal["host"]["cue"].is_string(), "{}", reveal["host"]);
     }
 
     let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
     assert_eq!(fin["round"], 3);
     assert!(!fin["host"]["text"].as_str().unwrap().is_empty());
+    assert!(["winner", "finale_tie"].contains(&fin["host"]["cue"].as_str().unwrap()));
 
     // Players see their own rank in the final state.
     let mine = wait_state(&mut players[3], |s| s["phase"] == "final").await;
@@ -1282,6 +1289,12 @@ async fn trivia_rounds_get_harder_with_recaps_between() {
                 assert!(r["category"].is_null(), "future themes stay secret: {r}");
             }
         }
+        let cue = if stage == 4 {
+            json!("final_round")
+        } else {
+            Value::Null
+        };
+        assert_eq!(card["host"]["cue"], cue);
         let said = card["host"]["text"].as_str().unwrap();
         assert!(!said.contains('{'), "unfilled placeholder: {said}");
 

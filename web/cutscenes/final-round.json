@@ -1,0 +1,78 @@
+{
+  "duration": 2600,
+  "backdrop": {
+    "kind": "stripes",
+    "colors": [
+      "#ff3d00",
+      "#1a0b3d"
+    ]
+  },
+  "layers": [
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "Final {kind}",
+      "y": 26,
+      "size": 6,
+      "at": 200,
+      "in": "fade"
+    },
+    {
+      "type": "text",
+      "text": "LAST ONE",
+      "y": 50,
+      "size": 20,
+      "at": 300,
+      "in": "slam",
+      "loop": "pulse"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "{category}",
+      "y": 72,
+      "size": 5,
+      "at": 700,
+      "in": "rise"
+    },
+    {
+      "type": "emoji",
+      "char": "🚨",
+      "x": 14,
+      "y": 22,
+      "size": 14,
+      "at": 0,
+      "in": "pop",
+      "loop": "wobble"
+    },
+    {
+      "type": "emoji",
+      "char": "🚨",
+      "x": 86,
+      "y": 22,
+      "size": 14,
+      "at": 100,
+      "in": "pop",
+      "loop": "wobble"
+    },
+    {
+      "type": "bix",
+      "mood": "shocked",
+      "x": 84,
+      "y": 78,
+      "size": 30,
+      "at": 500,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "airhorn",
+      "at": 0
+    },
+    {
+      "sound": "slam",
+      "at": 350
+    }
+  ]
+}
