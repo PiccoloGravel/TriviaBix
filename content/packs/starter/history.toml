@@ -1,0 +1,71 @@
+[pack]
+name = "History"
+author = "TriviaBix"
+category = "history"
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did humans first walk on the Moon?"
+answer = 1969
+difficulty = "easy"
+tags = ["space"]
+host_quip = "One small step for you, one giant leap for your score."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who was the first President of the United States?"
+choices = ["George Washington", "John Adams", "Thomas Jefferson", "Benjamin Franklin"]
+answer = "George Washington"
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "Cleopatra lived closer in time to the Moon landing than to the building of the Great Pyramid of Giza."
+answer = true
+difficulty = "hard"
+fun_fact = "The Great Pyramid was about 2,500 years old by Cleopatra's time."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these events in order."
+items = ["Magna Carta is signed", "Columbus reaches the Americas", "US Declaration of Independence", "French Revolution begins"]
+first_label = "Earliest"
+last_label = "Latest"
+fun_fact = "1215, 1492, 1776, and 1789."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which ocean liner sank in 1912 after hitting an iceberg?"
+choices = ["Titanic", "Lusitania", "Britannic", "Queen Mary"]
+answer = "Titanic"
+difficulty = "easy"
+
+[[question]]
+type = "type_answer"
+prompt = "Which is the only one of the Seven Wonders of the Ancient World still standing?"
+answers = ["Great Pyramid of Giza", "Great Pyramid", "Pyramid of Giza", "Pyramids of Giza", "The Pyramids"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which civilization built Machu Picchu?"
+choices = ["Inca", "Aztec", "Maya", "Olmec"]
+answer = "Inca"
+
+[[question]]
+type = "true_false"
+prompt = "Napoleon Bonaparte was unusually short for his time."
+answer = false
+fun_fact = "He was about 5 foot 7, average for a Frenchman then. British cartoonists made him tiny."
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did World War II end?"
+answer = 1945
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who co-wrote \"The Communist Manifesto\" with Karl Marx?"
+choices = ["Friedrich Engels", "Vladimir Lenin", "Leon Trotsky", "Adam Smith"]
+answer = "Friedrich Engels"
+difficulty = "hard"

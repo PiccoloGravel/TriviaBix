@@ -1,0 +1,71 @@
+[pack]
+name = "General Knowledge"
+author = "TriviaBix"
+category = "general"
+
+[[question]]
+type = "closest_number"
+prompt = "How many sides does a hexagon have?"
+answer = 6
+unit = "sides"
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "A group of crows is called a murder."
+answer = true
+host_quip = "Which is also what happens to your score if you miss this."
+
+[[question]]
+type = "type_answer"
+prompt = "What is the only letter that doesn't appear in any US state name?"
+answers = ["Q"]
+difficulty = "hard"
+
+[[question]]
+type = "closest_number"
+prompt = "How many minutes are in a day?"
+answer = 1440
+unit = "minutes"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which language has the most native speakers?"
+choices = ["Mandarin Chinese", "English", "Spanish", "Hindi"]
+answer = "Mandarin Chinese"
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these units in order from smallest to largest."
+items = ["Kilobyte", "Megabyte", "Gigabyte", "Terabyte"]
+first_label = "Smallest"
+last_label = "Largest"
+difficulty = "easy"
+tags = ["tech"]
+
+[[question]]
+type = "true_false"
+prompt = "Goldfish only have a three-second memory."
+answer = false
+fun_fact = "Goldfish can remember things for months, and can even be trained."
+
+[[question]]
+type = "closest_number"
+prompt = "How many cards are in a standard deck, without jokers?"
+answer = 52
+unit = "cards"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which of these words is a palindrome?"
+choices = ["Racecar", "Racetrack", "Carousel", "Radar gun"]
+answer = "Racecar"
+difficulty = "easy"
+
+[[question]]
+type = "type_answer"
+prompt = "What color do you get when you mix blue and yellow paint?"
+answers = ["Green"]
+difficulty = "easy"
+host_quip = "A warm-up. You're welcome."

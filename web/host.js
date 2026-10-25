@@ -260,7 +260,7 @@ function renderLobby(s, changed) {
   slots.replaceChildren();
   for (const p of s.players) {
     const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away") },
-      TBX.avatar(p, "8vh"),
+      TBX.avatar(p, "10vh"),
       el("div", { class: "name" }, p.name),
       p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null);
     slots.append(slot);
@@ -463,6 +463,7 @@ document.addEventListener("keydown", (e) => {
 
 (async function boot() {
   renderSetup();
+  await TBX.loadCharacters();
   try {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");

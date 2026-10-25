@@ -1,3 +1,4 @@
+pub mod characters;
 pub mod db;
 pub mod host;
 pub mod protocol;

@@ -1,0 +1,76 @@
+[pack]
+name = "Video Games"
+author = "TriviaBix"
+category = "video-games"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which princess does Mario usually rescue?"
+choices = ["Peach", "Daisy", "Zelda", "Rosalina"]
+answer = "Peach"
+difficulty = "easy"
+host_quip = "Sorry, your points are in another castle. Kidding, you got it."
+
+[[question]]
+type = "type_answer"
+prompt = "Which block-building game features exploding green Creepers?"
+answers = ["Minecraft"]
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "Sonic the Hedgehog was created by Nintendo."
+answer = false
+difficulty = "easy"
+tags = ["90s"]
+fun_fact = "Sonic is Sega's mascot. He was built to out-cool Mario."
+
+[[question]]
+type = "closest_number"
+prompt = "In what year was Tetris created?"
+answer = 1984
+tags = ["80s"]
+fun_fact = "Alexey Pajitnov made it at a computer lab in Moscow."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which of these is NOT one of the ghosts in Pac-Man?"
+choices = ["Stinky", "Blinky", "Pinky", "Clyde"]
+answer = "Stinky"
+tags = ["80s"]
+fun_fact = "The four ghosts are Blinky, Pinky, Inky, and Clyde."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these games in order of release."
+items = ["Pong", "Space Invaders", "Super Mario Bros.", "Fortnite"]
+first_label = "Earliest"
+last_label = "Latest"
+fun_fact = "1972, 1978, 1985, and 2017."
+
+[[question]]
+type = "multiple_choice"
+prompt = "What color is Link's classic tunic in The Legend of Zelda?"
+choices = ["Green", "Blue", "Red", "Brown"]
+answer = "Green"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which company makes the PlayStation?"
+choices = ["Sony", "Microsoft", "Nintendo", "Sega"]
+answer = "Sony"
+difficulty = "easy"
+
+[[question]]
+type = "type_answer"
+prompt = "Who is the main villain of The Legend of Zelda series?"
+answers = ["Ganon", "Ganondorf"]
+host_quip = "And no, the hero is not named Zelda. We've all been there."
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the best-selling video game of all time?"
+choices = ["Minecraft", "Tetris", "Grand Theft Auto V", "Wii Sports"]
+answer = "Minecraft"
+difficulty = "medium"

@@ -7,6 +7,7 @@ A Jackbox-style party trivia game: the host screen goes on the TV and players an
 1. Open `http://<server>:8080/host` on the TV (a smart TV browser, a cast Chrome tab, or a laptop on HDMI).
    Pick how many questions and the rating (PG, PG-13, MA, NC-17), then press **Start a room**.
 2. Players open `http://<server>:8080` on their phones (or scan the QR code on the TV), type the 4-letter room code and a name.
+   Each player picks a character (24 to choose from, one per player per room) and can change their name or character in the lobby.
    Up to 12 players per room by default (`MAX_PLAYERS`).
 3. The first player to join is the VIP and can start the game from their phone. The TV can also start it with **Enter**.
 
@@ -78,6 +79,6 @@ cargo test                    # unit tests plus full games over WebSockets
 
 The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`), phones to `/ws/play?code=ABCD&name=Sam`
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
-Clients send `start`, `answer {choice}`, `next`, `play_again`, and from the TV `settings {rounds, max_rating}` and `kick {player_id}`.
+Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`, `play_again`, `profile {name, character}` (lobby only), and from the TV `settings {rounds, max_rating}` and `kick {player_id}`.
 The correct answer is never sent until the question closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
 and `final`; each state carries `host {name, id, text, callouts}`, the current host line and the graphics that go with it.

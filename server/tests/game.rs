@@ -235,3 +235,52 @@ async fn ratings_filter_questions() {
     assert_eq!(r, Rating::Nc17);
     assert!(Rating::Pg < Rating::Ma);
 }
+
+#[tokio::test]
+async fn players_pick_unique_characters_and_names() {
+    let addr = start_server().await;
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+
+    let chars: Value = reqwest::get(format!("http://{addr}/api/characters")).await.unwrap().json().await.unwrap();
+    assert!(chars.as_array().unwrap().len() >= MAX_PLAYERS);
+
+    let mut fox = open(&addr, &format!("/ws/play?code={code}&name=Ana&character=fox")).await;
+    recv(&mut fox).await;
+    let s = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 1).await;
+    assert_eq!(s["players"][0]["character"], "fox");
+
+    // The fox is taken, and made-up characters are refused.
+    let mut copy = open(&addr, &format!("/ws/play?code={code}&name=Ben&character=fox")).await;
+    assert_eq!(recv(&mut copy).await["fatal"], true);
+    let mut fake = open(&addr, &format!("/ws/play?code={code}&name=Ben&character=dragon-king")).await;
+    assert_eq!(recv(&mut fake).await["fatal"], true);
+
+    // No pick gets a random free character.
+    let mut ben = open(&addr, &format!("/ws/play?code={code}&name=Ben")).await;
+    recv(&mut ben).await;
+    let s = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 2).await;
+    let bens = s["players"][1]["character"].as_str().unwrap().to_string();
+    assert!(!bens.is_empty() && bens != "fox");
+
+    // The room info lists taken characters for the join screen.
+    let info: Value = reqwest::get(format!("http://{addr}/api/rooms/{code}")).await.unwrap().json().await.unwrap();
+    assert_eq!(info["taken_characters"].as_array().unwrap().len(), 2);
+
+    // Changing your look in the lobby.
+    send(&mut ben, json!({ "type": "profile", "character": "fox" })).await;
+    let err = loop {
+        let m = recv(&mut ben).await;
+        if m["type"] == "error" { break m; }
+    };
+    assert_eq!(err["fatal"], false);
+    send(&mut ben, json!({ "type": "profile", "character": "robot", "name": "Big Ben" })).await;
+    let s = wait_state(&mut host, |s| s["players"][1]["character"] == "robot").await;
+    assert_eq!(s["players"][1]["name"], "Big Ben");
+    send(&mut ben, json!({ "type": "profile", "name": "ana" })).await;
+    let err = loop {
+        let m = recv(&mut ben).await;
+        if m["type"] == "error" { break m; }
+    };
+    assert!(err["message"].as_str().unwrap().contains("already called"));
+}

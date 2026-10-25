@@ -1,0 +1,151 @@
+# Saucy questions. The category is at least PG-13, and individual questions can go
+# higher. Rooms only see questions at or below the rating they pick.
+[pack]
+name = "After Dark"
+author = "TriviaBix"
+category = "after-dark"
+rating = "PG-13"
+tags = ["saucy"]
+
+[[question]]
+type = "true_false"
+prompt = "The word \"avocado\" comes from the Aztec word for testicle."
+answer = true
+fun_fact = "The Nahuatl word is āhuacatl. Think about that next time you order guac."
+host_quip = "Holy guacamole."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Legend says Casanova ate 50 of which food for breakfast to boost his stamina?"
+choices = ["Oysters", "Figs", "Raw eggs", "Strawberries"]
+answer = "Oysters"
+tags = ["food"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which Greek goddess of love was born from sea foam?"
+answers = ["Aphrodite"]
+rating = "PG"
+tags = ["history"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Besides vodka, which liqueur goes in a Sex on the Beach?"
+choices = ["Peach schnapps", "Triple sec", "Amaretto", "Coconut rum"]
+answer = "Peach schnapps"
+tags = ["cocktails"]
+host_quip = "Sand gets everywhere, but this drink is worth it."
+
+[[question]]
+type = "type_answer"
+prompt = "In \"Dirty Dancing\", where does nobody put Baby?"
+answers = ["In a corner", "Corner", "In the corner"]
+difficulty = "easy"
+tags = ["movies", "80s"]
+
+[[question]]
+type = "type_answer"
+prompt = "Salt-N-Pepa sang \"Let's talk about\" what?"
+answers = ["Sex", "Sex, baby", "Sex baby"]
+difficulty = "easy"
+tags = ["music", "90s"]
+host_quip = "Let's talk about you and me. And your score."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Lady Godiva supposedly rode naked through which English city?"
+choices = ["Coventry", "Nottingham", "Bath", "York"]
+answer = "Coventry"
+tags = ["history"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which 1999 comedy has an unforgettable scene involving a warm dessert?"
+choices = ["American Pie", "Road Trip", "Superbad", "There's Something About Mary"]
+answer = "American Pie"
+tags = ["movies", "90s"]
+host_quip = "Grandma's recipe was never the same."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who was the Greek god of wine, parties, and general debauchery?"
+choices = ["Dionysus", "Apollo", "Hermes", "Ares"]
+answer = "Dionysus"
+tags = ["history"]
+
+[[question]]
+type = "true_false"
+prompt = "Most of the Kama Sutra is about sex positions."
+answer = false
+fun_fact = "Only about a fifth of it covers positions. The rest is about love, dating, and living well."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these cocktails in order of how much booze they usually pack, weakest first."
+items = ["Mimosa", "Margarita", "Long Island Iced Tea", "Straight tequila shot"]
+first_label = "Weakest"
+last_label = "Strongest"
+tags = ["cocktails"]
+host_quip = "Please do not research this one tonight."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Viagra was first tested as a treatment for what?"
+choices = ["Chest pain from heart disease", "Hair loss", "Insomnia", "Migraines"]
+answer = "Chest pain from heart disease"
+rating = "MA"
+fun_fact = "Pfizer was testing it for angina in the early 90s. Volunteers reported a rather noticeable side effect."
+host_quip = "Talk about a happy accident."
+
+[[question]]
+type = "multiple_choice"
+prompt = "In \"Sex and the City\", which friend is the most sexually adventurous?"
+choices = ["Samantha", "Carrie", "Charlotte", "Miranda"]
+answer = "Samantha"
+rating = "MA"
+tags = ["tv", "90s"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which bird is famous for a corkscrew-shaped penis that can be as long as its body?"
+choices = ["Argentine lake duck", "Emperor penguin", "Flamingo", "Bald eagle"]
+answer = "Argentine lake duck"
+rating = "MA"
+difficulty = "hard"
+tags = ["animals"]
+host_quip = "Nature is metal. And also deeply weird."
+
+[[question]]
+type = "type_answer"
+prompt = "The G-spot is named after which German gynecologist?"
+answers = ["Ernst Gräfenberg", "Gräfenberg", "Grafenberg", "Graefenberg"]
+rating = "MA"
+difficulty = "hard"
+tags = ["science"]
+
+[[question]]
+type = "closest_number"
+prompt = "Which number is also the name of a famous mutual sex position?"
+answer = 69
+rating = "NC-17"
+difficulty = "easy"
+host_quip = "Nice."
+
+[[question]]
+type = "multiple_choice"
+prompt = "In BDSM, what do the D and S stand for?"
+choices = ["Dominance and submission", "Desire and seduction", "Discipline and sadism", "Domination and spanking"]
+answer = "Dominance and submission"
+rating = "NC-17"
+fun_fact = "The letters are usually read as three overlapping pairs: bondage and discipline, dominance and submission, sadism and masochism."
+
+[[question]]
+type = "closest_number"
+prompt = "Roughly how many nerve endings does the clitoris have?"
+answer = 8000
+unit = "nerve endings"
+tolerance = 2000
+rating = "NC-17"
+difficulty = "hard"
+tags = ["science"]
+fun_fact = "The classic figure is about 8,000, and a 2022 study counted over 10,000. More than any other part of the human body."

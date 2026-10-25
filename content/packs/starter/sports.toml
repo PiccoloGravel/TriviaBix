@@ -1,0 +1,71 @@
+[pack]
+name = "Sports"
+author = "TriviaBix"
+category = "sports"
+
+[[question]]
+type = "closest_number"
+prompt = "How many players does a soccer team have on the field at once?"
+answer = 11
+unit = "players"
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "Michael Phelps has won more Olympic gold medals than anyone else in history."
+answer = true
+fun_fact = "He won 23 golds."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which sport uses a shuttlecock?"
+choices = ["Badminton", "Squash", "Table tennis", "Pickleball"]
+answer = "Badminton"
+difficulty = "easy"
+
+[[question]]
+type = "type_answer"
+prompt = "Which country has won the most men's FIFA World Cups?"
+answers = ["Brazil", "Brasil"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "In bowling, what are three strikes in a row called?"
+choices = ["A turkey", "A hat trick", "A triple", "A hambone"]
+answer = "A turkey"
+host_quip = "Gobble gobble, points incoming."
+
+[[question]]
+type = "closest_number"
+prompt = "How many points is a touchdown worth in American football, before the extra point?"
+answer = 6
+unit = "points"
+difficulty = "easy"
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these Summer Olympics hosts in order."
+items = ["Barcelona", "Sydney", "Beijing", "Paris"]
+first_label = "Earliest"
+last_label = "Latest"
+fun_fact = "1992, 2000, 2008, and 2024."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which Grand Slam tennis tournament is played on grass?"
+choices = ["Wimbledon", "US Open", "French Open", "Australian Open"]
+answer = "Wimbledon"
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "A marathon is 26.2 miles long."
+answer = true
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which NBA star is nicknamed \"King James\"?"
+choices = ["LeBron James", "James Harden", "Michael Jordan", "Kevin Durant"]
+answer = "LeBron James"
+difficulty = "easy"

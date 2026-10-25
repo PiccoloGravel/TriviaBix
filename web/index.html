@@ -31,6 +31,7 @@
     .vip { background: var(--panel); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
     .badge { font-family: "Bungee", sans-serif; font-size: 22px; background: var(--bad); color: #fff; padding: 8px 16px; border-radius: 14px; transform: rotate(-4deg); animation: pop .4s .6s ease-out both; }
     .badge.good { background: var(--accent); color: #1a0b3d; }
+    #join { justify-content: flex-start; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
   </style>
 </head>
@@ -48,6 +49,11 @@
         <label for="name-input">Your name</label>
         <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="Name" required>
       </div>
+      <div>
+        <label>Pick your character</label>
+        <div class="char-grid" id="join-chars"></div>
+        <div class="char-label" id="join-char-label"></div>
+      </div>
       <button class="big" type="submit">Play</button>
     </form>
     <p class="error" id="join-error"></p>
@@ -64,6 +70,15 @@
         <button class="big" id="start-btn">Everybody's in!</button>
       </div>
       <div class="muted" id="lobby-wait">Watch the TV. The VIP starts the game.</div>
+      <div class="vip" style="text-align:left">
+        <label>Change your look</label>
+        <div class="char-grid" id="lobby-chars"></div>
+        <form id="rename-form" style="display:flex;gap:8px">
+          <input id="rename-input" maxlength="16" placeholder="New name" aria-label="Your name">
+          <button type="submit">Save</button>
+        </form>
+        <p class="error" id="lobby-error" style="margin:0;font-size:14px"></p>
+      </div>
     </div>
   </section>
 
