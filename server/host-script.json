@@ -285,6 +285,43 @@
       "PG-13": ["That's the show. I'm {host}. Tip your host."],
       "MA": ["That's the show, I'm {host}, and you've all been terrible. Same time next week."],
       "NC-17": ["That's the show. I'm {host}. Now get the hell out of my living room."]
+    },
+    "round_intro": {
+      "PG": [
+        "Round {round} of {total}! The category is {category}. These ones are {difficulty}, and they're worth {points}.",
+        "Welcome to round {round}: {category}. Difficulty? {difficulty}. Points? {points}. Brains? Hopefully.",
+        "On to round {round}. It's all about {category}, the questions are {difficulty}, and every answer pays {points}."
+      ],
+      "PG-13": [
+        "Round {round}: {category}. They're {difficulty} now, so no more coasting. {points} on every question.",
+        "Round {round} of {total}. {category}. {difficulty} questions, {points}. Somebody's about to look silly."
+      ],
+      "MA": ["Round {round}. {category}. {difficulty} questions for {points}. Sober up, this is where it gets real."],
+      "NC-17": ["Round {round}, {category}. {difficulty} and worth {points}. Time to find out who's all talk."]
+    },
+    "round_final": {
+      "PG": [
+        "This is it, the final round! The hardest questions from every category, and they're worth {points}. Anyone can still win!",
+        "Final round! Everything's worth {points}, so the scoreboard can flip on a single question. Good luck!"
+      ],
+      "PG-13": ["Final round. Hardest questions, {points}. Whoever's in last place, this is your redemption arc."],
+      "MA": ["Final round, people. {points}, nasty questions, no mercy. Leaders, start sweating."],
+      "NC-17": ["The final round. {points}, the toughest stuff we've got. Let's see who finishes on top."]
+    },
+    "recap": {
+      "PG": [
+        "That's the end of round {round}! {name} won the round with {points} points.",
+        "Round {round} is in the books. Biggest haul: {name}, with {points} points."
+      ],
+      "PG-13": ["Round {round}, done. {name} cleaned up with {points} points. The rest of you, take notes."],
+      "MA": ["Round {round} is over and {name} raked in {points} points. Show-off."],
+      "NC-17": ["End of round {round}. {name} scored {points} points and is feeling very smug about it."]
+    },
+    "recap_nobody": {
+      "PG": ["That's the end of round {round}, and nobody scored a single point. Impressive, in the wrong way."],
+      "PG-13": ["Round {round} is over. Zero points. Between all of you. I'm speechless."],
+      "MA": ["Round {round}, and not one point on the board. I've seen smarter furniture."],
+      "NC-17": ["Round {round} done and nobody scored. Not one of you. Wow."]
     }
   }
 }

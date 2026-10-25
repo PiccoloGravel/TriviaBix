@@ -225,6 +225,7 @@ mod tests {
             kind,
             fun_fact: None,
             host_quip: None,
+            script: vec![],
             source: None,
         }
     }

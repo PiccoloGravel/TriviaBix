@@ -29,18 +29,24 @@ use crate::room::{
     clamp_teams,
 };
 use crate::rooms::Rooms;
+use crate::rounds;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub rooms: Rooms,
     pub db: Db,
+    pub content_dir: std::path::PathBuf,
     pub public_url: Option<String>,
     pub admin: Admin,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
-    tracing::info!("question bank has {} questions", db.question_count().await?);
+    load_content(&db, &config.content_dir).await;
+    tracing::info!(
+        "question bank has {} playable questions",
+        db.question_count().await?
+    );
     let script = match &config.host_script {
         Some(path) => crate::host::Script::load(path)?,
         None => crate::host::Script::builtin(),
@@ -63,6 +69,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
     let state = AppState {
         rooms,
         db,
+        content_dir: config.content_dir.clone(),
         public_url: config.public_url.clone(),
         admin: Admin::new(config.admin_password.clone()),
     };
@@ -83,6 +90,10 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .merge(admin::routes(state.clone()))
         .route_service("/host", ServeFile::new(dir.join("host.html")))
         .route_service("/admin", ServeFile::new(dir.join("admin.html")))
+        .route_service(
+            "/admin/questions",
+            ServeFile::new(dir.join("admin-questions.html")),
+        )
         .fallback_service(ServeDir::new(dir))
         .layer(TraceLayer::new_for_http())
         .with_state(state))
@@ -139,6 +150,8 @@ pub(crate) struct CreateRoom {
     clip_ms: Option<u64>,
     teams: Option<u8>,
     late_join: Option<bool>,
+    trivia_rounds: Option<u8>,
+    per_round: Option<usize>,
 }
 
 impl CreateRoom {
@@ -153,6 +166,14 @@ impl CreateRoom {
                 .clamp(MIN_CLIP_MS, MAX_CLIP_MS),
             teams: clamp_teams(self.teams.unwrap_or(0)),
             late_join: self.late_join.unwrap_or(true),
+            trivia_rounds: self
+                .trivia_rounds
+                .unwrap_or(rounds::MAX_ROUNDS)
+                .clamp(rounds::MIN_ROUNDS, rounds::MAX_ROUNDS),
+            per_round: self
+                .per_round
+                .unwrap_or(5)
+                .clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND),
         }
     }
 }
@@ -279,4 +300,36 @@ async fn run_socket(mut socket: WebSocket, room: Option<RoomHandle>, join: Join)
         }
     }
     room.send(RoomCmd::Disconnect { conn_id });
+}
+
+/// Loads the content packs into the database. A broken pack is logged, not fatal: the server
+/// keeps playing whatever the database already has.
+pub async fn load_content(db: &Db, dir: &std::path::Path) -> Option<crate::content::SyncReport> {
+    if !dir.join("categories.toml").exists() {
+        tracing::info!(
+            "no question packs at {}; playing what the database has",
+            dir.display()
+        );
+        return None;
+    }
+    match crate::content::load(db, dir).await {
+        Ok(report) => {
+            tracing::info!(
+                "loaded question packs from {}: {} new, {} updated, {} retired, {} host lines",
+                dir.display(),
+                report.added,
+                report.updated,
+                report.retired,
+                report.lines
+            );
+            for w in &report.warnings {
+                tracing::warn!("content: {w}");
+            }
+            Some(report)
+        }
+        Err(e) => {
+            tracing::error!("question packs not loaded: {e:#}");
+            None
+        }
+    }
 }

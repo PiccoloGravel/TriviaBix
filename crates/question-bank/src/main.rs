@@ -45,6 +45,31 @@ enum Command {
         #[command(subcommand)]
         source: ImportSource,
     },
+    /// Write and load the host's per-question lines (lead-ins and reveal jokes).
+    Scripts {
+        #[command(subcommand)]
+        action: ScriptsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScriptsAction {
+    /// List questions that still need lines, as a JSON brief to fill in.
+    Todo {
+        /// Which lines count as missing: lead-in, reveal, or either.
+        #[arg(long, default_value = "either", value_parser = ["lead-in", "reveal", "either"])]
+        missing: String,
+        /// Category slugs or tags.
+        #[arg(long = "topic")]
+        topics: Vec<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+        /// Where to write the brief. Prints to the terminal without it.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Load a filled-in brief (JSON or TOML) into content/scripts, next to each question's pack.
+    Add { file: PathBuf },
 }
 
 #[derive(Subcommand)]
@@ -113,6 +138,9 @@ fn run(cli: &Cli) -> Result<(), String> {
     match &cli.command {
         Command::Validate => {
             let bank = load(&cli.content)?;
+            for w in bank.warnings() {
+                println!("warning: {w}");
+            }
             println!(
                 "OK: {} questions in {} categories",
                 bank.questions().len(),
@@ -122,7 +150,11 @@ fn run(cli: &Cli) -> Result<(), String> {
         Command::Stats => {
             let bank = load(&cli.content)?;
             let s = bank.stats();
-            println!("{} questions\n", s.total);
+            println!("{} questions", s.total);
+            println!(
+                "{} with a host lead-in, {} with a reveal line\n",
+                s.with_lead_in, s.with_reveal
+            );
             println!("By category:");
             for c in bank.categories() {
                 let n = s.by_category.get(&c.slug).copied().unwrap_or(0);
@@ -183,11 +215,13 @@ fn run(cli: &Cli) -> Result<(), String> {
                     _ => {}
                 }
                 println!("    answer: {}", q.answer_text());
-                if let Some(quip) = &q.host_quip {
-                    println!("    host: {quip}");
-                }
-                if let Some(fact) = &q.fun_fact {
-                    println!("    fun fact: {fact}");
+                for line in q.host_lines() {
+                    println!(
+                        "    host {} [{}]: {}",
+                        line.slot.as_str(),
+                        line.rating.as_str(),
+                        line.text
+                    );
                 }
                 println!();
             }
@@ -203,6 +237,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             );
         }
         Command::Import { source } => import_cmd(&cli.content, source)?,
+        Command::Scripts { action } => scripts_cmd(&cli.content, action)?,
     }
     Ok(())
 }
@@ -322,4 +357,153 @@ fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
     );
     println!("Review them, then run `triviabix-questions validate`.");
     Ok(())
+}
+
+/// One question in a `scripts todo` brief. Everything but `question`, `lead_in`, and `reveal`
+/// is context for the writer; `scripts add` ignores it.
+#[derive(serde::Serialize)]
+struct Brief<'a> {
+    question: &'a str,
+    prompt: &'a str,
+    category: &'a str,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    answer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    choices: Option<&'a [String]>,
+    rating: &'static str,
+    difficulty: &'static str,
+    /// Lines the question already has, so new ones don't repeat them.
+    existing: Vec<String>,
+    lead_in: Option<()>,
+    reveal: Option<()>,
+}
+
+fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
+    let bank = load(content)?;
+    match action {
+        ScriptsAction::Todo {
+            missing,
+            topics,
+            limit,
+            out,
+        } => {
+            let filter = Filter {
+                topics: topics.clone(),
+                max_rating: Rating::Nc17,
+                ..Default::default()
+            };
+            let needs = |q: &Question| {
+                let (lead, reveal) = (
+                    q.has_lines(ScriptSlot::LeadIn),
+                    q.has_lines(ScriptSlot::Reveal),
+                );
+                match missing.as_str() {
+                    "lead-in" => !lead,
+                    "reveal" => !reveal,
+                    _ => !lead || !reveal,
+                }
+            };
+            let todo: Vec<&Question> = bank
+                .questions()
+                .iter()
+                .filter(|q| filter.matches(q) && needs(q))
+                .collect();
+            let briefs: Vec<Brief> = todo
+                .iter()
+                .take(*limit)
+                .map(|q| Brief {
+                    question: &q.id,
+                    prompt: &q.prompt,
+                    category: &q.category,
+                    kind: q.question_type().as_str(),
+                    answer: q.answer_text(),
+                    choices: match &q.kind {
+                        QuestionKind::MultipleChoice { choices, .. } => Some(choices),
+                        _ => None,
+                    },
+                    rating: q.rating.as_str(),
+                    difficulty: q.difficulty.as_str(),
+                    existing: q.host_lines().into_iter().map(|l| l.text).collect(),
+                    lead_in: None,
+                    reveal: None,
+                })
+                .collect();
+            let json = serde_json::to_string_pretty(&briefs).map_err(|e| e.to_string())?;
+            match out {
+                Some(path) => {
+                    std::fs::write(path, json).map_err(|e| e.to_string())?;
+                    eprintln!(
+                        "Wrote {} of {} questions needing lines to {}",
+                        briefs.len(),
+                        todo.len(),
+                        path.display()
+                    );
+                }
+                None => println!("{json}"),
+            }
+        }
+        ScriptsAction::Add { file } => {
+            let incoming =
+                ScriptFile::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let (added, updated) = add_scripts(content, &bank, incoming.scripts)?;
+            println!("Added scripts for {added} questions and replaced {updated}.");
+            println!("Check them with `triviabix-questions sample`, then restart the server to load them.");
+        }
+    }
+    Ok(())
+}
+
+/// Files script entries under `content/scripts`, in a file named after each question's pack.
+/// Returns how many entries were new and how many replaced an older script.
+fn add_scripts(
+    content: &Path,
+    bank: &QuestionBank,
+    entries: Vec<ScriptEntry>,
+) -> Result<(usize, usize), String> {
+    let mut by_file: std::collections::BTreeMap<PathBuf, Vec<ScriptEntry>> = Default::default();
+    let mut problems = Vec::new();
+    for mut e in entries {
+        if e.lead_in.is_none() && e.reveal.is_none() {
+            continue;
+        }
+        let Some(q) = bank.get(&e.question) else {
+            problems.push(format!("{}: no question has this id", e.question));
+            continue;
+        };
+        for line in e.lines(q.rating) {
+            problems.extend(
+                validate_line(&line)
+                    .into_iter()
+                    .map(|p| format!("{}: {p}", e.question)),
+            );
+        }
+        e.prompt = Some(q.prompt.clone());
+        let pack = bank
+            .pack_of(&e.question)
+            .map(|p| p.with_extension("toml"))
+            .unwrap_or_else(|| PathBuf::from("misc.toml"));
+        by_file
+            .entry(content.join("scripts").join(pack))
+            .or_default()
+            .push(e);
+    }
+    if !problems.is_empty() {
+        return Err(format!("nothing was saved:\n  {}", problems.join("\n  ")));
+    }
+    let (mut added, mut total) = (0, 0);
+    for (path, entries) in by_file {
+        let mut file = if path.exists() {
+            ScriptFile::read(&path).map_err(|e| format!("{}: {e}", path.display()))?
+        } else {
+            ScriptFile::default()
+        };
+        total += entries.len();
+        added += file.merge(entries);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, file.to_toml()?).map_err(|e| e.to_string())?;
+    }
+    Ok((added, total - added))
 }

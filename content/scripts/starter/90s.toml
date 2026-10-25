@@ -1,0 +1,82 @@
+[[script]]
+question = "90s-2c817241"
+prompt = "What egg-shaped virtual pet took over playgrounds in 1997?"
+lead_in = "Next question is about the needy little egg that ruled recess."
+
+[[script]]
+question = "90s-b197955c"
+prompt = """Which sitcom's theme song is "I'll Be There for You"?"""
+lead_in = "Name the sitcom. And no, you don't get to clap first."
+
+[[script]]
+question = "90s-54323188"
+prompt = 'Which Spice Girl was known as "Posh Spice"?'
+lead_in = "Spice up your life. Which one was posh?"
+
+[[script]]
+question = "90s-cc565171"
+prompt = """In what year did James Cameron's "Titanic" hit theaters?"""
+lead_in = "Big boat question. Brace for an iceberg."
+
+[script.reveal]
+PG = "It was the first movie to make over a billion dollars at the box office. Yes, there was room on that door."
+PG-13 = "Draw me like one of your French girls. Okay, that's enough of that."
+
+[[script]]
+question = "90s-d895382c"
+prompt = "The first Harry Potter book was published in 1997."
+lead_in = "A question about a boy who lived under the stairs."
+
+[script.reveal]
+PG = "Twelve publishers turned it down. Somewhere, twelve people still think about that every day."
+PG-13 = "Twelve publishers rejected it. Bet they're still kicking themselves. Hard."
+
+[[script]]
+question = "90s-a8697fad"
+prompt = "Put these consoles in order of North American release."
+lead_in = "Console wars, round one. Put them in order."
+reveal = "The Dreamcast was Sega's last console. It had a microphone so you could yell at a fish. Truly ahead of its time."
+
+[[script]]
+question = "90s-7ec7f571"
+prompt = "Which search engine was founded in 1998 by Larry Page and Sergey Brin?"
+lead_in = "Search engine question. You could google it, but that would be cheating."
+reveal = "Its original name was BackRub. Imagine telling people to 'backrub it'. Thank goodness for rebrands."
+
+[[script]]
+question = "90s-b5cb92af"
+prompt = 'Which Nirvana song begins "Load up on guns, bring your friends"?'
+lead_in = "Plaid shirts on. Here's a grunge classic."
+
+[script.reveal]
+PG = "Kurt Cobain named it after a deodorant called Teen Spirit, which he didn't know existed."
+PG-13 = "The title came from a friend writing 'Kurt smells like Teen Spirit' on his wall. It was a deodorant. He had no idea."
+
+[[script]]
+question = "90s-359d4d36"
+prompt = 'Which group sang "I Want It That Way"?'
+lead_in = "Boy band question. Get your frosted tips ready."
+
+[[script]]
+question = "90s-7455cb99"
+prompt = '"The Fresh Prince of Bel-Air" was set in Philadelphia.'
+lead_in = "Now this is a story all about how. Answer this one carefully."
+
+[[script]]
+question = "90s-90f0c5bd"
+prompt = "What was the name of the sheep cloned in Scotland in 1996?"
+lead_in = "Science time. Baa-ck in 1996, a sheep made history."
+
+[[script]]
+question = "90s-b2d29ad4"
+prompt = "How many Pokémon could you catch in the original Pokémon Red and Blue?"
+lead_in = "Pokémon question. How many could you catch the first time around?"
+
+[script.reveal]
+PG = "Technically there was a hidden 151st, Mew, that you could only get at special events. Or with a playground rumor."
+PG-13 = "Mew was the 151st, and every playground had a kid who swore his cousin caught it under the truck."
+
+[[script]]
+question = "90s-2a6faf2c"
+prompt = 'Which duo had a worldwide hit with "Macarena"?'
+lead_in = "Everybody stand up for this one. You know the dance."

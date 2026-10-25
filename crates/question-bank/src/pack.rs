@@ -3,7 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Difficulty, Question, QuestionKind, Rating, Source};
+use crate::model::{Difficulty, Question, QuestionKind, Rating, ScriptSlot, Source};
+use crate::script::Lines;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct PackFile {
@@ -54,6 +55,12 @@ pub struct PackQuestion {
     pub fun_fact: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_quip: Option<String>,
+    /// What the host says to set the question up. See [`Lines`] for the accepted shapes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead_in: Option<Lines>,
+    /// More things the host can say after the reveal, alongside `host_quip` and `fun_fact`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reveal: Option<Lines>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
 }
@@ -83,6 +90,14 @@ impl PackFile {
                         tags.push(t.clone());
                     }
                 }
+                let rating = q.rating.or(meta.rating).unwrap_or_default();
+                let mut script = Vec::new();
+                if let Some(l) = &q.lead_in {
+                    script.extend(l.to_script(ScriptSlot::LeadIn, rating));
+                }
+                if let Some(l) = &q.reveal {
+                    script.extend(l.to_script(ScriptSlot::Reveal, rating));
+                }
                 Question {
                     id: q
                         .id
@@ -95,11 +110,12 @@ impl PackFile {
                         .unwrap_or_default(),
                     tags,
                     difficulty: q.difficulty.or(meta.difficulty).unwrap_or_default(),
-                    rating: q.rating.or(meta.rating).unwrap_or_default(),
+                    rating,
                     prompt: q.prompt.trim().to_string(),
                     kind: q.kind.clone(),
                     fun_fact: q.fun_fact.clone(),
                     host_quip: q.host_quip.clone(),
+                    script,
                     source: q.source.clone().or_else(|| meta.source.clone()),
                 }
             })
@@ -119,6 +135,8 @@ impl From<&Question> for PackQuestion {
             kind: q.kind.clone(),
             fun_fact: q.fun_fact.clone(),
             host_quip: q.host_quip.clone(),
+            lead_in: Lines::from_script(&q.script, ScriptSlot::LeadIn, q.rating),
+            reveal: Lines::from_script(&q.script, ScriptSlot::Reveal, q.rating),
             source: q.source.clone(),
         }
     }

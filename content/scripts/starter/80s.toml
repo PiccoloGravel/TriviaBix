@@ -1,0 +1,81 @@
+[[script]]
+question = "80s-b8eef516"
+prompt = 'Which arcade hero was originally called "Puck-Man" in Japan?'
+lead_in = "Arcade time. Bring your quarters."
+
+[[script]]
+question = "80s-8b728b77"
+prompt = "Which 1985 movie turned a DeLorean into a time machine?"
+lead_in = "Time for a movie question. Buckle up."
+
+[[script]]
+question = "80s-6ac10d95"
+prompt = "The Rubik's Cube was invented by a Hungarian architecture professor."
+lead_in = "Let's talk about the most frustrating toy ever invented."
+
+[[script]]
+question = "80s-49939cbe"
+prompt = 'What music channel launched in 1981 by playing "Video Killed the Radio Star"?'
+lead_in = "Next up: the channel that once played music. I know. I was surprised too."
+
+[[script]]
+question = "80s-bac5058c"
+prompt = "In what year did the Berlin Wall fall?"
+lead_in = "History time. A wall is about to have a very bad night."
+reveal = "People took chunks of it home as souvenirs. Somewhere, an attic has a piece of Cold War next to the Christmas lights."
+
+[[script]]
+question = "80s-cb72a3ac"
+prompt = "Put these 80s movies in order of release."
+lead_in = "Order up these 80s blockbusters. Phone home if you need help."
+
+[[script]]
+question = "80s-e18a74fe"
+prompt = 'Which band sang "Take On Me"?'
+lead_in = "Next up, a band with a very high note and a very sketchy music video."
+
+[[script]]
+question = "80s-fd166a97"
+prompt = "What did Michael Jackson famously wear on just one hand?"
+lead_in = "A question about the King of Pop's wardrobe."
+reveal = "It sold at auction in 2009 for over 350 thousand dollars. One glove. Imagine what the pair would have cost."
+
+[[script]]
+question = "80s-b0dede2e"
+prompt = """Which toy line's slogan was "More than meets the eye"?"""
+lead_in = "Toy aisle question. Something's hiding in plain sight."
+
+[script.reveal]
+PG = "The toys were originally Japanese lines like Diaclone. Hasbro bought them and gave them a backstory."
+PG-13 = "An entire franchise built on the idea that your car might secretly be judging you."
+
+[[script]]
+question = "80s-888dd1a9"
+prompt = "The Nintendo Entertainment System launched in North America in 1985."
+lead_in = "Console history time. Blow on the cartridge and focus."
+reveal = "After the 1983 video game crash, stores were nervous, so Nintendo shipped it with a robot named R.O.B. to pretend it was a toy."
+
+[[script]]
+question = "80s-8db4270f"
+prompt = "Which 80s TV show starred a talking car named KITT?"
+lead_in = "This next one has a talking car and a lot of leather jackets."
+
+[script.reveal]
+PG = "KITT stood for Knight Industries Two Thousand. The car had better lines than most of the guest stars."
+PG-13 = "David Hasselhoff and a sarcastic car. The 80s were a simpler, hairier time."
+
+[[script]]
+question = "80s-f0c14aa2"
+prompt = """How many songs are on Michael Jackson's original 1982 album "Thriller"?"""
+lead_in = "A question about the best-selling album of all time. Count carefully."
+
+[[script]]
+question = "80s-51275a42"
+prompt = """Finish the 1984 movie theme: "If there's something strange in your neighborhood, who you gonna call?""""
+lead_in = "Finish the lyric. You already know you're going to shout it."
+
+[[script]]
+question = "80s-68574d33"
+prompt = "Put these gadgets in order of first release."
+lead_in = "Gadget time. Put these in order, and no peeking at your parents' attic."
+reveal = "The Game Boy came with Tetris, and that's how a Soviet puzzle game conquered every school bus in America."

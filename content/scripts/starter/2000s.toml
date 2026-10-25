@@ -1,0 +1,80 @@
+[[script]]
+question = "2000s-22f2976c"
+prompt = "In what year did the first iPhone go on sale?"
+lead_in = "Let's talk about the gadget that ate your attention span."
+
+[script.reveal]
+PG = "Steve Jobs called it three devices in one: an iPod, a phone, and an internet communicator. The crowd only heard 'phone'."
+MA = "The first iPhone had no App Store, no copy and paste, and still made grown adults camp on sidewalks. Peak humanity."
+
+[[script]]
+question = "2000s-d42739c9"
+prompt = 'The first video on YouTube, "Me at the zoo", was uploaded in 2005.'
+lead_in = "Grab your popcorn. The very first internet video is about to get fact-checked."
+reveal = "Nineteen seconds, zero edits, and somehow it still has a better plot than most reality TV."
+
+[[script]]
+question = "2000s-11e5c537"
+prompt = """Which reality show made "You're fired!" a catchphrase?"""
+lead_in = "This next one is about reality TV's most famous pink slip."
+
+[script.reveal]
+PG = "Before it was a catchphrase, it was just a Thursday at the office."
+PG-13 = "Two words that ruined more contestants' weeks than a bad haircut."
+
+[[script]]
+question = "2000s-68af95f5"
+prompt = "What social network launched from a Harvard dorm room in 2004?"
+lead_in = "Picture a dorm room, a hoodie, and a very bad idea about rating classmates."
+
+[script.reveal]
+PG = "It started as Harvard-only. Then colleges, then everyone, then your aunt sharing minion memes."
+MA = "Its ancestor, FaceMash, let students rate which classmate was hotter. Now it is where your uncle posts conspiracy theories. Growth!"
+
+[[script]]
+question = "2000s-ece22b97"
+prompt = 'Who sang the 2004 hit "Toxic"?'
+lead_in = "Time for a pop song that is, medically speaking, dangerous."
+reveal = "She's still one of the best-selling artists ever, and that flight-attendant video is still burned into a generation's eyeballs."
+
+[[script]]
+question = "2000s-0be2540a"
+prompt = "Put these animated movies in order of release."
+lead_in = "Animation history time. Order these, and don't let the ogre distract you."
+reveal = "Up's opening ten minutes made grown adults cry in public. Fun for the whole family."
+
+[[script]]
+question = "2000s-2f52b0b8"
+prompt = '"The Lord of the Rings: The Return of the King" won 11 Oscars.'
+lead_in = "A question about elves, hobbits, and a very full trophy shelf."
+reveal = "It tied Ben-Hur and Titanic for the most Oscars ever. Not bad for a movie with nine endings."
+
+[[script]]
+question = "2000s-e767a6bd"
+prompt = "Which handheld console launched in 2004 with two screens?"
+lead_in = "Handheld gaming, coming right up. Count the screens carefully."
+reveal = "It sold over 150 million units. That's a lot of kids blowing on cartridges that didn't need blowing on."
+
+[[script]]
+question = "2000s-6d736e2d"
+prompt = """Which Killers song begins "I'm coming out of my cage and I've been doing just fine"?"""
+lead_in = "Name this song and I promise not to sing it. Much."
+
+[script.reveal]
+PG = "It has never left the UK charts for long. Like a houseguest who brought their own pillow."
+PG-13 = "Jealousy, turning saints into the sea, and one guy in the back screaming every word at 2 a.m."
+
+[[script]]
+question = "2000s-2e3a2e67"
+prompt = 'How many seasons did the US version of "The Office" run?'
+lead_in = "Paper company question. Try not to make it weird. That's what she said."
+reveal = "Steve Carell left after season seven, and the show tried very hard to pretend that was fine."
+
+[[script]]
+question = "2000s-22ebb02d"
+prompt = "What did people call the slim Motorola flip phone that everyone wanted in 2004?"
+lead_in = "Remember when the coolest thing you could do was snap your phone shut on someone?"
+
+[script.reveal]
+PG = "It sold over 130 million units. Hanging up has never felt so dramatic since."
+PG-13 = "Nothing has ever matched the joy of angrily snapping a flip phone shut. Swiping red just isn't the same."

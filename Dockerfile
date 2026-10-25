@@ -17,8 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=build /usr/local/bin/triviabix /usr/local/bin/triviabix
 COPY web /app/web
+# Question packs and host scripts, loaded into the database at startup.
+COPY content /app/content
 ENV PORT=8080 \
     STATIC_DIR=/app/web \
+    CONTENT_DIR=/app/content \
     DATABASE_URL=sqlite:///data/triviabix.db \
     RUST_LOG=triviabix=info,tower_http=info
 USER triviabix

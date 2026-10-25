@@ -197,6 +197,46 @@
       *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
     }
 
+    /* Trivia rounds: title cards, the difficulty ladder and the recap between rounds. */
+    .diff-easy { --diff: var(--good); }
+    .diff-medium { --diff: var(--accent); }
+    .diff-hard { --diff: #ff7a00; }
+    .diff-final { --diff: var(--bad); }
+    #round_intro { align-items: center; justify-content: center; gap: 3vh; }
+    .ri-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; text-align: center; }
+    .ri-title { font-family: "Bungee", sans-serif; font-size: 8vh; color: var(--diff); letter-spacing: .1em; }
+    .ri-cat { font-family: "Bungee", sans-serif; font-size: 13vh; line-height: 1.05; max-width: 90vw; text-shadow: 0 1.2vh 0 rgba(0,0,0,.35); }
+    .ri-tags { display: flex; gap: 2vw; font-size: 4vh; align-items: center; }
+    .ri-tags .pill { background: var(--diff); color: #1a0b3d; border-radius: 999px; padding: .6vh 2vw; font-family: "Bungee", sans-serif; }
+    .ri-tags .pill.mult { background: var(--text); }
+    #round_intro.enter .ri-title { animation: rise .5s .1s both; }
+    #round_intro.enter .ri-cat { animation: logo-slam .8s .4s cubic-bezier(.2,1.6,.4,1) both; }
+    #round_intro.enter .ri-tags { animation: rise .5s 1.1s both; }
+    .ladder { display: flex; justify-content: center; align-items: flex-end; gap: 1.2vw; width: 100%; }
+    .rung { flex: 0 1 18vw; background: var(--panel); border-radius: 2vh 2vh 1vh 1vh; padding: 1.2vh 1vw; text-align: center; border-top: .8vh solid var(--diff); min-height: calc(12vh + var(--i) * 3vh); display: flex; flex-direction: column; justify-content: flex-end; gap: .3vh; transition: transform .3s; }
+    .rung-title { font-family: "Bungee", sans-serif; font-size: 2.4vh; color: var(--diff); }
+    .rung-cat { font-size: 2.6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rung-diff { font-size: 2vh; color: var(--muted); }
+    .rung.next { opacity: .5; }
+    .rung.done { opacity: .75; }
+    .rung.done .rung-title::after { content: " ✓"; color: var(--good); }
+    .rung.current { background: rgba(255,255,255,.18); transform: translateY(-1.5vh) scale(1.06); box-shadow: 0 0 4vh color-mix(in srgb, var(--diff) 60%, transparent); }
+    .ladder.small { align-items: stretch; margin-bottom: 2.5vh; }
+    .ladder.small .rung { min-height: 0; padding: .6vh .8vw; border-radius: 1.5vh; }
+    .ladder.small .rung.current { transform: scale(1.04); }
+    .ladder.small .rung-cat { font-size: 2vh; }
+    #recap h2 { text-align: center; font-size: 6vh; margin: .5vh 0 2vh; color: var(--accent); }
+    .recap-main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; min-height: 0; align-items: start; }
+    .recap-main .board { max-width: none; }
+    .recap-qs { display: flex; flex-direction: column; gap: 1vh; overflow: hidden; }
+    .rq { display: flex; align-items: center; gap: 1vw; background: var(--panel); border-radius: 2vh; padding: .8vh 1vw; font-size: 2.3vh; }
+    .rq-n { font-family: "Bungee", sans-serif; font-size: 3vh; color: var(--accent); width: 3vw; text-align: center; flex: 0 0 auto; }
+    .rq-text { flex: 1; min-width: 0; }
+    .rq-prompt { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rq-answer { font-size: 2.8vh; color: var(--good); }
+    .rq-who { display: flex; gap: .3vw; flex-wrap: wrap; justify-content: flex-end; max-width: 14vw; font-size: 2vh; }
+    #recap.enter .rq { animation: rise .5s both; animation-delay: calc(.4s + var(--i) * 150ms); }
+    .callout.round_winner { background: linear-gradient(90deg, var(--c0), var(--accent)); color: #1a0b3d; }
     .toast { position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 1.2vh 2vw; border-radius: 2vh; font-size: 2.6vh; z-index: 10; }
     .toast.info { background: var(--accent); color: #1a0b3d; }
   </style>
@@ -220,7 +260,16 @@
       <button class="secondary" data-clip="2000">2 seconds</button>
       <button class="secondary" data-clip="3000">3 seconds</button>
     </div>
-    <div class="opts">
+    <div class="opts" id="trivia-opts">
+      <span>Rounds</span>
+      <button class="secondary" data-trivia-rounds="3">3 (easy → hard)</button>
+      <button class="secondary" data-trivia-rounds="4">4 (+ final)</button>
+      <span>Questions each</span>
+      <button class="secondary" data-per-round="3">3</button>
+      <button class="secondary" data-per-round="5">5</button>
+      <button class="secondary" data-per-round="7">7</button>
+    </div>
+    <div class="opts" id="rounds-opts">
       <span id="rounds-label">Rounds</span>
       <button class="secondary" data-rounds="5">5</button>
       <button class="secondary" data-rounds="10">10</button>
@@ -269,6 +318,15 @@
     <div class="lineup" id="i-lineup"></div>
   </section>
 
+  <section id="round_intro" class="screen hidden" data-screen>
+    <div class="topbar" style="align-self:stretch"><span id="ri-count"></span><span></span><span class="code-chip" id="ri-code"></span></div>
+    <div class="ri-main">
+      <div class="ri-title" id="ri-title"></div>
+      <div class="ri-cat" id="ri-cat"></div>
+      <div class="ri-tags"><span class="pill" id="ri-diff"></span><span class="pill mult" id="ri-mult"></span><span class="muted" id="ri-qs"></span></div>
+    </div>
+    <div class="ladder" id="ri-ladder"></div>
+  </section>
   <section id="question" class="screen hidden" data-screen>
     <div class="topbar"><span id="q-round"></span><span class="secs" id="q-secs"></span><span class="code-chip" id="q-code"></span></div>
     <div class="cat" id="q-cat"></div>
@@ -329,6 +387,16 @@
     <div class="board" id="s-board"></div>
   </section>
 
+  <section id="recap" class="screen hidden" data-screen>
+    <div class="topbar"><span id="rc-round"></span><span></span><span class="code-chip" id="rc-code"></span></div>
+    <h2 id="rc-title"></h2>
+    <div class="ladder small" id="rc-ladder"></div>
+    <div class="team-strip" id="rc-teams"></div>
+    <div class="recap-main">
+      <div class="board" id="rc-board"></div>
+      <div class="recap-qs" id="rc-qs"></div>
+    </div>
+  </section>
   <section id="final" class="screen hidden" data-screen>
     <h2 id="f-title">Winner!</h2>
     <div class="team-strip" id="f-teams"></div>

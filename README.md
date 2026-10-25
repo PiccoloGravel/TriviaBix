@@ -35,8 +35,32 @@ below its rating and leans heavily toward the spiciest tier allowed, so PG rooms
 it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the script on startup (known events, a PG line for
 each, and only placeholders that event fills in). Reveals and scoreboards stretch so the host can finish talking.
 
+Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
+line (a joke, anecdote, or fun fact) right after the answer, in place of his generic roast. They're rated too, so a PG room
+hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
+script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
+them in the admin panel.
+
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
+
+### Trivia rounds
+
+A trivia game is 3 or 4 rounds (3, 5 or 7 questions each, picked on the setup screen) that climb in difficulty:
+
+| Round | Questions | Points |
+|---|---|---|
+| 1 | Easy | ×1 |
+| 2 | Medium | ×1.5 |
+| 3 | Hard | ×2 |
+| Final (4-round games) | Hardest, from every category | ×3 |
+
+Each of the first rounds is themed on one category when the question bank has enough of it at that difficulty (it tops up
+with the nearest difficulty, and falls back to "Anything Goes"). Every round opens with a title card showing its theme,
+difficulty and points, plus a staircase of the whole game where later themes stay hidden. After each round the TV shows a
+recap: the scoreboard with what everyone won that round, and every question with its answer and who got it right. Phones
+get their own round summary. Each question in the database has a `difficulty` of `easy`, `medium` or `hard` (default
+`medium`).
 
 ### Speed Hangman
 
@@ -85,6 +109,11 @@ scores, phase, and the current question and answer. From there you can:
 - kick players, move them between teams, and change a room's settings,
 - turn late joins on or off, and close a room.
 
+**Bix's lines** (`/admin/questions`) lists every question in the database with what Bix says about it. Search, filter to
+questions missing a lead-in or reveal, and edit, add, or mute lines per rating. Edits are saved in the database, override
+the pack's lines for that question, and survive restarts; "Use pack lines" undoes them. **Reload packs** loads the content
+folder again without a restart, e.g. after an import.
+
 Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
 your home network can reach the server.
 
@@ -118,8 +147,10 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MAX_ROOMS` | `500` | |
 | `QUESTION_SECS` / `REVEAL_SECS` / `SCOREBOARD_SECS` | `20` / `7` / `6` | Minimums; the host's lines can stretch them |
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
+| `ROUND_INTRO_SECS` / `RECAP_SECS` | `5` / `14` | Trivia round title card, and the scores and recap after each round |
 | `HOST_TALK_CPS` | `13` | Voice speed estimate in characters per second, for pacing; `0` stops waiting for the host |
 | `HOST_SCRIPT` | | Path to a host script to use instead of the built-in one |
+| `CONTENT_DIR` | `content` | Question packs and host scripts, loaded into the database at startup |
 | `HANGMAN_SECS` | `45` | Time to crack one Speed Hangman phrase |
 | `SONG_SECS` | `15` | Answer time in Name That Tune |
 | `MUSIC_COUNTRY` | `US` | Store country for song previews |
@@ -135,7 +166,11 @@ cargo test                    # unit tests plus full games over WebSockets
     `src/music.rs` the song lookups for Name That Tune.
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
-  - `migrations/` creates the tables and seeds a starter question bank and hangman phrases.
+  - `src/rounds.rs` plans a trivia game's rounds: difficulty, theme and points.
+  - `migrations/` creates the tables and seeds hangman phrases and songs.
+  - `src/content.rs` loads the question packs into the database at startup.
+- `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
+  [content/README.md](content/README.md). `crates/question-bank` reads it and has the command line tool.
 - `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
   - `cutscenes.js` plays the scenes in `cutscenes/`; `bix.js` draws the host; `cutscenes.html` previews them.
 - `server/src/admin.rs` is the admin login and API (`/api/admin/*`).
@@ -146,8 +181,10 @@ The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`)
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
 Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`,
 `play_again`, `profile {name, character}` and `team {team}` (phones, lobby only), and from the TV
-`settings {rounds, max_rating, mode, clip_ms, teams, late_join}` and `kick {player_id}`.
+`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round}` and `kick {player_id}`.
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
-The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
-and `final`; each state carries `host {name, id, text, callouts, cue}`, the current host line, the graphics that go with it, and the cue that picks its cutscene.
+The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `round_intro`, `question`, `reveal`,
+`scoreboard`, `recap` and `final`. Trivia goes `round_intro`, then question and reveal for each question in the round, then
+`recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. Other modes
+use `scoreboard` after each reveal; each state carries `host {name, id, text, callouts, cue}`, the current host line, the graphics that go with it, and the cue that picks its cutscene.

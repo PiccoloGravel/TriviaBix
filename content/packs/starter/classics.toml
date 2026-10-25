@@ -1,0 +1,432 @@
+# The questions TriviaBix shipped with before packs existed. They used to live in a
+# database migration; the server adopts those rows by prompt when it loads this pack.
+[pack]
+name = "Classics"
+author = "TriviaBix"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "Which country has the most lakes?"
+choices = ["Canada", "Russia", "United States", "Finland"]
+answer = "Canada"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "What is the smallest country in the world by area?"
+choices = ["Vatican City", "Monaco", "San Marino", "Liechtenstein"]
+answer = "Vatican City"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "Which river flows through Baghdad?"
+choices = ["Tigris", "Euphrates", "Nile", "Jordan"]
+answer = "Tigris"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "Mount Kilimanjaro is in which country?"
+choices = ["Tanzania", "Kenya", "Uganda", "Ethiopia"]
+answer = "Tanzania"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "What is the capital of Canada?"
+choices = ["Ottawa", "Toronto", "Vancouver", "Montreal"]
+answer = "Ottawa"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "What is the tallest mountain above sea level?"
+choices = ["Mount Everest", "K2", "Kangchenjunga", "Denali"]
+answer = "Mount Everest"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "geography"
+prompt = "What is the longest river in South America?"
+choices = ["Amazon", "Paraná", "Orinoco", "Magdalena"]
+answer = "Amazon"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "What is the chemical symbol for gold?"
+choices = ["Au", "Ag", "Gd", "Go"]
+answer = "Au"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Which planet has the most known moons?"
+choices = ["Saturn", "Jupiter", "Uranus", "Neptune"]
+answer = "Saturn"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Which gas do plants absorb for photosynthesis?"
+choices = ["Carbon dioxide", "Oxygen", "Nitrogen", "Helium"]
+answer = "Carbon dioxide"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "What is the hardest natural substance?"
+choices = ["Diamond", "Quartz", "Titanium", "Granite"]
+answer = "Diamond"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Roughly how fast does light travel?"
+choices = ["300,000 km per second", "150,000 km per second", "30,000 km per second", "3,000,000 km per second"]
+answer = "300,000 km per second"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Which blood type is the universal donor?"
+choices = ["O negative", "AB positive", "A negative", "B positive"]
+answer = "O negative"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Which part of the cell is called the powerhouse?"
+choices = ["Mitochondria", "Nucleus", "Ribosome", "Golgi apparatus"]
+answer = "Mitochondria"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+prompt = "Which element has atomic number 1?"
+choices = ["Hydrogen", "Helium", "Oxygen", "Carbon"]
+answer = "Hydrogen"
+
+[[question]]
+type = "multiple_choice"
+category = "history"
+prompt = "Who was the first person to walk on the Moon?"
+choices = ["Neil Armstrong", "Buzz Aldrin", "Yuri Gagarin", "Michael Collins"]
+answer = "Neil Armstrong"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "history"
+prompt = "Which ancient wonder stood in Alexandria?"
+choices = ["The Lighthouse", "The Hanging Gardens", "The Colossus", "The Temple of Artemis"]
+answer = "The Lighthouse"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "history"
+prompt = "In what year did the Titanic sink?"
+choices = ["1912", "1915", "1905", "1921"]
+answer = "1912"
+
+[[question]]
+type = "multiple_choice"
+category = "history"
+prompt = "Who painted the Mona Lisa?"
+choices = ["Leonardo da Vinci", "Michelangelo", "Raphael", "Donatello"]
+answer = "Leonardo da Vinci"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "Which band released \"Bohemian Rhapsody\"?"
+choices = ["Queen", "The Beatles", "Led Zeppelin", "Pink Floyd"]
+answer = "Queen"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "What is the name of Han Solo's ship?"
+choices = ["Millennium Falcon", "Star Destroyer", "X-Wing", "Slave I"]
+answer = "Millennium Falcon"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "What is the wizarding school in Harry Potter?"
+choices = ["Hogwarts", "Durmstrang", "Beauxbatons", "Ilvermorny"]
+answer = "Hogwarts"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "Which video game plumber wears a red cap?"
+choices = ["Mario", "Luigi", "Wario", "Toad"]
+answer = "Mario"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "What is Batman's real name?"
+choices = ["Bruce Wayne", "Clark Kent", "Peter Parker", "Tony Stark"]
+answer = "Bruce Wayne"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "pop-culture"
+prompt = "Which movie made \"I'll be back\" famous?"
+choices = ["The Terminator", "RoboCop", "Predator", "Die Hard"]
+answer = "The Terminator"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "food-drink"
+prompt = "Pizza Margherita comes from which country?"
+choices = ["Italy", "Greece", "France", "Spain"]
+answer = "Italy"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "food-drink"
+prompt = "Sushi rolls are usually wrapped in what?"
+choices = ["Seaweed", "Rice paper", "Lettuce", "Soy paper"]
+answer = "Seaweed"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "food-drink"
+prompt = "Which nut is used to make marzipan?"
+choices = ["Almond", "Cashew", "Walnut", "Hazelnut"]
+answer = "Almond"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "What is the fastest land animal?"
+choices = ["Cheetah", "Pronghorn", "Lion", "Greyhound"]
+answer = "Cheetah"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "How many hearts does an octopus have?"
+choices = ["Three", "One", "Two", "Eight"]
+answer = "Three"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "What is a group of crows called?"
+choices = ["A murder", "A flock", "A parliament", "A gaggle"]
+answer = "A murder"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "Which mammal can truly fly?"
+choices = ["Bat", "Flying squirrel", "Sugar glider", "Colugo"]
+answer = "Bat"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "What do giant pandas mostly eat?"
+choices = ["Bamboo", "Eucalyptus", "Berries", "Fish"]
+answer = "Bamboo"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "science"
+tags = ["animals"]
+prompt = "What is the largest mammal on Earth?"
+choices = ["Blue whale", "African elephant", "Sperm whale", "Giraffe"]
+answer = "Blue whale"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "sports"
+prompt = "How many players does a soccer team have on the field?"
+choices = ["11", "10", "9", "12"]
+answer = "11"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "sports"
+prompt = "Which country won the first FIFA World Cup in 1930?"
+choices = ["Uruguay", "Brazil", "Argentina", "Italy"]
+answer = "Uruguay"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "sports"
+prompt = "In tennis, what is a score of zero called?"
+choices = ["Love", "Nil", "Duck", "Zip"]
+answer = "Love"
+
+[[question]]
+type = "multiple_choice"
+category = "sports"
+prompt = "How many rings are on the Olympic flag?"
+choices = ["Five", "Four", "Six", "Seven"]
+answer = "Five"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+tags = ["tech"]
+prompt = "What does CPU stand for?"
+choices = ["Central Processing Unit", "Computer Personal Unit", "Central Program Utility", "Core Processing Uplink"]
+answer = "Central Processing Unit"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+tags = ["tech"]
+prompt = "Which company makes the iPhone?"
+choices = ["Apple", "Samsung", "Nokia", "Google"]
+answer = "Apple"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+tags = ["tech"]
+prompt = "What is the name of the Rust programming language's crab mascot?"
+choices = ["Ferris", "Crabby", "Rusty", "Clawd"]
+answer = "Ferris"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+tags = ["tech"]
+prompt = "In what year was the first iPhone released?"
+choices = ["2007", "2005", "2008", "2010"]
+answer = "2007"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+tags = ["language"]
+prompt = "\"Bonjour\" means hello in which language?"
+choices = ["French", "Italian", "Portuguese", "Romanian"]
+answer = "French"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "general"
+prompt = "What color do you get by mixing blue and yellow?"
+choices = ["Green", "Purple", "Orange", "Brown"]
+answer = "Green"
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Which city's motto is basically \"what happens here, stays here\"?"
+choices = ["Las Vegas", "Miami", "New Orleans", "Ibiza"]
+answer = "Las Vegas"
+difficulty = "easy"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Casanova supposedly ate dozens of which food for breakfast?"
+choices = ["Oysters", "Clams", "Mussels", "Shrimp"]
+answer = "Oysters"
+difficulty = "hard"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Which fruit emoji is the internet's favorite stand-in for a butt?"
+choices = ["Peach", "Apple", "Cherry", "Melon"]
+answer = "Peach"
+difficulty = "easy"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "The Kama Sutra comes from which country?"
+choices = ["India", "China", "Egypt", "Persia"]
+answer = "India"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "What is the Roman god of love called?"
+choices = ["Cupid", "Bacchus", "Mercury", "Apollo"]
+answer = "Cupid"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Which spirit is the base of a Sex on the Beach cocktail?"
+choices = ["Vodka", "Rum", "Gin", "Tequila"]
+answer = "Vodka"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Which hormone is nicknamed the \"cuddle hormone\"?"
+choices = ["Oxytocin", "Cortisol", "Insulin", "Adrenaline"]
+answer = "Oxytocin"
+difficulty = "hard"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "On Tinder, which way do you swipe to like someone?"
+choices = ["Right", "Left", "Up", "Down"]
+answer = "Right"
+difficulty = "easy"
+rating = "PG-13"
+
+[[question]]
+type = "multiple_choice"
+category = "after-dark"
+prompt = "Which 18th-century Venetian's name became slang for a smooth seducer?"
+choices = ["Casanova", "Don Juan", "Romeo", "Valentino"]
+answer = "Casanova"
+rating = "PG-13"

@@ -39,12 +39,15 @@ async fn start_server_with_db() -> (String, String) {
             hangman: Duration::from_secs(5),
             reveal: Duration::from_millis(200),
             scoreboard: Duration::from_millis(200),
+            round_intro: Duration::from_millis(200),
+            recap: Duration::from_millis(200),
             intro: Duration::from_millis(200),
             talk_cps: 0.0,
             idle_timeout: Duration::from_secs(60),
         },
         admin_password: Some(ADMIN_PASSWORD.into()),
         host_script: None,
+        content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -122,8 +125,10 @@ impl FakeItunes {
     }
 }
 
-async fn create_room(addr: &str, rounds: usize) -> (String, String) {
-    create_room_with(addr, json!({ "rounds": rounds })).await
+/// A trivia room of three rounds with `questions / 3` questions each (at least one).
+async fn create_room(addr: &str, questions: usize) -> (String, String) {
+    let per_round = (questions / 3).max(1);
+    create_room_with(addr, json!({ "trivia_rounds": 3, "per_round": per_round })).await
 }
 
 async fn create_room_with(addr: &str, body: Value) -> (String, String) {
@@ -239,9 +244,12 @@ async fn eight_players_play_a_full_game() {
             s["phase"] == "question" && s["round"] == round
         })
         .await;
-        assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
-        let cue = if round == 3 { "final_round" } else { "round" };
-        assert_eq!(q["host"]["cue"], cue);
+        // Multiple choice has four choices, true/false two.
+        let choices = q["question"]["choices"].as_array().unwrap().len();
+        assert!(choices == 4 || choices == 2, "{q}");
+        // Trivia plays the question card scene before every question; the final round's title
+        // card plays the final-round scene instead.
+        assert_eq!(q["host"]["cue"], "round");
         assert!(
             q["reveal"].is_null(),
             "answer must not leak during the question"
@@ -351,12 +359,81 @@ async fn unanswered_question_times_out() {
 }
 
 #[tokio::test]
+async fn host_reads_each_questions_own_lines_within_the_room_rating() {
+    use triviabix::content::{AdminLine, QuestionSearch};
+    use triviabix::db::Db;
+    let (addr, url) = start_server_with_db().await;
+    let db = Db::connect(&url).await.unwrap();
+    let line = |rating: &str, text: &str| AdminLine {
+        slot: String::new(),
+        rating: rating.into(),
+        text: text.into(),
+        origin: String::new(),
+    };
+    // Give every question a PG lead-in, and a reveal line only an MA room may hear.
+    let mut offset = 0;
+    loop {
+        let page = db
+            .admin_questions(&QuestionSearch {
+                offset,
+                limit: Some(200),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        for q in &page.questions {
+            db.set_edited_lines(q.id, "lead_in", &[line("PG", "Here's one about {host}.")])
+                .await
+                .unwrap();
+            db.set_edited_lines(q.id, "reveal", &[line("MA", "SPICY REVEAL")])
+                .await
+                .unwrap();
+        }
+        offset += 200;
+        if offset >= page.total {
+            break;
+        }
+    }
+
+    let (code, host_token) = create_room(&addr, 1).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Ann")).await;
+    recv(&mut phone).await;
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    let said = q["host"]["text"].as_str().unwrap();
+    assert!(said.contains("Here's one about Bix."), "{said}");
+    send(&mut host, json!({ "type": "skip" })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let said = reveal["host"]["text"].as_str().unwrap();
+    assert!(
+        !said.contains("SPICY"),
+        "a PG room heard an MA line: {said}"
+    );
+
+    // An MA room hears it, in place of the generic roast.
+    let (code, host_token) =
+        create_room_with(&addr, json!({ "rounds": 1, "max_rating": "MA" })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Bo")).await;
+    recv(&mut phone).await;
+    send(&mut host, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+    send(&mut host, json!({ "type": "skip" })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let said = reveal["host"]["text"].as_str().unwrap();
+    assert!(said.contains("SPICY REVEAL"), "{said}");
+}
+
+#[tokio::test]
 async fn static_pages_are_served() {
     let addr = start_server().await;
     for path in [
         "/",
         "/host",
         "/admin",
+        "/admin/questions",
+        "/admin-questions.js",
         "/style.css",
         "/player.js",
         "/host.js",
@@ -373,7 +450,7 @@ async fn static_pages_are_served() {
 
 #[tokio::test]
 async fn ratings_filter_questions() {
-    use triviabix::db::{Db, Rating};
+    use triviabix::db::{Db, Difficulty, Rating};
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
     let db = Db::connect(&format!("sqlite://{}", path.display()))
         .await
@@ -387,6 +464,16 @@ async fn ratings_filter_questions() {
     let pg13 = db.random_questions(total, Rating::Pg13, &[]).await.unwrap();
     assert!(pg13.len() > pg.len());
     assert!(pg13.iter().all(|q| q.choices.len() == 4 && q.answer < 4));
+
+    // Every question has a difficulty, and the seed set has all three.
+    let pool = db.question_pool(Rating::Pg13).await.unwrap();
+    assert_eq!(pool.len(), pg13.len());
+    for d in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
+        assert!(pool.iter().any(|q| q.difficulty == d), "no {d:?} questions");
+    }
+    let ids: Vec<i64> = pool.iter().rev().take(5).map(|q| q.id).collect();
+    let loaded = db.questions_by_ids(&ids, Rating::Pg13).await.unwrap();
+    assert_eq!(loaded.iter().map(|q| q.id).collect::<Vec<_>>(), ids);
 
     let r: Rating = serde_json::from_str("\"NC-17\"").unwrap();
     assert_eq!(r, Rating::Nc17);
@@ -1094,4 +1181,167 @@ async fn admin_sees_and_runs_every_room() {
         .unwrap();
     let (status, _) = admin(&addr, &cookie, "rooms", None).await;
     assert_eq!(status, 401);
+}
+
+#[tokio::test]
+async fn admin_edits_a_questions_lines() {
+    let addr = start_server().await;
+    let cookie = admin_login(&addr).await;
+    let (status, page) = admin(&addr, &cookie, "questions?q=Canberra", None).await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(page["total"], 1);
+    let q = &page["questions"][0];
+    assert_eq!(q["answer"], "Canberra");
+    let has = |q: &Value, origin: &str| {
+        q["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["slot"] == "lead_in" && l["origin"] == origin)
+    };
+    assert!(has(q, "content"), "shipped questions have lines: {q}");
+
+    let put = |lines: Value| {
+        let url = format!(
+            "http://{addr}/api/admin/questions/{}/lines/lead_in",
+            q["id"]
+        );
+        let cookie = cookie.clone();
+        async move {
+            reqwest::Client::new()
+                .put(url)
+                .header("cookie", cookie)
+                .json(&json!({ "lines": lines }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        }
+    };
+    assert_eq!(
+        put(json!([{ "rating": "PG", "text": "Mine now." }])).await,
+        200
+    );
+    assert_eq!(
+        put(json!([{ "rating": "R", "text": "Bad rating." }])).await,
+        400
+    );
+    assert_eq!(
+        put(json!([{ "rating": "PG", "text": "Hi {name}" }])).await,
+        400
+    );
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 1);
+    assert!(has(&page["questions"][0], "edited"));
+
+    // Reloading the packs keeps the edit.
+    let (status, report) = admin(&addr, &cookie, "content/reload", Some(json!({}))).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["added"], 0);
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 1);
+
+    // Going back to the pack's lines.
+    assert_eq!(put(json!([])).await, 200);
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 0);
+}
+
+#[tokio::test]
+async fn trivia_rounds_get_harder_with_recaps_between() {
+    let addr = start_server().await;
+    let (code, host_token) =
+        create_room_with(&addr, json!({ "trivia_rounds": 4, "per_round": 2 })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut ann = open(&addr, &format!("/ws/play?code={code}&name=Ann")).await;
+    recv(&mut ann).await;
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 1).await;
+    assert_eq!(lobby["settings"]["trivia_rounds"], 4);
+    assert_eq!(lobby["total_rounds"], 8);
+    send(&mut host, json!({ "type": "start" })).await;
+
+    let mut total_points = 0;
+    for stage in 1..=4u64 {
+        // Each round opens on a title card with its theme, difficulty and points.
+        let card = wait_state(&mut host, |s| {
+            s["phase"] == "round_intro" && s["stage"] == stage
+        })
+        .await;
+        assert!(card["question"].is_null(), "no question on the title card");
+        let ladder = card["stages"].as_array().unwrap();
+        assert_eq!(ladder.len(), 4);
+        let me = &ladder[stage as usize - 1];
+        assert!(me["category"].is_string());
+        let (difficulty, pct) =
+            [("easy", 100), ("medium", 150), ("hard", 200), ("hard", 300)][stage as usize - 1];
+        assert_eq!(me["difficulty"], difficulty);
+        assert_eq!(me["points_pct"], pct);
+        assert_eq!(me["final_round"], stage == 4);
+        for (i, r) in ladder.iter().enumerate() {
+            let want = match (i + 1) as u64 {
+                n if n < stage => "done",
+                n if n == stage => "current",
+                _ => "next",
+            };
+            assert_eq!(r["status"], want, "{r}");
+            if want == "next" {
+                assert!(r["category"].is_null(), "future themes stay secret: {r}");
+            }
+        }
+        let cue = if stage == 4 {
+            json!("final_round")
+        } else {
+            Value::Null
+        };
+        assert_eq!(card["host"]["cue"], cue);
+        let said = card["host"]["text"].as_str().unwrap();
+        assert!(!said.contains('{'), "unfilled placeholder: {said}");
+
+        for n in 1..=2u64 {
+            let q = wait_state(&mut host, |s| {
+                s["phase"] == "question" && s["stage"] == stage && s["stage_question"] == n
+            })
+            .await;
+            assert_eq!(q["round"], (stage - 1) * 2 + n);
+            send(&mut ann, json!({ "type": "answer", "choice": 0 })).await;
+            let reveal = wait_state(&mut ann, |s| s["phase"] == "reveal").await;
+            let correct = reveal["reveal"]["correct"].as_u64().unwrap();
+            let points = reveal["reveal"]["results"][0]["points"].as_i64().unwrap();
+            if correct == 0 {
+                // A right answer pays 500 to 1000, scaled up by the round.
+                let pct = pct as i64;
+                assert!(
+                    points >= 500 * pct / 100 && points <= 1000 * pct / 100,
+                    "{points}"
+                );
+            } else {
+                assert_eq!(points, 0);
+            }
+            total_points += points;
+        }
+
+        // After every round: the scores and what was asked.
+        let recap = wait_state(&mut host, |s| s["phase"] == "recap").await;
+        assert_eq!(recap["recap"]["stage"], stage);
+        let questions = recap["recap"]["questions"].as_array().unwrap();
+        assert_eq!(questions.len(), 2);
+        assert!(
+            questions
+                .iter()
+                .all(|q| q["answer"].is_string() && q["prompt"].is_string())
+        );
+        assert!(recap["question"].is_null());
+        assert!(!recap["host"]["text"].as_str().unwrap().contains('{'));
+    }
+
+    let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
+    assert_eq!(fin["players"][0]["score"].as_i64().unwrap(), total_points);
+    assert!(
+        fin["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == "done")
+    );
 }

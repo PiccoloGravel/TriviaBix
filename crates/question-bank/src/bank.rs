@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::judge::normalize;
 use crate::model::*;
 use crate::pack::PackFile;
+use crate::script::{validate_line, ScriptFile};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
@@ -84,6 +85,11 @@ pub struct QuestionBank {
     categories: Vec<Category>,
     questions: Vec<Question>,
     by_id: HashMap<String, usize>,
+    /// Which pack file each question came from, relative to `packs/`.
+    packs: HashMap<String, PathBuf>,
+    /// Things worth fixing that don't stop the bank from loading, like a script for a
+    /// question that no longer exists.
+    warnings: Vec<Problem>,
 }
 
 impl QuestionBank {
@@ -97,15 +103,82 @@ impl QuestionBank {
             message: e.to_string(),
         })?;
 
+        let packs_dir = dir.join("packs");
         let mut files = Vec::new();
-        collect_pack_files(&dir.join("packs"), &mut files)?;
+        collect_pack_files(&packs_dir, &mut files)?;
         files.sort();
 
         let mut questions = Vec::new();
+        let mut packs = HashMap::new();
         for path in files {
-            questions.extend(load_pack(&path)?);
+            let rel = path.strip_prefix(&packs_dir).unwrap_or(&path).to_path_buf();
+            for q in load_pack(&path)? {
+                packs.insert(q.id.clone(), rel.clone());
+                questions.push(q);
+            }
         }
-        Self::new(cats.categories, questions).map_err(LoadError::Invalid)
+        let mut bank = Self::new(cats.categories, questions).map_err(LoadError::Invalid)?;
+        bank.packs = packs;
+        bank.load_scripts(&dir.join("scripts"))?;
+        Ok(bank)
+    }
+
+    /// Attach every script file under `dir` to the questions it names.
+    fn load_scripts(&mut self, dir: &Path) -> Result<(), LoadError> {
+        let mut files = Vec::new();
+        collect_pack_files(dir, &mut files)?;
+        files.sort();
+        let mut problems = Vec::new();
+        for path in files {
+            let file = ScriptFile::read(&path).map_err(|message| LoadError::Parse {
+                path: path.clone(),
+                message,
+            })?;
+            let rel = path
+                .strip_prefix(dir)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            for entry in file.scripts {
+                let at = format!("script for {} in {rel}", entry.question);
+                let Some(&i) = self.by_id.get(&entry.question) else {
+                    self.warnings
+                        .push(problem(&at, "no question has this id; was it reworded?"));
+                    continue;
+                };
+                let q = &mut self.questions[i];
+                if !entry.matches_prompt(q) {
+                    self.warnings.push(problem(
+                        &at,
+                        &format!(
+                            "was written for a different prompt; it now reads {:?}",
+                            q.prompt
+                        ),
+                    ));
+                }
+                for line in entry.lines(q.rating) {
+                    for p in validate_line(&line) {
+                        problems.push(problem(&at, &p));
+                    }
+                    q.script.push(line);
+                }
+            }
+        }
+        if problems.is_empty() {
+            Ok(())
+        } else {
+            Err(LoadError::Invalid(problems))
+        }
+    }
+
+    /// The pack file a question came from, relative to `packs/`. Only known for banks
+    /// loaded with [`QuestionBank::load_dir`].
+    pub fn pack_of(&self, id: &str) -> Option<&Path> {
+        self.packs.get(id).map(PathBuf::as_path)
+    }
+
+    pub fn warnings(&self) -> &[Problem] {
+        &self.warnings
     }
 
     /// Build a bank from parts, validating everything.
@@ -153,6 +226,8 @@ impl QuestionBank {
                 categories,
                 questions,
                 by_id,
+                packs: HashMap::new(),
+                warnings: Vec::new(),
             })
         } else {
             Err(problems)
@@ -231,6 +306,12 @@ impl QuestionBank {
             for t in &q.tags {
                 *s.by_tag.entry(t.clone()).or_default() += 1;
             }
+            if q.has_lines(ScriptSlot::LeadIn) {
+                s.with_lead_in += 1;
+            }
+            if q.has_lines(ScriptSlot::Reveal) {
+                s.with_reveal += 1;
+            }
         }
         s
     }
@@ -245,6 +326,10 @@ pub struct Stats {
     pub by_difficulty: BTreeMap<String, usize>,
     pub by_rating: BTreeMap<String, usize>,
     pub by_tag: BTreeMap<String, usize>,
+    /// Questions the host can set up with their own lead-in.
+    pub with_lead_in: usize,
+    /// Questions with their own joke or fun fact for the reveal.
+    pub with_reveal: usize,
 }
 
 fn problem(location: &str, message: &str) -> Problem {
@@ -309,6 +394,9 @@ pub fn validate_question(q: &Question) -> Vec<String> {
                 out.push("items repeat".into());
             }
         }
+    }
+    for line in q.host_lines() {
+        out.extend(validate_line(&line));
     }
     out
 }
@@ -390,6 +478,7 @@ mod tests {
             kind: QuestionKind::TrueFalse { answer: true },
             fun_fact: None,
             host_quip: None,
+            script: vec![],
             source: None,
         }
     }

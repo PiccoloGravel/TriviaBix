@@ -1,0 +1,60 @@
+[[script]]
+question = "food-drink-ec1230ad"
+prompt = "What is the main ingredient in guacamole?"
+lead_in = "Chips and dip question. What's in the green stuff?"
+reveal = "The word comes from Aztec words for avocado and sauce. Avocado sauce. Delicious and accurate."
+
+[[script]]
+question = "food-drink-3b5c28dc"
+prompt = "Peanuts are legumes, not true nuts."
+lead_in = "Snack question. Is a peanut actually a nut?"
+reveal = "They grow underground in pods, like peas. A nut in name only."
+
+[[script]]
+question = "food-drink-dcc13908"
+prompt = """Which Italian dessert's name means "pick me up"?"""
+lead_in = "Dessert question. Coffee, cream, and a little pick-me-up."
+
+[script.reveal]
+PG = "Food historians think it's younger than you'd guess. Most date it to the 1960s or 70s."
+PG-13 = "Coffee, sugar, and booze in one dessert. Italy really understands what we need."
+
+[[script]]
+question = "food-drink-ad0fd994"
+prompt = "Which spice is the most expensive by weight?"
+lead_in = "Shopping question. What's worth its weight in gold?"
+
+[[script]]
+question = "food-drink-56119583"
+prompt = "How many teaspoons are in a tablespoon?"
+lead_in = "Kitchen math. How many little spoons in a big spoon?"
+reveal = "Or as most of us measure it: one splash, two splashes, oops."
+
+[[script]]
+question = "food-drink-5ff95dbb"
+prompt = """Which pasta's name means "little tongues" in Italian?"""
+lead_in = "Pasta question. Grazie in advance."
+
+[[script]]
+question = "food-drink-3961d443"
+prompt = "Honey can stay edible for thousands of years."
+lead_in = "True or false time. Can honey last forever?"
+
+[[script]]
+question = "food-drink-09190b3b"
+prompt = "Put these peppers in order from mildest to hottest."
+lead_in = "Hot stuff coming through. Rank these peppers."
+
+[[script]]
+question = "food-drink-d3c072dc"
+prompt = "Which citrus fruit goes in a classic mojito?"
+lead_in = "Cocktail question. Let's muddle something."
+
+[script.reveal]
+PG-13 = "Mint, lime, sugar, rum, and soda. Basically a salad you can drink."
+MA = "Mint, lime, sugar, rum. It's practically health food. Have three."
+
+[[script]]
+question = "food-drink-db57ef93"
+prompt = "What cocktail mixes rum, coconut cream, and pineapple juice?"
+lead_in = "Tropical drink question. Umbrella optional."

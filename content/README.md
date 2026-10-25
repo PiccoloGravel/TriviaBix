@@ -91,6 +91,51 @@ the bank are skipped, and running the same import again adds to the same file. I
 questions are rated PG, and each keeps its source and license so attribution travels with
 it. Skim a fresh import before a party: these sites are crowd-sourced.
 
+## Host scripts
+
+Bix can say something about each question: a **lead-in** right after he announces it, and a **reveal** line after the
+answer (a joke, an anecdote, or a fun fact). Lines are rated like questions, so a PG room hears the clean one and an MA
+room usually gets the spicy one. A question with no lines of its own gets Bix's generic banter instead.
+
+Lines can go straight into a pack:
+
+```toml
+[[question]]
+type = "true_false"
+prompt = "A group of crows is called a murder."
+answer = true
+lead_in = "Bird question. It sounds ominous."   # rated like the question
+reveal = { PG = "Crows remember faces and hold grudges.", MA = "Crows remember faces. Yours. Forever." }
+host_quip = "..."   # host_quip and fun_fact are reveal lines too
+```
+
+`lead_in` and `reveal` take one line, a list of lines, or a table of ratings to lines. Keep them under 280 characters,
+don't give the answer away in a lead-in, and use `{host}` if Bix should say his own name.
+
+Lines written in bulk live in `scripts/`, one file per pack, matched to questions by id, so packs stay tidy:
+
+```toml
+[[script]]
+question = "general-1a2b3c4d"
+prompt = "How many sides does a hexagon have?"   # for humans; validate warns if the question changed
+lead_in = "Shapes time. Count the sides."
+reveal = "Bees build honeycomb this way because it packs with no wasted space."
+```
+
+To write lines for many questions at once, for example after an import:
+
+```sh
+# 1. Export the questions that still need lines, with answers and existing lines for context.
+cargo run -p triviabix-questions --features cli -- scripts todo --out todo.json
+# 2. Fill in lead_in and reveal in todo.json (by hand, or have an assistant do it).
+# 3. File them under content/scripts next to each question's pack.
+cargo run -p triviabix-questions --features cli -- scripts add todo.json
+```
+
+`scripts todo` takes `--missing lead-in|reveal|either`, `--topic`, and `--limit`. `stats` shows how many questions have
+lines. The server loads packs and scripts into its database at startup (or on **Reload packs** in the admin panel), and
+lines edited in the admin panel override the files for that question.
+
 ## Using the bank from the server
 
 ```rust
@@ -103,5 +148,8 @@ let to_phones = round[0].public_view(&mut rand::thread_rng()); // no answer insi
 let result = round[0].check(&PlayerAnswer::Choice("a-ha".into()));
 ```
 
-`export --out questions.json` writes the whole bank as one JSON array if you'd rather
-seed a database.
+The game server loads every pack (imports included) and script file into its SQLite
+database at startup, matching questions by id, and plays from there. Questions removed from a
+pack stop being played. The game plays multiple choice and true/false questions so far; the
+other types are stored and wait for phone support. `export --out questions.json` writes the
+whole bank as one JSON array.

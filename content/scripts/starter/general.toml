@@ -1,0 +1,62 @@
+[[script]]
+question = "general-aa3e3530"
+prompt = "How many sides does a hexagon have?"
+lead_in = "Shapes time. Count the sides."
+reveal = "Bees build their honeycomb with this shape, because it packs together with no wasted space. Bees are better engineers than us."
+
+[[script]]
+question = "general-92784506"
+prompt = "A group of crows is called a murder."
+lead_in = "True or false. Spooky birds edition."
+
+[[script]]
+question = "general-3bb60b7a"
+prompt = "What is the only letter that doesn't appear in any US state name?"
+lead_in = "Spelling bee, United States edition."
+reveal = "Sorry, Quebec. Not a state."
+
+[[script]]
+question = "general-77f31e8b"
+prompt = "How many minutes are in a day?"
+lead_in = "Quick math. How many minutes do you get each day?"
+
+[script.reveal]
+PG = "You spend about 480 of them asleep. More if you're a teenager."
+PG-13 = "And you just spent a few of them on this game instead of doing laundry. Good choice."
+
+[[script]]
+question = "general-5e188219"
+prompt = "Which language has the most native speakers?"
+lead_in = "Language question. Which one has the most native speakers?"
+reveal = "English has the most speakers if you count people who learned it, but as a first language this one wins easily."
+
+[[script]]
+question = "general-090a7ac5"
+prompt = "Put these units in order from smallest to largest."
+lead_in = "Tech question. Put your storage in order."
+
+[script.reveal]
+PG = "Each step up is about a thousand times bigger. Your phone measures in gigabytes. Your photo library measures in regret."
+PG-13 = "Each one's a thousand times bigger, and somehow your phone is still full of screenshots you'll never look at."
+
+[[script]]
+question = "general-682c3c29"
+prompt = "Goldfish only have a three-second memory."
+lead_in = "True or false. Fish brain edition."
+
+[[script]]
+question = "general-bc96a80b"
+prompt = "How many cards are in a standard deck, without jokers?"
+lead_in = "Card table question. Count the deck."
+reveal = "Fifty-two cards, fifty-two weeks in a year. Coincidence? Pretty much."
+
+[[script]]
+question = "general-cb46f67f"
+prompt = "Which of these words is a palindrome?"
+lead_in = "Word nerds, this one's for you. Read it backwards."
+reveal = "Taco cat is also a palindrome. And a lifestyle."
+
+[[script]]
+question = "general-91d430ac"
+prompt = "What color do you get when you mix blue and yellow paint?"
+lead_in = "Art class, take two."

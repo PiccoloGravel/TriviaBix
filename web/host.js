@@ -4,7 +4,7 @@
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000, teams: 0 };
+let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000, teams: 0, trivia_rounds: 4, per_round: 5 };
 let conn = null;
 let state = null;
 let prev = null;
@@ -140,13 +140,15 @@ function cutsceneContext(s) {
   let players = h.cue === "intro" ? s.players : sortedPlayers(s);
   if (h.cue === "finale_tie") players = players.filter((p) => p.score === players[0].score);
   const item = s.question || s.hangman;
+  const stage = s.stage ? (s.stages || [])[s.stage - 1] : null;
   return {
     players,
     subject,
     vars: {
       host: h.name,
-      round: s.round,
-      total: s.total_rounds,
+      // In trivia rounds, count questions within the current round.
+      round: s.stage_question || s.round,
+      total: (stage && stage.questions) || s.total_rounds,
       kind: s.hangman || s.settings.mode === "hangman" ? "Puzzle" : s.settings.mode === "songs" ? "Song" : "Question",
       category: item ? item.category : "",
       name: subject ? subject.name : "",
@@ -225,6 +227,7 @@ let replayTimer = null;
 const CALLOUT_ICONS = {
   streak: "🔥", streak_broken: "💔", roast: "🍗", asleep: "😴", only_one: "🧠", fastest: "⚡",
   nobody: "🤦", everyone: "🎯", new_leader: "👑", leader: "🏃", tie: "🤝", last_place: "🐌", winner: "🏆",
+  round_winner: "🏅",
 };
 
 /** Pops the line's callouts one after another, roughly as the host gets to them. */
@@ -294,12 +297,25 @@ function renderSetup() {
   document.querySelectorAll("[data-clip]").forEach((b) => {
     b.classList.toggle("secondary", Number(b.dataset.clip) !== settings.clip_ms);
   });
+  document.querySelectorAll("[data-trivia-rounds]").forEach((b) => {
+    b.classList.toggle("secondary", Number(b.dataset.triviaRounds) !== settings.trivia_rounds);
+  });
+  document.querySelectorAll("[data-per-round]").forEach((b) => {
+    b.classList.toggle("secondary", Number(b.dataset.perRound) !== settings.per_round);
+  });
   $("#clip-opts").classList.toggle("hidden", settings.mode !== "songs");
+  // Trivia is played in rounds of questions; the other games count puzzles or songs.
+  $("#trivia-opts").classList.toggle("hidden", settings.mode !== "trivia");
+  $("#rounds-opts").classList.toggle("hidden", settings.mode === "trivia");
   $("#rounds-label").textContent = { songs: "Songs", hangman: "Puzzles" }[settings.mode] || "Questions";
 }
 
 document.querySelectorAll("[data-rounds]").forEach((b) =>
   b.addEventListener("click", () => { settings.rounds = Number(b.dataset.rounds); renderSetup(); }));
+document.querySelectorAll("[data-trivia-rounds]").forEach((b) =>
+  b.addEventListener("click", () => { settings.trivia_rounds = Number(b.dataset.triviaRounds); renderSetup(); }));
+document.querySelectorAll("[data-per-round]").forEach((b) =>
+  b.addEventListener("click", () => { settings.per_round = Number(b.dataset.perRound); renderSetup(); }));
 document.querySelectorAll("[data-mode]").forEach((b) =>
   b.addEventListener("click", () => { settings.mode = b.dataset.mode; renderSetup(); }));
 document.querySelectorAll("[data-rating]").forEach((b) =>
@@ -362,7 +378,7 @@ function render(s) {
   prev = state;
   state = s;
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
-  $("#skip-btn").classList.toggle("hidden", !["intro", "question", "reveal", "scoreboard"].includes(s.phase));
+  $("#skip-btn").classList.toggle("hidden", !["intro", "round_intro", "question", "reveal", "scoreboard", "recap"].includes(s.phase));
   if (phaseChanged) {
     Cutscenes.stop();
     $("#callouts").replaceChildren();
@@ -377,7 +393,10 @@ function render(s) {
   }
   show(s.phase);
   announceLateJoiners(s);
-  ({ lobby: renderLobby, intro: renderIntro, question: renderQuestion, reveal: renderReveal, scoreboard: renderScores, final: renderFinal })[s.phase](s, phaseChanged);
+  ({
+    lobby: renderLobby, intro: renderIntro, round_intro: renderRoundIntro, question: renderQuestion,
+    reveal: renderReveal, scoreboard: renderScores, recap: renderRecap, final: renderFinal,
+  })[s.phase](s, phaseChanged);
   // The question is read out after the host's banter.
   // In Name That Tune the clip plays instead.
   hostSays(s, s.phase === "question" && s.question.kind !== "song" ? s.question.prompt : null);
@@ -397,7 +416,10 @@ const teamOf = (s, p) => s.teams.find((t) => t.id === p.team);
 
 function renderIntro(s, changed) {
   if (!changed) return;
-  $("#i-tagline").textContent = `${s.total_rounds} ${{ hangman: "puzzles", songs: "songs" }[s.settings.mode] || "questions"} · rated ${s.settings.max_rating} · ${s.players.length} contestants`;
+  const length = s.stages.length
+    ? `${s.stages.length} rounds · ${s.total_rounds} questions`
+    : `${s.total_rounds} ${{ hangman: "puzzles", songs: "songs" }[s.settings.mode] || "questions"}`;
+  $("#i-tagline").textContent = `${length} · rated ${s.settings.max_rating} · ${s.players.length} contestants`;
   $("#i-lineup").replaceChildren(...s.players.map((p, i) =>
     el("div", { style: `--i:${i}` }, TBX.avatar(p, "11vh"), el("div", {}, p.name))));
 }
@@ -416,7 +438,7 @@ function renderLobby(s, changed) {
     ? `🎵 Name That Tune · ${s.settings.rounds} songs · ${s.settings.clip_ms / 1000}-second clips · rated ${s.settings.max_rating}`
     : s.settings.mode === "hangman"
     ? `Speed Hangman · ${s.settings.rounds} puzzles · rated ${s.settings.max_rating}`
-    : `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
+    : `${s.settings.trivia_rounds} rounds of ${s.settings.per_round} questions, easy to hard${s.settings.trivia_rounds > 3 ? " plus a final" : ""} · rated ${s.settings.max_rating}`;
   if (s.settings.teams) $("#lobby-settings").textContent += ` · ${s.settings.teams} teams`;
 
   const slots = $("#slots");
@@ -450,8 +472,64 @@ function choiceTile(text, i) {
 }
 
 function roundLabel(s) {
+  const st = stageOf(s);
+  if (st && s.stage_question) {
+    return `${stageName(st)} · Question ${s.stage_question} of ${st.questions} · ${mult(st.points_pct)} points`;
+  }
   const kind = s.hangman ? "Puzzle" : s.question && s.question.kind === "song" ? "Song" : "Question";
   return `${kind} ${s.round} of ${s.total_rounds}`;
+}
+
+// ---------- Trivia rounds ----------
+
+const DIFFICULTY = { easy: "Easy", medium: "Medium", hard: "Hard" };
+const stageOf = (s) => (s.stage ? s.stages[s.stage - 1] : null);
+const stageName = (st) => (st.final_round ? "Final round" : `Round ${st.number}`);
+const mult = (pct) => `×${pct / 100}`;
+const diffClass = (st) => `diff-${st.final_round ? "final" : st.difficulty}`;
+
+/** The rounds as a staircase, easiest first, with the current one lifted. */
+function renderLadder(s, box) {
+  box.replaceChildren(...s.stages.map((st, i) =>
+    el("div", { class: `rung ${st.status} ${diffClass(st)}`, style: `--i:${i}` },
+      el("div", { class: "rung-title" }, st.final_round ? "Final" : `Round ${st.number}`),
+      el("div", { class: "rung-cat" }, st.category || "???"),
+      el("div", { class: "rung-diff" }, `${st.final_round ? "Hardest" : DIFFICULTY[st.difficulty]} · ${mult(st.points_pct)}`))));
+}
+
+function renderRoundIntro(s, changed) {
+  const st = stageOf(s);
+  const screen = $("#round_intro");
+  screen.classList.remove("diff-easy", "diff-medium", "diff-hard", "diff-final");
+  screen.classList.add(diffClass(st));
+  $("#ri-count").textContent = `Round ${st.number} of ${s.stages.length}`;
+  $("#ri-code").textContent = s.code;
+  $("#ri-title").textContent = st.final_round ? "Final round" : `Round ${st.number}`;
+  $("#ri-cat").textContent = st.category;
+  $("#ri-diff").textContent = st.final_round ? "Hardest" : DIFFICULTY[st.difficulty];
+  $("#ri-mult").textContent = `${mult(st.points_pct)} points`;
+  $("#ri-qs").textContent = `${st.questions} question${st.questions === 1 ? "" : "s"}`;
+  renderLadder(s, $("#ri-ladder"));
+  if (changed) enter(screen);
+}
+
+function renderRecap(s, changed) {
+  const st = stageOf(s);
+  const r = s.recap;
+  const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
+  $("#rc-round").textContent = `Round ${st.number} of ${s.stages.length}`;
+  $("#rc-code").textContent = s.code;
+  $("#rc-title").textContent = `${stageName(st)}: ${st.category}`;
+  $("#rc-teams").replaceChildren(...teamStrip(s));
+  fillBoard($("#rc-board"), s, Object.fromEntries(r.points.map((p) => [p.player_id, p.points])), changed);
+  $("#rc-qs").replaceChildren(...r.questions.map((q, i) => el("div", { class: "rq", style: `--i:${i}` },
+    el("span", { class: "rq-n" }, i + 1),
+    el("div", { class: "rq-text" }, el("div", { class: "rq-prompt" }, q.prompt), el("div", { class: "rq-answer" }, q.answer)),
+    el("div", { class: "rq-who" }, q.right.length
+      ? q.right.map((id) => byId[id] && TBX.avatar(byId[id], "3.6vh"))
+      : el("span", { class: "muted" }, "Nobody!")))));
+  renderLadder(s, $("#rc-ladder"));
+  if (changed) enter($("#recap"));
 }
 
 /** Plays the clip once the host stops talking, then once more halfway through what's left for anyone who blinked. */
@@ -496,7 +574,7 @@ function renderQuestion(s, changed) {
     if (!p.answered) a.classList.add("waiting");
     a.title = p.name;
     return a;
-  }), late ? el("span", { class: "muted" }, `+${late} joining next question`) : null);
+  }), ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []));
 }
 
 function startSecs(target, ms, dangerAt = 0) {
@@ -645,13 +723,16 @@ function renderScores(s, changed) {
   $("#s-round").textContent = roundLabel(s);
   $("#s-code").textContent = s.code;
   const results = s.reveal ? s.reveal.results : s.hangman ? s.hangman.results : [];
-  const gains = Object.fromEntries(results.map((r) => [r.player_id, r.points]));
+  $("#s-teams").replaceChildren(...teamStrip(s));
+  fillBoard($("#s-board"), s, Object.fromEntries(results.map((r) => [r.player_id, r.points])), changed);
+}
+
+/** Ranked scores with what each player just gained; rows slide up or down from where they were. */
+function fillBoard(board, s, gains, changed) {
   let rank = 0, last = null;
   const n = playing(s).length;
-  $("#s-teams").replaceChildren(...teamStrip(s));
-  const board = $("#s-board");
   board.style.setProperty("--rows", n > 8 ? Math.ceil(n / 2) : Math.max(n, 1));
-  // Where everyone stood before this question, so rows can slide from old place to new.
+  // Where everyone stood before these points, so rows can slide from old place to new.
   const before = playing(s).sort((a, b) => (b.score - (gains[b.id] || 0)) - (a.score - (gains[a.id] || 0))).map((p) => p.id);
   const rows = sortedPlayers(s).map((p, i) => {
     if (p.score !== last) { rank = i + 1; last = p.score; }

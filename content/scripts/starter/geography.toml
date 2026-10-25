@@ -1,0 +1,64 @@
+[[script]]
+question = "geography-c057c715"
+prompt = "What is the capital of Australia?"
+lead_in = "Capital city question. Don't say the obvious one."
+
+[[script]]
+question = "geography-5cf9a601"
+prompt = "Russia spans 11 time zones."
+lead_in = "True or false. Time zones edition."
+reveal = "Big, but not the record holder. Count its overseas territories and France covers twelve."
+
+[[script]]
+question = "geography-3ee5b868"
+prompt = "How many countries are in Africa (counting UN members)?"
+lead_in = "Africa question. How many countries?"
+reveal = "The biggest by area is Algeria. The smallest on the mainland is The Gambia."
+
+[[script]]
+question = "geography-ccf2b33d"
+prompt = "What is the largest ocean on Earth?"
+lead_in = "Big water question. Which ocean is the biggest?"
+reveal = "It covers more of the planet than all the land put together."
+
+[[script]]
+question = "geography-e7819c1a"
+prompt = "Which country has the largest population in the world?"
+lead_in = "Population question. Who has the most people?"
+
+[[script]]
+question = "geography-697d4c5e"
+prompt = "Put these countries in order of population, most people first."
+lead_in = "Crowd control. Put these countries in order of population."
+reveal = "The top two together hold more than a third of all the people on Earth."
+
+[[script]]
+question = "geography-f56a4612"
+prompt = "Mount Everest sits on the border of Nepal and which other country?"
+lead_in = "Mountain question. Whose border is Everest on?"
+
+[[script]]
+question = "geography-ebda81c9"
+prompt = "Venice, Italy is built on more than 100 small islands."
+lead_in = "True or false. Venice edition."
+reveal = "More than a hundred islands, connected by around four hundred bridges. Wear comfy shoes."
+
+[[script]]
+question = "geography-01270b78"
+prompt = "Which US state is the largest by area?"
+lead_in = "Size matters. Biggest US state."
+
+[[script]]
+question = "geography-0038753f"
+prompt = "Which country is shaped like a boot?"
+lead_in = "Map question. Find the boot."
+
+[script.reveal]
+PG = "And Sicily is the ball it's about to kick."
+PG-13 = "Italy: shaped like a boot, run like a group chat."
+
+[[script]]
+question = "geography-6f9042c7"
+prompt = "What is the smallest country in the world?"
+lead_in = "Tiny country question."
+reveal = "It's so small, but it still has its own national soccer team. Mostly priests and Swiss Guards."

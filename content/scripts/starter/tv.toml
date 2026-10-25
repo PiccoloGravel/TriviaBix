@@ -1,0 +1,58 @@
+[[script]]
+question = "tv-e009699b"
+prompt = "Which TV show is set at the Dunder Mifflin Paper Company?"
+lead_in = "Paper company question. Back to the office."
+
+[[script]]
+question = "tv-da8fb468"
+prompt = 'In "Breaking Bad", what alias does Walter White use?'
+lead_in = "Breaking Bad question. Say his name."
+
+[[script]]
+question = "tv-60a05d50"
+prompt = '"The Simpsons" is the longest-running American scripted primetime series.'
+lead_in = "True or false. Springfield edition."
+reveal = "It's been on since 1989, and it's famous for predicting the future. Mostly by making jokes about everything."
+
+[[script]]
+question = "tv-4d9391b6"
+prompt = """In "Game of Thrones", what is the name of Jon Snow's direwolf?"""
+lead_in = "Winter is coming. Name Jon Snow's direwolf."
+reveal = "He was the runt of the litter and the most loyal character in the whole show. Good boy."
+
+[[script]]
+question = "tv-20d29a20"
+prompt = 'How many seasons of "Friends" were made?'
+lead_in = "Sitcom question. How many seasons of Friends?"
+
+[script.reveal]
+PG = "By the end, each of the six stars made a million dollars an episode."
+PG-13 = "A million dollars an episode each, by the end. And they still couldn't afford those apartments."
+
+[[script]]
+question = "tv-0f6f651d"
+prompt = 'What is the name of the coffee shop in "Friends"?'
+lead_in = "Coffee shop question. Where did the Friends hang out?"
+reveal = "That famous orange couch was reportedly found in the studio's basement."
+
+[[script]]
+question = "tv-00902fd6"
+prompt = "Put these shows in order of their premiere."
+lead_in = "TV history. Put these shows in order."
+
+[[script]]
+question = "tv-b91fd841"
+prompt = """In "Stranger Things", what is Eleven's favorite food?"""
+lead_in = "Upside Down question. What's Eleven's favorite snack?"
+reveal = "Sales of those waffles reportedly jumped after the show came out. Product placement works."
+
+[[script]]
+question = "tv-0c6c2474"
+prompt = '"Squid Game" is a South Korean series.'
+lead_in = "True or false. Red light, green light."
+reveal = "It became Netflix's most-watched series. Its creator spent about a decade trying to get it made."
+
+[[script]]
+question = "tv-05a776e5"
+prompt = 'Who hosted "Jeopardy!" for 37 seasons?'
+lead_in = "Game show question. Who hosted Jeopardy for 37 seasons?"
