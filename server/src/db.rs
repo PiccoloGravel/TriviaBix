@@ -35,6 +35,14 @@ pub struct Question {
     pub answer: usize,
 }
 
+/// A speed hangman phrase.
+#[derive(Debug, Clone)]
+pub struct Phrase {
+    pub id: i64,
+    pub category: String,
+    pub phrase: String,
+}
+
 /// One player's final standing, written to the database when a game ends.
 pub struct Standing {
     pub name: String,
@@ -116,6 +124,25 @@ impl Db {
             }
         }
         Ok(out)
+    }
+
+    /// Picks up to `n` random hangman phrases rated at most `max_rating`, skipping ids in `exclude`.
+    pub async fn random_phrases(&self, n: usize, max_rating: Rating, exclude: &[i64]) -> anyhow::Result<Vec<Phrase>> {
+        let rows = sqlx::query(
+            "SELECT id, category, phrase FROM hangman_phrases
+             WHERE CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1
+             ORDER BY RANDOM() LIMIT ?2",
+        )
+        .bind(max_rating.level())
+        .bind((n + exclude.len()) as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| Phrase { id: row.get("id"), category: row.get("category"), phrase: row.get("phrase") })
+            .filter(|p| !exclude.contains(&p.id))
+            .take(n)
+            .collect())
     }
 
     pub async fn start_game(&self, room_code: &str, rounds: usize, players: usize) -> anyhow::Result<i64> {

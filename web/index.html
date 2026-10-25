@@ -29,6 +29,18 @@
     .verdict { font-size: 72px; }
     .points { font-family: "Bungee", sans-serif; font-size: 40px; color: var(--accent); }
     .vip { background: var(--panel); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    .hm-cat { text-align: center; color: var(--accent); text-transform: uppercase; letter-spacing: .15em; font-size: 14px; }
+    .hm-board { font-family: "Bungee", monospace; font-size: 26px; letter-spacing: .18em; text-align: center; line-height: 1.5; word-spacing: .4em; }
+    .strikes { text-align: center; font-size: 20px; letter-spacing: 4px; }
+    .keys { display: flex; flex-direction: column; gap: 8px; }
+    .keys .krow { display: flex; gap: 5px; justify-content: center; }
+    .keys button { flex: 1; max-width: 46px; padding: 14px 0; font-size: 20px; font-family: "Bungee", sans-serif; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+    .keys button.hit { background: var(--good); opacity: .55; }
+    .keys button.miss { background: var(--bad); color: var(--text); opacity: .4; }
+    .keys.cooling button:not(.hit):not(.miss) { opacity: .45; }
+    #solve-form { display: flex; gap: 8px; }
+    #solve-form input { flex: 1; min-width: 0; }
+    #solve-form button { flex: none; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
   </style>
 </head>
@@ -71,6 +83,20 @@
     <div class="prompt" id="q-prompt"></div>
     <div class="answers" id="answers"></div>
     <div class="muted" id="q-status" style="text-align:center;min-height:1.4em"></div>
+  </section>
+
+  <section id="hangman" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="timer" style="height:10px"><div class="timer-track"><div class="timer-fill" id="h-timer"></div></div></div>
+    <div class="hm-cat" id="h-cat"></div>
+    <div class="hm-board" id="h-board"></div>
+    <div class="strikes" id="h-strikes"></div>
+    <div class="keys" id="h-keys"></div>
+    <form id="solve-form">
+      <input id="solve-input" maxlength="80" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Know it? Solve it">
+      <button type="submit">Solve</button>
+    </form>
+    <div class="muted" id="h-status" style="text-align:center;min-height:1.4em"></div>
   </section>
 
   <section id="reveal" class="screen hidden" data-screen>

@@ -1,4 +1,5 @@
 pub mod db;
+pub mod hangman;
 pub mod protocol;
 pub mod room;
 pub mod rooms;
@@ -33,6 +34,7 @@ impl Config {
             max_rooms: var("MAX_ROOMS", 500usize),
             timing: room::Timing {
                 question: secs("QUESTION_SECS", 20),
+                hangman: secs("HANGMAN_SECS", 45),
                 reveal: secs("REVEAL_SECS", 7),
                 scoreboard: secs("SCOREBOARD_SECS", 6),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),

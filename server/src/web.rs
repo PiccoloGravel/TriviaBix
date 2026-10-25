@@ -20,7 +20,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::db::{Db, Rating};
-use crate::protocol::{ClientMsg, ServerMsg};
+use crate::protocol::{ClientMsg, GameMode, ServerMsg};
 use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings};
 use crate::rooms::Rooms;
 use crate::Config;
@@ -93,6 +93,7 @@ async fn qr_svg(Query(q): Query<QrQuery>) -> Response {
 struct CreateRoom {
     rounds: Option<usize>,
     max_rating: Option<Rating>,
+    mode: Option<GameMode>,
 }
 
 async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>) -> Response {
@@ -100,6 +101,7 @@ async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>
     let settings = Settings {
         rounds: body.rounds.unwrap_or(10).clamp(MIN_ROUNDS, MAX_ROUNDS),
         max_rating: body.max_rating.unwrap_or_default(),
+        mode: body.mode.unwrap_or_default(),
     };
     match app.rooms.create(settings) {
         Ok((code, host_token)) => Json(json!({ "code": code, "host_token": host_token })).into_response(),

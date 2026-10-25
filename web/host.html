@@ -65,6 +65,43 @@
     .step .block { width: 100%; border-radius: 2vh 2vh 0 0; background: var(--panel); display: flex; align-items: flex-start; justify-content: center; padding-top: 2vh; font-family: "Bungee", sans-serif; font-size: 7vh; }
     .rest { text-align: center; font-size: 3vh; margin-top: 3vh; color: var(--muted); }
 
+    /* Speed hangman */
+    .secs.danger { color: var(--bad); animation: pulse .5s ease-in-out infinite alternate; }
+    @keyframes pulse { to { transform: scale(1.25); } }
+    .hm-main { flex: 1; display: grid; grid-template-columns: 24vw 1fr; gap: 3vw; align-items: center; min-height: 0; }
+    #h-gallows { width: 100%; max-height: 46vh; }
+    #h-gallows line, #h-gallows circle, #h-gallows path { stroke: var(--text); stroke-width: 4; stroke-linecap: round; fill: none; }
+    #h-gallows .frame { stroke: var(--muted); }
+    #h-gallows .part { opacity: 0; transition: opacity .2s; }
+    #h-gallows .part.on { opacity: 1; }
+    #h-gallows.dead .part { stroke: var(--bad); }
+    .shake { animation: shake .4s; }
+    @keyframes shake { 20%, 60% { transform: translateX(-1.5vw); } 40%, 80% { transform: translateX(1.5vw); } }
+    .hm-right { display: flex; flex-direction: column; align-items: center; gap: 3vh; }
+    .hm-board { --tile: 9vh; display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--tile) * .25) calc(var(--tile) * .6); }
+    .hm-board.long { --tile: 7vh; }
+    .hm-word { display: flex; gap: calc(var(--tile) * .12); }
+    .tile { width: calc(var(--tile) * .8); height: var(--tile); display: flex; align-items: center; justify-content: center; font-family: "Bungee", sans-serif; font-size: calc(var(--tile) * .62); background: var(--text); color: var(--bg); border-radius: 1vh; }
+    .tile.blank { background: var(--panel); border-bottom: .6vh solid var(--accent); }
+    .tile.punct { background: none; color: var(--text); width: auto; }
+    .tile.missed { background: var(--bad); color: var(--text); }
+    .tile.solved { background: var(--good); }
+    .hm-banner { font-family: "Bungee", sans-serif; font-size: 6vh; min-height: 7vh; text-align: center; }
+    .hm-banner.solved { color: var(--good); }
+    .hm-banner.hanged, .hm-banner.time { color: var(--bad); }
+    .hm-letters { display: flex; justify-content: center; gap: .4vw; margin-top: 2vh; }
+    .hm-letters span { flex: 1; max-width: 3.2vw; text-align: center; font-family: "Bungee", sans-serif; font-size: 3.2vh; padding: .4vh 0; border-radius: .8vh; background: var(--panel); }
+    .hm-letters .hit { background: var(--good); color: var(--bg); }
+    .hm-letters .miss { background: var(--bad); text-decoration: line-through; }
+    .hm-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; height: 18vh; }
+    .hm-feed { display: flex; flex-direction: column; gap: .6vh; overflow: hidden; font-size: 2.6vh; }
+    .hm-feed div { display: flex; align-items: center; gap: .8vw; }
+    .hm-feed .good { color: var(--good); }
+    .hm-feed .bad { color: var(--bad); }
+    .hm-feed .win { color: var(--accent); }
+    .hm-scores { display: flex; flex-wrap: wrap; gap: 1vh 1.5vw; align-content: flex-start; justify-content: flex-end; font-size: 2.6vh; }
+    .hm-scores div { display: flex; align-items: center; gap: .5vw; background: var(--panel); padding: .4vh 1vw .4vh .4vw; border-radius: 999px; }
+
     .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
@@ -79,7 +116,12 @@
     <h1>TriviaBix</h1>
     <p class="muted">Put this on the TV. Everyone else grabs their phone.</p>
     <div class="opts">
-      <span>Questions</span>
+      <span>Game</span>
+      <button class="secondary" data-mode="trivia">Trivia</button>
+      <button class="secondary" data-mode="hangman">Speed Hangman</button>
+    </div>
+    <div class="opts">
+      <span>Rounds</span>
       <button class="secondary" data-rounds="5">5</button>
       <button class="secondary" data-rounds="10">10</button>
       <button class="secondary" data-rounds="15">15</button>
@@ -128,6 +170,32 @@
     <div class="prompt" id="r-prompt"></div>
     <div class="choices" id="r-choices"></div>
     <div class="timer"><div class="timer-track"><div class="timer-fill" id="r-timer"></div></div></div>
+  </section>
+
+  <section id="hangman" class="screen hidden" data-screen>
+    <div class="topbar"><span id="h-round"></span><span class="secs" id="h-secs"></span><span class="code-chip" id="h-code"></span></div>
+    <div class="cat" id="h-cat"></div>
+    <div class="hm-main">
+      <svg id="h-gallows" viewBox="0 0 120 160" aria-label="Strikes">
+        <path class="frame" d="M10 152 H80 M30 152 V8 H84 V24 M30 34 L52 8"/>
+        <circle class="part" cx="84" cy="36" r="12"/>
+        <line class="part" x1="84" y1="48" x2="84" y2="94"/>
+        <line class="part" x1="84" y1="58" x2="66" y2="78"/>
+        <line class="part" x1="84" y1="58" x2="102" y2="78"/>
+        <line class="part" x1="84" y1="94" x2="70" y2="124"/>
+        <line class="part" x1="84" y1="94" x2="98" y2="124"/>
+      </svg>
+      <div class="hm-right">
+        <div class="hm-board" id="h-board"></div>
+        <div class="hm-banner" id="h-banner"></div>
+      </div>
+    </div>
+    <div class="hm-letters" id="h-letters"></div>
+    <div class="timer"><div class="timer-track"><div class="timer-fill" id="h-timer"></div></div></div>
+    <div class="hm-bottom">
+      <div class="hm-feed" id="h-feed"></div>
+      <div class="hm-scores" id="h-scores"></div>
+    </div>
   </section>
 
   <section id="scoreboard" class="screen hidden" data-screen>

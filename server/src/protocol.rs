@@ -12,16 +12,31 @@ pub enum ClientMsg {
     Start,
     /// Player: lock in an answer for the current question.
     Answer { choice: usize },
+    /// Player, speed hangman: guess one letter.
+    Guess { letter: char },
+    /// Player, speed hangman: try to solve the whole phrase.
+    Solve { text: String },
     /// Host or VIP: skip the rest of the current timer.
     Next,
     /// Host or VIP: back to the lobby after the final scores.
     PlayAgain,
     /// Host only: change settings while in the lobby.
-    Settings { rounds: Option<usize>, max_rating: Option<Rating> },
+    Settings { rounds: Option<usize>, max_rating: Option<Rating>, mode: Option<GameMode> },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
     Ping,
+}
+
+/// Which game a room plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameMode {
+    /// Multiple choice questions.
+    #[default]
+    Trivia,
+    /// One shared phrase per round; everyone guesses letters against the clock.
+    Hangman,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,7 +49,7 @@ pub enum ServerMsg<'a> {
         player_id: Option<u32>,
         token: &'a str,
     },
-    State(StateView<'a>),
+    State(Box<StateView<'a>>),
     /// `fatal` errors are followed by the server closing the socket.
     Error { message: &'a str, fatal: bool },
 }
@@ -55,6 +70,8 @@ pub struct StateView<'a> {
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
     pub reveal: Option<RevealView>,
+    /// Only in speed hangman rounds.
+    pub hangman: Option<HangmanView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
 }
@@ -73,6 +90,7 @@ pub struct PlayerView<'a> {
 pub struct SettingsView {
     pub rounds: usize,
     pub max_rating: Rating,
+    pub mode: GameMode,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,4 +119,42 @@ pub struct YouView {
     pub answer: Option<usize>,
     pub is_vip: bool,
     pub rank: usize,
+    pub hangman: Option<HangmanYouView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanView<'a> {
+    pub category: &'a str,
+    /// The phrase with unfound letters as `_`. The whole phrase once the round is over.
+    pub board: &'a str,
+    pub hits: &'a str,
+    pub misses: &'a str,
+    pub strikes: usize,
+    pub max_strikes: usize,
+    /// The latest guesses, oldest first.
+    pub feed: &'a [GuessView],
+    /// Points each player has won or lost this round so far.
+    pub results: Vec<ResultView>,
+    /// `solved`, `hanged` or `time`, once the round is over.
+    pub outcome: Option<&'static str>,
+    pub solved_by: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct GuessView {
+    pub player_id: u32,
+    /// The letter guessed, or the attempted answer for a solve.
+    pub guess: String,
+    pub solve: bool,
+    pub hit: bool,
+    /// How many times a guessed letter appears.
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanYouView {
+    /// A wrong solve locks a player out of solving for the rest of the round.
+    pub solve_locked: bool,
+    /// Milliseconds before this player may guess another letter.
+    pub cooldown_ms: u64,
 }

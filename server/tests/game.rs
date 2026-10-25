@@ -14,15 +14,22 @@ type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 const MAX_PLAYERS: usize = 10;
 
 async fn start_server() -> String {
+    start_server_with_db().await.0
+}
+
+/// Also returns the database URL, for tests that need to control the content.
+async fn start_server_with_db() -> (String, String) {
     let db = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
+    let database_url = format!("sqlite://{}", db.display());
     let config = Config {
-        database_url: format!("sqlite://{}", db.display()),
+        database_url: database_url.clone(),
         static_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../web").into(),
         public_url: None,
         max_players: MAX_PLAYERS,
         max_rooms: 10,
         timing: Timing {
             question: Duration::from_secs(5),
+            hangman: Duration::from_secs(5),
             reveal: Duration::from_millis(200),
             scoreboard: Duration::from_millis(200),
             idle_timeout: Duration::from_secs(60),
@@ -32,13 +39,17 @@ async fn start_server() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("127.0.0.1:{}", addr.port())
+    (format!("127.0.0.1:{}", addr.port()), database_url)
 }
 
 async fn create_room(addr: &str, rounds: usize) -> (String, String) {
+    create_room_with(addr, json!({ "rounds": rounds })).await
+}
+
+async fn create_room_with(addr: &str, body: Value) -> (String, String) {
     let res: Value = reqwest::Client::new()
         .post(format!("http://{addr}/api/rooms"))
-        .json(&json!({ "rounds": rounds }))
+        .json(&body)
         .send()
         .await
         .unwrap()
@@ -220,4 +231,103 @@ async fn ratings_filter_questions() {
     let r: Rating = serde_json::from_str("\"NC-17\"").unwrap();
     assert_eq!(r, Rating::Nc17);
     assert!(Rating::Pg < Rating::Ma);
+}
+
+/// Starts a speed hangman room whose only puzzle is "Hat Trick", with `n` players.
+async fn hangman_room(n: usize) -> (Ws, Vec<Ws>) {
+    let (addr, database_url) = start_server_with_db().await;
+    let pool = sqlx::SqlitePool::connect(&database_url).await.unwrap();
+    sqlx::query("DELETE FROM hangman_phrases WHERE phrase <> 'Hat Trick'").execute(&pool).await.unwrap();
+
+    let (code, host_token) = create_room_with(&addr, json!({ "rounds": 3, "mode": "hangman" })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut players = Vec::new();
+    for i in 0..n {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name=P{i}")).await;
+        recv(&mut ws).await;
+        players.push(ws);
+    }
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == n).await;
+    assert_eq!(lobby["settings"]["mode"], "hangman");
+    send(&mut host, json!({ "type": "start" })).await;
+    (host, players)
+}
+
+async fn next_error(ws: &mut Ws) -> Value {
+    loop {
+        let msg = recv(ws).await;
+        if msg["type"] == "error" {
+            return msg;
+        }
+    }
+}
+
+#[tokio::test]
+async fn speed_hangman_letters_strikes_and_solve() {
+    let (mut host, mut players) = hangman_room(2).await;
+
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    // There was only one puzzle to load, so the game is one round long.
+    assert_eq!(q["total_rounds"], 1);
+    assert!(q["question"].is_null());
+    assert_eq!(q["hangman"]["board"], "___ _____", "the phrase must not leak");
+    assert_eq!(q["hangman"]["category"], "Sports");
+
+    let ids: Vec<Value> = q["players"].as_array().unwrap().iter().map(|p| p["id"].clone()).collect();
+
+    // A hit reveals every T and pays per tile.
+    send(&mut players[0], json!({ "type": "guess", "letter": "t" })).await;
+    let s = wait_state(&mut host, |s| s["hangman"]["hits"] == "T").await;
+    assert_eq!(s["hangman"]["board"], "__t T____");
+    assert_eq!(s["players"][0]["score"], 150);
+
+    // Guessing again straight away is too fast, and taken letters are refused.
+    send(&mut players[0], json!({ "type": "guess", "letter": "z" })).await;
+    assert_eq!(next_error(&mut players[0]).await["fatal"], false);
+    send(&mut players[1], json!({ "type": "guess", "letter": "T" })).await;
+    assert!(next_error(&mut players[1]).await["message"].as_str().unwrap().contains("taken"));
+
+    // A miss costs points and a strike for the whole room.
+    send(&mut players[1], json!({ "type": "guess", "letter": "z" })).await;
+    let s = wait_state(&mut host, |s| s["hangman"]["strikes"] == 1).await;
+    assert_eq!(s["hangman"]["misses"], "Z");
+    assert_eq!(s["players"][1]["score"], -50);
+
+    // A wrong solve is another strike and locks that player out of solving.
+    send(&mut players[1], json!({ "type": "solve", "text": "hat trik" })).await;
+    let mine = wait_state(&mut players[1], |s| s["hangman"]["strikes"] == 2).await;
+    assert_eq!(mine["you"]["hangman"]["solve_locked"], true);
+    send(&mut players[1], json!({ "type": "solve", "text": "hat trick" })).await;
+    assert_eq!(next_error(&mut players[1]).await["fatal"], false);
+
+    // The right answer ends the round at once and shows the phrase.
+    send(&mut players[0], json!({ "type": "solve", "text": "HAT-TRICK" })).await;
+    let r = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert_eq!(r["hangman"]["outcome"], "solved");
+    assert_eq!(r["hangman"]["solved_by"], ids[0]);
+    assert_eq!(r["hangman"]["board"], "Hat Trick");
+    // 150 for the Ts, then 250 + 50 for each of the 7 blanks + a speed bonus.
+    let score = r["players"][0]["score"].as_i64().unwrap();
+    assert!(score > 150 + 250 + 7 * 50, "{score}");
+    assert_eq!(r["hangman"]["results"][0]["points"], score);
+
+    wait_state(&mut host, |s| s["phase"] == "final").await;
+}
+
+#[tokio::test]
+async fn speed_hangman_six_misses_hangs_everyone() {
+    let (mut host, mut players) = hangman_room(6).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+    for (ws, letter) in players.iter_mut().zip(["B", "D", "E", "F", "G", "J"]) {
+        send(ws, json!({ "type": "guess", "letter": letter })).await;
+    }
+    let r = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert_eq!(r["hangman"]["outcome"], "hanged");
+    assert_eq!(r["hangman"]["strikes"], 6);
+    assert!(r["hangman"]["solved_by"].is_null());
+    assert_eq!(r["hangman"]["board"], "Hat Trick");
+
+    // Trivia answers are refused in a hangman game.
+    send(&mut players[0], json!({ "type": "answer", "choice": 0 })).await;
+    assert_eq!(next_error(&mut players[0]).await["fatal"], false);
 }

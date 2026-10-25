@@ -1,13 +1,14 @@
 //! One game room. Each room runs as its own task (an actor) that owns all of
 //! the room's state; WebSocket connections talk to it through a channel.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
 
 use crate::db::{Db, Question, Rating, Standing};
+use crate::hangman::{self, Guess, Puzzle};
 use crate::protocol::*;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
@@ -21,9 +22,23 @@ pub const MIN_ROUNDS: usize = 3;
 pub const MAX_ROUNDS: usize = 30;
 const MAX_NAME_CHARS: usize = 16;
 
+// Speed hangman scoring. Letters pay per tile, misses cost everyone a strike, and solving
+// early pays the most.
+const LETTER_POINTS: i64 = 75;
+const MISS_PENALTY: i64 = 50;
+const SOLVE_POINTS: i64 = 250;
+const SOLVE_POINTS_PER_BLANK: i64 = 50;
+const SOLVE_SPEED_POINTS: i64 = 250;
+/// Stops one fast thumb from running the whole alphabet.
+const GUESS_COOLDOWN: Duration = Duration::from_millis(1000);
+const MAX_SOLVE_CHARS: usize = 80;
+const FEED_LEN: usize = 6;
+
 #[derive(Debug, Clone)]
 pub struct Timing {
     pub question: Duration,
+    /// Time to crack one speed hangman phrase.
+    pub hangman: Duration,
     pub reveal: Duration,
     pub scoreboard: Duration,
     /// A room with no connections is closed after this long.
@@ -34,6 +49,7 @@ pub struct Timing {
 pub struct Settings {
     pub rounds: usize,
     pub max_rating: Rating,
+    pub mode: GameMode,
 }
 
 pub enum Join {
@@ -133,6 +149,42 @@ struct Answer {
     after: Duration,
 }
 
+/// Speed hangman bookkeeping for the current round; the puzzle itself is in `Room::puzzles`.
+#[derive(Default)]
+struct HangmanRound {
+    feed: Vec<GuessView>,
+    last_guess: HashMap<u32, Instant>,
+    solve_locked: HashSet<u32>,
+    outcome: Option<Outcome>,
+    solved_by: Option<u32>,
+}
+
+impl HangmanRound {
+    fn push_feed(&mut self, item: GuessView) {
+        self.feed.push(item);
+        if self.feed.len() > FEED_LEN {
+            self.feed.remove(0);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Outcome {
+    Solved,
+    Hanged,
+    Time,
+}
+
+impl Outcome {
+    fn name(self) -> &'static str {
+        match self {
+            Outcome::Solved => "solved",
+            Outcome::Hanged => "hanged",
+            Outcome::Time => "time",
+        }
+    }
+}
+
 pub struct Room {
     code: String,
     host_token: String,
@@ -151,6 +203,9 @@ pub struct Room {
     phase_len: Option<Duration>,
     questions: Vec<Question>,
     used_question_ids: Vec<i64>,
+    puzzles: Vec<Puzzle>,
+    used_phrase_ids: Vec<i64>,
+    hm: HangmanRound,
     round: usize,
     question_started: Instant,
     answers: HashMap<u32, Answer>,
@@ -187,6 +242,9 @@ impl Room {
             phase_len: None,
             questions: Vec::new(),
             used_question_ids: Vec::new(),
+            puzzles: Vec::new(),
+            used_phrase_ids: Vec::new(),
+            hm: HangmanRound::default(),
             round: 0,
             question_started: Instant::now(),
             answers: HashMap::new(),
@@ -349,7 +407,7 @@ impl Room {
                 let Role::Player(pid) = role else {
                     return Err("The TV can't answer, nice try.".into());
                 };
-                if self.phase != Phase::Question {
+                if self.phase != Phase::Question || self.settings.mode != GameMode::Trivia {
                     return Err("Not taking answers right now.".into());
                 }
                 let n = self.questions[self.round].choices.len();
@@ -364,6 +422,63 @@ impl Room {
                     self.advance().await;
                 } else {
                     self.broadcast();
+                }
+            }
+            ClientMsg::Guess { letter } => {
+                let pid = self.hangman_guesser(role)?;
+                if self.hm.last_guess.get(&pid).is_some_and(|t| t.elapsed() < GUESS_COOLDOWN) {
+                    return Err("Easy, speedy! One letter a second.".into());
+                }
+                let letter = letter.to_ascii_uppercase();
+                let result = self.puzzles[self.round].guess(letter);
+                let (points, count) = match result {
+                    Guess::NotALetter => return Err("Letters only.".into()),
+                    Guess::AlreadyGuessed => return Err(format!("{letter} is already taken.")),
+                    Guess::Hit(n) => (LETTER_POINTS * n as i64, n),
+                    Guess::Miss => (-MISS_PENALTY, 0),
+                };
+                self.hm.last_guess.insert(pid, Instant::now());
+                self.award(pid, points);
+                self.hm.push_feed(GuessView { player_id: pid, guess: letter.to_string(), solve: false, hit: count > 0, count });
+                let puzzle = &self.puzzles[self.round];
+                if puzzle.is_complete() {
+                    // Finding the last letter counts as solving it.
+                    self.solved(pid, 0);
+                    self.advance().await;
+                } else if puzzle.is_hanged() {
+                    self.hm.outcome = Some(Outcome::Hanged);
+                    self.advance().await;
+                } else {
+                    self.broadcast();
+                }
+            }
+            ClientMsg::Solve { text } => {
+                let pid = self.hangman_guesser(role)?;
+                if self.hm.solve_locked.contains(&pid) {
+                    return Err("You already blew your solve this round.".into());
+                }
+                let text: String = text.trim().chars().take(MAX_SOLVE_CHARS).collect();
+                if text.is_empty() {
+                    return Err("Type the answer first.".into());
+                }
+                let puzzle = &self.puzzles[self.round];
+                let blanks = puzzle.hidden();
+                if puzzle.solves(&text) {
+                    let answer = puzzle.answer.clone();
+                    self.hm.push_feed(GuessView { player_id: pid, guess: answer, solve: true, hit: true, count: blanks });
+                    self.solved(pid, blanks);
+                    self.advance().await;
+                } else {
+                    self.hm.solve_locked.insert(pid);
+                    self.puzzles[self.round].strike();
+                    self.award(pid, -MISS_PENALTY);
+                    self.hm.push_feed(GuessView { player_id: pid, guess: text, solve: true, hit: false, count: 0 });
+                    if self.puzzles[self.round].is_hanged() {
+                        self.hm.outcome = Some(Outcome::Hanged);
+                        self.advance().await;
+                    } else {
+                        self.broadcast();
+                    }
                 }
             }
             ClientMsg::Next => {
@@ -387,7 +502,7 @@ impl Room {
                 self.set_phase(Phase::Lobby, None);
                 self.broadcast();
             }
-            ClientMsg::Settings { rounds, max_rating } => {
+            ClientMsg::Settings { rounds, max_rating, mode } => {
                 if !is_host {
                     return Err("Only the host can change settings.".into());
                 }
@@ -399,6 +514,9 @@ impl Room {
                 }
                 if let Some(r) = max_rating {
                     self.settings.max_rating = r;
+                }
+                if let Some(m) = mode {
+                    self.settings.mode = m;
                 }
                 self.broadcast();
             }
@@ -438,6 +556,32 @@ impl Room {
         if self.players.is_empty() {
             return Err("Need at least one player to start.".into());
         }
+        match self.settings.mode {
+            GameMode::Trivia => {
+                self.load_questions().await?;
+                self.puzzles.clear();
+            }
+            GameMode::Hangman => {
+                self.load_puzzles().await?;
+                self.questions.clear();
+            }
+        }
+        for p in &mut self.players {
+            p.score = 0;
+        }
+        self.game_id = match self.db.start_game(&self.code, self.game_len(), self.players.len()).await {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::warn!("recording game start: {e:#}");
+                None
+            }
+        };
+        self.round = 0;
+        self.begin_question();
+        Ok(())
+    }
+
+    async fn load_questions(&mut self) -> Result<(), String> {
         if self.used_question_ids.len() > 200 {
             self.used_question_ids.clear();
         }
@@ -463,26 +607,76 @@ impl Room {
         }
         self.used_question_ids.extend(questions.iter().map(|q| q.id));
         self.questions = questions;
-        for p in &mut self.players {
-            p.score = 0;
-        }
-        self.game_id = match self.db.start_game(&self.code, self.questions.len(), self.players.len()).await {
-            Ok(id) => Some(id),
-            Err(e) => {
-                tracing::warn!("recording game start: {e:#}");
-                None
-            }
-        };
-        self.round = 0;
-        self.begin_question();
         Ok(())
+    }
+
+    async fn load_puzzles(&mut self) -> Result<(), String> {
+        let (n, rating) = (self.settings.rounds, self.settings.max_rating);
+        let load_error = |e: anyhow::Error| {
+            tracing::error!("loading hangman phrases: {e:#}");
+            "Couldn't load puzzles. Try again?".to_string()
+        };
+        let mut phrases = self.db.random_phrases(n, rating, &self.used_phrase_ids).await.map_err(load_error)?;
+        if phrases.len() < n {
+            self.used_phrase_ids.clear();
+            phrases = self.db.random_phrases(n, rating, &[]).await.map_err(load_error)?;
+        }
+        if phrases.is_empty() {
+            return Err("There are no hangman puzzles at this rating.".into());
+        }
+        self.used_phrase_ids.extend(phrases.iter().map(|p| p.id));
+        self.puzzles = phrases.into_iter().map(|p| Puzzle::new(p.id, p.category, p.phrase)).collect();
+        Ok(())
+    }
+
+    fn game_len(&self) -> usize {
+        match self.settings.mode {
+            GameMode::Trivia => self.questions.len(),
+            GameMode::Hangman => self.puzzles.len(),
+        }
+    }
+
+    /// Checks that `role` is a player who may guess in a live hangman round.
+    fn hangman_guesser(&self, role: Role) -> Result<u32, String> {
+        let Role::Player(pid) = role else {
+            return Err("The TV can't guess, nice try.".into());
+        };
+        if self.settings.mode != GameMode::Hangman || self.phase != Phase::Question || self.hm.outcome.is_some() {
+            return Err("Not taking guesses right now.".into());
+        }
+        Ok(pid)
+    }
+
+    /// Adds points (or takes them away) mid-round, so the TV can show them live.
+    fn award(&mut self, pid: u32, points: i64) {
+        if let Some(p) = self.player_mut(pid) {
+            p.score += points;
+        }
+        *self.last_points.entry(pid).or_default() += points;
+    }
+
+    /// Solving pays a base, a bonus for every letter still blank, and a bonus for time left.
+    fn solved(&mut self, pid: u32, blanks: usize) {
+        let left = match (self.deadline, self.phase_len) {
+            (Some(d), Some(len)) => d.saturating_duration_since(Instant::now()).as_secs_f64() / len.as_secs_f64().max(0.001),
+            _ => 0.0,
+        };
+        let points = SOLVE_POINTS + SOLVE_POINTS_PER_BLANK * blanks as i64 + (SOLVE_SPEED_POINTS as f64 * left.clamp(0.0, 1.0)).round() as i64;
+        self.award(pid, points);
+        self.hm.outcome = Some(Outcome::Solved);
+        self.hm.solved_by = Some(pid);
     }
 
     fn begin_question(&mut self) {
         self.answers.clear();
         self.last_points.clear();
+        self.hm = HangmanRound::default();
         self.question_started = Instant::now();
-        self.set_phase(Phase::Question, Some(self.timing.question));
+        let len = match self.settings.mode {
+            GameMode::Trivia => self.timing.question,
+            GameMode::Hangman => self.timing.hangman,
+        };
+        self.set_phase(Phase::Question, Some(len));
         self.broadcast();
     }
 
@@ -490,10 +684,15 @@ impl Room {
     async fn advance(&mut self) {
         match self.phase {
             Phase::Question => {
-                self.score_question();
+                match self.settings.mode {
+                    GameMode::Trivia => self.score_question(),
+                    GameMode::Hangman => {
+                        self.hm.outcome.get_or_insert(Outcome::Time);
+                    }
+                }
                 self.set_phase(Phase::Reveal, Some(self.timing.reveal));
             }
-            Phase::Reveal if self.round + 1 >= self.questions.len() => {
+            Phase::Reveal if self.round + 1 >= self.game_len() => {
                 self.set_phase(Phase::Final, None);
                 self.record_results().await;
             }
@@ -544,6 +743,9 @@ impl Room {
     }
 
     fn all_answered(&self) -> bool {
+        if self.settings.mode != GameMode::Trivia {
+            return false;
+        }
         let mut active = self.players.iter().filter(|p| p.conns > 0).peekable();
         active.peek().is_some() && active.all(|p| self.answers.contains_key(&p.id))
     }
@@ -581,6 +783,11 @@ impl Room {
         let vip = self.vip();
         let in_round = matches!(self.phase, Phase::Question | Phase::Reveal | Phase::Scoreboard);
         let question = self.questions.get(self.round).filter(|_| in_round);
+        let puzzle = self.puzzles.get(self.round).filter(|_| in_round);
+        let live_puzzle = puzzle.filter(|_| self.phase == Phase::Question);
+        // The whole phrase is only sent once the round is over.
+        let board = puzzle.map(|p| if live_puzzle.is_some() { p.mask() } else { p.answer.clone() });
+        let (hits, misses) = puzzle.map(|p| (p.hits(), p.misses())).unwrap_or_default();
         let ms_left = self.deadline.map(|d| d.saturating_duration_since(Instant::now()).as_millis() as u64);
 
         for conn in self.conns.values() {
@@ -591,6 +798,12 @@ impl Room {
                     answer: self.answers.get(&id).map(|a| a.choice),
                     is_vip: vip == Some(id),
                     rank: ranks.get(&id).copied().unwrap_or(0),
+                    hangman: live_puzzle.map(|_| HangmanYouView {
+                        solve_locked: self.hm.solve_locked.contains(&id),
+                        cooldown_ms: self.hm.last_guess.get(&id).map_or(0, |t| {
+                            GUESS_COOLDOWN.saturating_sub(t.elapsed()).as_millis() as u64
+                        }),
+                    }),
                 }),
             };
             let view = StateView {
@@ -610,9 +823,13 @@ impl Room {
                     .collect(),
                 vip,
                 max_players: self.max_players,
-                settings: SettingsView { rounds: self.settings.rounds, max_rating: self.settings.max_rating },
+                settings: SettingsView {
+                    rounds: self.settings.rounds,
+                    max_rating: self.settings.max_rating,
+                    mode: self.settings.mode,
+                },
                 round: if in_round || self.phase == Phase::Final { self.round + 1 } else { 0 },
-                total_rounds: if self.phase == Phase::Lobby { self.settings.rounds } else { self.questions.len() },
+                total_rounds: if self.phase == Phase::Lobby { self.settings.rounds } else { self.game_len() },
                 question: question.map(|q| QuestionView { category: &q.category, prompt: &q.prompt, choices: &q.choices }),
                 ms_left,
                 phase_ms: self.phase_len.map(|d| d.as_millis() as u64),
@@ -629,9 +846,29 @@ impl Room {
                         })
                         .collect(),
                 }),
+                hangman: puzzle.map(|p| HangmanView {
+                    category: &p.category,
+                    board: board.as_deref().unwrap_or_default(),
+                    hits: &hits,
+                    misses: &misses,
+                    strikes: p.strikes.min(hangman::MAX_STRIKES),
+                    max_strikes: hangman::MAX_STRIKES,
+                    feed: &self.hm.feed,
+                    results: self
+                        .players
+                        .iter()
+                        .map(|p| ResultView {
+                            player_id: p.id,
+                            choice: None,
+                            points: self.last_points.get(&p.id).copied().unwrap_or(0),
+                        })
+                        .collect(),
+                    outcome: self.hm.outcome.map(Outcome::name),
+                    solved_by: self.hm.solved_by,
+                }),
                 you,
             };
-            let _ = conn.tx.send(serde_json::to_string(&ServerMsg::State(view)).unwrap());
+            let _ = conn.tx.send(serde_json::to_string(&ServerMsg::State(Box::new(view))).unwrap());
         }
     }
 }
