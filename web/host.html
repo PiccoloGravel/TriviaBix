@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TriviaBix · TV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Sized in viewport units so it reads from the couch on any TV. */
+    body { overflow: hidden; height: 100vh; font-size: 2.2vh; }
+    .screen { position: absolute; inset: 0; padding: 4vh 5vw 8vh; display: flex; flex-direction: column; }
+
+    #setup { align-items: center; justify-content: center; gap: 3vh; text-align: center; }
+    #setup h1 { font-size: 13vh; margin: 0; color: var(--accent); text-shadow: 0 1vh 0 rgba(0,0,0,.35); }
+    #setup p { font-size: 3vh; margin: 0; }
+    .opts { display: flex; gap: 2vw; font-size: 3vh; align-items: center; }
+    .opts button { font-size: 3vh; }
+    #create { font-size: 5vh; padding: 2vh 5vw; }
+
+    .topbar { display: flex; justify-content: space-between; align-items: center; font-size: 3vh; color: var(--muted); }
+    .topbar .code-chip { color: var(--text); background: var(--panel); padding: .4vh 1.2vw; border-radius: 999px; }
+
+    #lobby .main { flex: 1; display: grid; grid-template-columns: 40% 1fr; gap: 4vw; align-items: center; }
+    .join-card { background: var(--panel); border-radius: 3vh; padding: 4vh 2vw; text-align: center; }
+    .join-card .url { font-size: 3.4vh; word-break: break-all; }
+    .join-card .code { font-family: "Bungee", sans-serif; font-size: 17vh; line-height: 1; color: var(--accent); letter-spacing: .08em; margin: 1vh 0; }
+    .join-card img { width: 22vh; height: 22vh; background: #fff; border-radius: 2vh; padding: 1vh; }
+    .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2vh 1.5vw; }
+    .slot { background: var(--panel); border-radius: 2.5vh; padding: 2vh 1vw; text-align: center; min-height: 18vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; font-size: 3vh; }
+    .slot.empty { border: .4vh dashed rgba(255,255,255,.2); background: none; color: rgba(255,255,255,.3); }
+    .slot.away { opacity: .45; }
+    .slot .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vip-tag { font-size: 1.8vh; background: var(--accent); color: #1a0b3d; padding: .2vh .8vw; border-radius: 999px; }
+    .lobby-foot { text-align: center; font-size: 3.4vh; display: flex; justify-content: center; gap: 2vw; align-items: center; }
+    .lobby-foot button { font-size: 3.4vh; }
+
+    #question .prompt, #reveal .prompt { font-size: 6vh; line-height: 1.2; text-align: center; margin: 3vh 0; flex: 0 0 auto; }
+    .cat { text-align: center; font-size: 3vh; color: var(--accent); text-transform: uppercase; letter-spacing: .2em; }
+    .choices { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 2.5vh 2vw; }
+    .choice { border-radius: 3vh; padding: 2vh 2vw; display: flex; align-items: center; gap: 2vw; font-size: 4.8vh; position: relative; transition: opacity .3s, transform .3s; }
+    .choice .shape { font-size: 6vh; opacity: .85; }
+    .choice.dim { background: rgba(255,255,255,.06); }
+    .choice.dim > span { opacity: .35; }
+    .choice.right { outline: 1vh solid var(--good); transform: scale(1.03); }
+    .choice .pickers { position: absolute; right: 1.5vw; bottom: 1.2vh; display: flex; gap: .5vw; }
+    .timer { height: 2vh; margin: 2vh 0; }
+    .answered-row { display: flex; gap: 1vw; justify-content: center; align-items: center; min-height: 7vh; font-size: 2.6vh; }
+    .answered-row .avatar { transition: opacity .2s, transform .2s; }
+    .answered-row .waiting { opacity: .25; transform: scale(.8); }
+    .secs { font-family: "Bungee", sans-serif; font-size: 5vh; color: var(--accent); }
+
+    #scoreboard h2, #final h2 { text-align: center; font-size: 7vh; margin: 1vh 0 3vh; color: var(--accent); }
+    /* Big groups split into two columns, ranked top-to-bottom then left-to-right. */
+    .board { --fs: min(4vh, calc(32vh / var(--rows, 8))); display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 8), auto); gap: calc(var(--fs) * .35) 2vw; max-width: 80vw; margin: 0 auto; width: 100%; }
+    .row { display: flex; align-items: center; gap: 1.5vw; font-size: var(--fs); background: var(--panel); border-radius: 2vh; padding: calc(var(--fs) * .2) 1.5vw; }
+    .row .rank { width: 4vw; color: var(--muted); }
+    .row .name { flex: 1; }
+    .row .gain { color: var(--good); font-size: .75em; }
+    .row .score { font-family: "Bungee", sans-serif; }
+
+    .podium { display: flex; justify-content: center; align-items: flex-end; gap: 3vw; flex: 1; }
+    .step { width: 18vw; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: .5vh; font-size: 4vh; }
+    .step .block { width: 100%; border-radius: 2vh 2vh 0 0; background: var(--panel); display: flex; align-items: flex-start; justify-content: center; padding-top: 2vh; font-family: "Bungee", sans-serif; font-size: 7vh; }
+    .rest { text-align: center; font-size: 3vh; margin-top: 3vh; color: var(--muted); }
+
+    .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
+    .corner button { font-size: 2vh; padding: .6vh 1vw; }
+    .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
+    .toast { position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 1.2vh 2vw; border-radius: 2vh; font-size: 2.6vh; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div id="offline" class="banner hidden">Reconnecting to the server…</div>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="setup" class="screen hidden" data-screen>
+    <h1>TriviaBix</h1>
+    <p class="muted">Put this on the TV. Everyone else grabs their phone.</p>
+    <div class="opts">
+      <span>Questions</span>
+      <button class="secondary" data-rounds="5">5</button>
+      <button class="secondary" data-rounds="10">10</button>
+      <button class="secondary" data-rounds="15">15</button>
+    </div>
+    <div class="opts">
+      <span>Rated</span>
+      <button class="secondary" data-rating="PG">PG</button>
+      <button class="secondary" data-rating="PG-13">PG-13</button>
+      <button class="secondary" data-rating="MA">MA</button>
+      <button class="secondary" data-rating="NC-17">NC-17</button>
+    </div>
+    <button id="create" autofocus>Start a room</button>
+    <p class="error" id="setup-error"></p>
+  </section>
+
+  <section id="lobby" class="screen hidden" data-screen>
+    <div class="topbar"><span class="display">TriviaBix</span><span id="lobby-settings"></span></div>
+    <div class="main">
+      <div class="join-card">
+        <div class="url">Join at <b id="join-url"></b></div>
+        <div class="code" id="room-code">----</div>
+        <img id="qr" alt="QR code to join">
+      </div>
+      <div>
+        <div class="slots" id="slots"></div>
+      </div>
+    </div>
+    <div class="lobby-foot">
+      <span id="lobby-hint"></span>
+      <button id="start-btn" disabled>Start (Enter)</button>
+    </div>
+  </section>
+
+  <section id="question" class="screen hidden" data-screen>
+    <div class="topbar"><span id="q-round"></span><span class="secs" id="q-secs"></span><span class="code-chip" id="q-code"></span></div>
+    <div class="cat" id="q-cat"></div>
+    <div class="prompt" id="q-prompt"></div>
+    <div class="choices" id="q-choices"></div>
+    <div class="timer"><div class="timer-track"><div class="timer-fill" id="q-timer"></div></div></div>
+    <div class="answered-row" id="q-answered"></div>
+  </section>
+
+  <section id="reveal" class="screen hidden" data-screen>
+    <div class="topbar"><span id="r-round"></span><span></span><span class="code-chip" id="r-code"></span></div>
+    <div class="cat" id="r-cat"></div>
+    <div class="prompt" id="r-prompt"></div>
+    <div class="choices" id="r-choices"></div>
+    <div class="timer"><div class="timer-track"><div class="timer-fill" id="r-timer"></div></div></div>
+  </section>
+
+  <section id="scoreboard" class="screen hidden" data-screen>
+    <div class="topbar"><span id="s-round"></span><span></span><span class="code-chip" id="s-code"></span></div>
+    <h2>Scores</h2>
+    <div class="board" id="s-board"></div>
+  </section>
+
+  <section id="final" class="screen hidden" data-screen>
+    <h2 id="f-title">Winner!</h2>
+    <div class="podium" id="f-podium"></div>
+    <div class="rest" id="f-rest"></div>
+    <div class="lobby-foot" style="margin-top:3vh">
+      <span class="muted">The VIP can start a rematch from their phone.</span>
+      <button id="again-btn">Play again (Enter)</button>
+    </div>
+  </section>
+
+  <div class="corner">
+    <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
+    <button class="secondary" id="fs-btn" title="F">⛶ Fullscreen</button>
+    <button class="secondary hidden" id="skip-btn" title="Space">Skip ⏭</button>
+  </div>
+
+  <script src="/common.js"></script>
+  <script src="/host.js"></script>
+</body>
+</html>
