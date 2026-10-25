@@ -19,12 +19,16 @@ use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
+use crate::Config;
 use crate::admin::{self, Admin};
 use crate::db::{Db, Rating};
-use crate::protocol::{ClientMsg, ServerMsg};
-use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings, clamp_teams};
+use crate::music::{self, Itunes};
+use crate::protocol::{ClientMsg, GameMode, ServerMsg};
+use crate::room::{
+    Join, MAX_CLIP_MS, MAX_ROUNDS, MIN_CLIP_MS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings,
+    clamp_teams,
+};
 use crate::rooms::Rooms;
-use crate::Config;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -37,18 +41,41 @@ pub(crate) struct AppState {
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
     tracing::info!("question bank has {} questions", db.question_count().await?);
-    let rooms = Rooms::new(db.clone(), config.timing.clone(), config.max_players, config.max_rooms);
+    let script = match &config.host_script {
+        Some(path) => crate::host::Script::load(path)?,
+        None => crate::host::Script::builtin(),
+    };
+    let itunes = Itunes::new(&config.itunes_url, &config.music_country);
+    if config.music_warmup {
+        tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
+    }
+    let rooms = Rooms::new(
+        db.clone(),
+        script,
+        itunes,
+        config.timing.clone(),
+        config.max_players,
+        config.max_rooms,
+    );
     if config.admin_password.is_none() {
         tracing::info!("ADMIN_PASSWORD is not set, so the admin panel is off");
     }
-    let state = AppState { rooms, db, public_url: config.public_url.clone(), admin: Admin::new(config.admin_password.clone()) };
+    let state = AppState {
+        rooms,
+        db,
+        public_url: config.public_url.clone(),
+        admin: Admin::new(config.admin_password.clone()),
+    };
 
     let dir = &config.static_dir;
     Ok(Router::new()
         .route("/healthz", get(health))
         .route("/api/config", get(client_config))
         .route("/api/qr", get(qr_svg))
-        .route("/api/characters", get(|| async { Json(crate::characters::CHARACTERS) }))
+        .route(
+            "/api/characters",
+            get(|| async { Json(crate::characters::CHARACTERS) }),
+        )
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{code}", get(room_info))
         .route("/ws/host", get(ws_host))
@@ -63,8 +90,15 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
 
 async fn health(State(app): State<AppState>) -> Response {
     match app.db.question_count().await {
-        Ok(questions) => Json(json!({ "ok": true, "rooms": app.rooms.len(), "questions": questions })).into_response(),
-        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        Ok(questions) => {
+            Json(json!({ "ok": true, "rooms": app.rooms.len(), "questions": questions }))
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }
 
@@ -101,6 +135,8 @@ async fn qr_svg(Query(q): Query<QrQuery>) -> Response {
 pub(crate) struct CreateRoom {
     rounds: Option<usize>,
     max_rating: Option<Rating>,
+    mode: Option<GameMode>,
+    clip_ms: Option<u64>,
     teams: Option<u8>,
     late_join: Option<bool>,
 }
@@ -110,6 +146,11 @@ impl CreateRoom {
         Settings {
             rounds: self.rounds.unwrap_or(10).clamp(MIN_ROUNDS, MAX_ROUNDS),
             max_rating: self.max_rating.unwrap_or_default(),
+            mode: self.mode.unwrap_or_default(),
+            clip_ms: self
+                .clip_ms
+                .unwrap_or(2_000)
+                .clamp(MIN_CLIP_MS, MAX_CLIP_MS),
             teams: clamp_teams(self.teams.unwrap_or(0)),
             late_join: self.late_join.unwrap_or(true),
         }
@@ -119,7 +160,9 @@ impl CreateRoom {
 async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>) -> Response {
     let body = body.map(|b| b.0).unwrap_or_default();
     match app.rooms.create(body.settings()) {
-        Ok((code, host_token)) => Json(json!({ "code": code, "host_token": host_token })).into_response(),
+        Ok((code, host_token)) => {
+            Json(json!({ "code": code, "host_token": host_token })).into_response()
+        }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
     }
 }
@@ -131,7 +174,11 @@ async fn room_info(State(app): State<AppState>, Path(code): Path<String>) -> Res
     };
     match info {
         Some(info) => Json(info).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "No game with that code." }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No game with that code." })),
+        )
+            .into_response(),
     }
 }
 
@@ -149,14 +196,32 @@ struct PlayQuery {
     character: Option<String>,
 }
 
-async fn ws_host(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<HostQuery>) -> Response {
+async fn ws_host(
+    ws: WebSocketUpgrade,
+    State(app): State<AppState>,
+    Query(q): Query<HostQuery>,
+) -> Response {
     let room = app.rooms.get(&q.code);
     ws.on_upgrade(move |socket| run_socket(socket, room, Join::Host { token: q.token }))
 }
 
-async fn ws_play(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<PlayQuery>) -> Response {
+async fn ws_play(
+    ws: WebSocketUpgrade,
+    State(app): State<AppState>,
+    Query(q): Query<PlayQuery>,
+) -> Response {
     let room = app.rooms.get(&q.code);
-    ws.on_upgrade(move |socket| run_socket(socket, room, Join::Player { name: q.name, token: q.token, character: q.character }))
+    ws.on_upgrade(move |socket| {
+        run_socket(
+            socket,
+            room,
+            Join::Player {
+                name: q.name,
+                token: q.token,
+                character: q.character,
+            },
+        )
+    })
 }
 
 /// Pumps messages between one browser socket and its room until either side goes away.
@@ -169,8 +234,13 @@ async fn run_socket(mut socket: WebSocket, room: Option<RoomHandle>, join: Join)
     let (room, conn_id) = match joined {
         Ok(ok) => ok,
         Err(message) => {
-            let msg = ServerMsg::Error { message: &message, fatal: true };
-            let _ = socket.send(Message::Text(serde_json::to_string(&msg).unwrap().into())).await;
+            let msg = ServerMsg::Error {
+                message: &message,
+                fatal: true,
+            };
+            let _ = socket
+                .send(Message::Text(serde_json::to_string(&msg).unwrap().into()))
+                .await;
             let _ = socket.close().await;
             return;
         }

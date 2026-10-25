@@ -1,5 +1,7 @@
 //! Plays whole games against a real server over WebSockets.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -15,43 +17,136 @@ const MAX_PLAYERS: usize = 10;
 const ADMIN_PASSWORD: &str = "letmein";
 
 async fn start_server() -> String {
+    start_server_with_db().await.0
+}
+
+/// Also returns the database URL, for tests that need to control the content.
+async fn start_server_with_db() -> (String, String) {
     let db = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
+    let database_url = format!("sqlite://{}", db.display());
     let config = Config {
-        database_url: format!("sqlite://{}", db.display()),
+        database_url: database_url.clone(),
         static_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../web").into(),
         public_url: None,
         max_players: MAX_PLAYERS,
         max_rooms: 10,
+        itunes_url: FakeItunes::start().await.url,
+        music_country: "US".into(),
+        music_warmup: false,
         timing: Timing {
             question: Duration::from_secs(5),
+            song_question: Duration::from_secs(5),
+            hangman: Duration::from_secs(5),
             reveal: Duration::from_millis(200),
             scoreboard: Duration::from_millis(200),
+            intro: Duration::from_millis(200),
+            talk_cps: 0.0,
             idle_timeout: Duration::from_secs(60),
         },
         admin_password: Some(ADMIN_PASSWORD.into()),
+        host_script: None,
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("127.0.0.1:{}", addr.port())
+    (format!("127.0.0.1:{}", addr.port()), database_url)
+}
+
+/// Stands in for the iTunes Search API. Every search finds a track whose name echoes the search
+/// term, except that Rihanna is always explicit and Gotye never has a preview.
+#[derive(Clone, Default)]
+struct FakeItunes {
+    url: String,
+    searches: Arc<AtomicUsize>,
+    lookups: Arc<AtomicUsize>,
+    terms: Arc<Mutex<Vec<String>>>,
+}
+
+impl FakeItunes {
+    async fn start() -> Self {
+        use axum::{
+            Json,
+            extract::{Query, State},
+            routing::get,
+        };
+        use std::collections::HashMap;
+
+        fn track(id: usize, term: &str) -> Value {
+            json!({
+                "kind": "song",
+                "trackId": id,
+                "trackName": term,
+                "artistName": term,
+                "previewUrl": if term.contains("Gotye") { Value::Null } else { json!(format!("https://previews.test/{id}.m4a")) },
+                "artworkUrl100": format!("https://art.test/{id}/100x100bb.jpg"),
+                "trackViewUrl": format!("https://music.test/{id}"),
+                "trackExplicitness": if term.contains("Rihanna") { "explicit" } else { "notExplicit" },
+            })
+        }
+        async fn search(
+            State(f): State<FakeItunes>,
+            Query(q): Query<HashMap<String, String>>,
+        ) -> Json<Value> {
+            f.searches.fetch_add(1, Ordering::SeqCst);
+            let term = q["term"].clone();
+            let mut terms = f.terms.lock().unwrap();
+            terms.push(term.clone());
+            Json(json!({ "results": [track(terms.len(), &term)] }))
+        }
+        async fn lookup(
+            State(f): State<FakeItunes>,
+            Query(q): Query<HashMap<String, String>>,
+        ) -> Json<Value> {
+            f.lookups.fetch_add(1, Ordering::SeqCst);
+            let terms = f.terms.lock().unwrap();
+            let results: Vec<Value> = q["id"]
+                .split(',')
+                .filter_map(|id| id.parse::<usize>().ok())
+                .filter_map(|id| terms.get(id - 1).map(|t| track(id, t)))
+                .collect();
+            Json(json!({ "results": results }))
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let fake = FakeItunes {
+            url: format!("http://{}", listener.local_addr().unwrap()),
+            ..Default::default()
+        };
+        let app = axum::Router::new()
+            .route("/search", get(search))
+            .route("/lookup", get(lookup))
+            .with_state(fake.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        fake
+    }
 }
 
 async fn create_room(addr: &str, rounds: usize) -> (String, String) {
+    create_room_with(addr, json!({ "rounds": rounds })).await
+}
+
+async fn create_room_with(addr: &str, body: Value) -> (String, String) {
     let res: Value = reqwest::Client::new()
         .post(format!("http://{addr}/api/rooms"))
-        .json(&json!({ "rounds": rounds }))
+        .json(&body)
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    (res["code"].as_str().unwrap().into(), res["host_token"].as_str().unwrap().into())
+    (
+        res["code"].as_str().unwrap().into(),
+        res["host_token"].as_str().unwrap().into(),
+    )
 }
 
 async fn open(addr: &str, path_and_query: &str) -> Ws {
-    connect_async(format!("ws://{addr}{path_and_query}")).await.unwrap().0
+    connect_async(format!("ws://{addr}{path_and_query}"))
+        .await
+        .unwrap()
+        .0
 }
 
 async fn recv(ws: &mut Ws) -> Value {
@@ -88,7 +183,9 @@ async fn next_error(ws: &mut Ws) -> Value {
 }
 
 async fn send(ws: &mut Ws, msg: Value) {
-    ws.send(Message::Text(msg.to_string().into())).await.unwrap();
+    ws.send(Message::Text(msg.to_string().into()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -103,12 +200,19 @@ async fn eight_players_play_a_full_game() {
     // Fill the room to the limit; room codes are case-insensitive.
     let mut players = Vec::new();
     for i in 0..MAX_PLAYERS {
-        let mut ws = open(&addr, &format!("/ws/play?code={}&name=Player{i}", code.to_lowercase())).await;
+        let mut ws = open(
+            &addr,
+            &format!("/ws/play?code={}&name=Player{i}", code.to_lowercase()),
+        )
+        .await;
         let welcome = recv(&mut ws).await;
         assert_eq!(welcome["type"], "welcome", "{welcome}");
         players.push(ws);
     }
-    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == MAX_PLAYERS).await;
+    let lobby = wait_state(&mut host, |s| {
+        s["players"].as_array().unwrap().len() == MAX_PLAYERS
+    })
+    .await;
     assert_eq!(lobby["phase"], "lobby");
     assert_eq!(lobby["vip"], lobby["players"][0]["id"]);
 
@@ -121,14 +225,31 @@ async fn eight_players_play_a_full_game() {
     // The VIP (first player) starts the game from their phone.
     send(&mut players[0], json!({ "type": "start" })).await;
 
+    // The host opens the show before the first question.
+    let intro = wait_state(&mut host, |s| s["phase"] == "intro").await;
+    assert!(
+        intro["host"]["text"].as_str().unwrap().len() > 10,
+        "{intro}"
+    );
+
     for round in 1..=3 {
-        let q = wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == round).await;
+        let q = wait_state(&mut host, |s| {
+            s["phase"] == "question" && s["round"] == round
+        })
+        .await;
         assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
-        assert!(q["reveal"].is_null(), "answer must not leak during the question");
+        assert!(
+            q["reveal"].is_null(),
+            "answer must not leak during the question"
+        );
 
         // Everyone except the last player answers 0; the last answers 1.
         for (i, ws) in players.iter_mut().enumerate() {
-            send(ws, json!({ "type": "answer", "choice": if i == MAX_PLAYERS - 1 { 1 } else { 0 } })).await;
+            send(
+                ws,
+                json!({ "type": "answer", "choice": if i == MAX_PLAYERS - 1 { 1 } else { 0 } }),
+            )
+            .await;
         }
         // All answered, so the reveal comes right away instead of after 5s.
         let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
@@ -137,23 +258,43 @@ async fn eight_players_play_a_full_game() {
             let right = r["choice"].as_u64() == Some(correct);
             assert_eq!(r["points"].as_i64().unwrap() > 0, right, "{r}");
         }
+        // The host announces the answer and reacts, with graphics for the TV.
+        let answer = reveal["question"]["choices"][correct as usize]
+            .as_str()
+            .unwrap();
+        let said = reveal["host"]["text"].as_str().unwrap();
+        assert!(said.contains(answer), "host should say the answer: {said}");
+        assert!(!said.contains('{'), "unfilled placeholder: {said}");
+        assert!(!reveal["host"]["callouts"].as_array().unwrap().is_empty());
     }
 
     let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
     assert_eq!(fin["round"], 3);
+    assert!(!fin["host"]["text"].as_str().unwrap().is_empty());
 
     // Players see their own rank in the final state.
     let mine = wait_state(&mut players[3], |s| s["phase"] == "final").await;
     assert!(mine["you"]["rank"].as_u64().unwrap() >= 1);
 
     // Results were written to the database.
-    let health: Value = reqwest::get(format!("http://{addr}/healthz")).await.unwrap().json().await.unwrap();
+    let health: Value = reqwest::get(format!("http://{addr}/healthz"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(health["ok"], true);
 
     // Back to the lobby for a rematch with scores reset.
     send(&mut host, json!({ "type": "play_again" })).await;
     let lobby = wait_state(&mut host, |s| s["phase"] == "lobby").await;
-    assert!(lobby["players"].as_array().unwrap().iter().all(|p| p["score"] == 0));
+    assert!(
+        lobby["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["score"] == 0)
+    );
 }
 
 #[tokio::test]
@@ -206,11 +347,21 @@ async fn unanswered_question_times_out() {
 #[tokio::test]
 async fn static_pages_are_served() {
     let addr = start_server().await;
-    for path in ["/", "/host", "/admin", "/style.css", "/player.js", "/host.js", "/admin.js"] {
+    for path in [
+        "/",
+        "/host",
+        "/admin",
+        "/style.css",
+        "/player.js",
+        "/host.js",
+        "/admin.js",
+    ] {
         let res = reqwest::get(format!("http://{addr}{path}")).await.unwrap();
         assert!(res.status().is_success(), "{path}: {}", res.status());
     }
-    let qr = reqwest::get(format!("http://{addr}/api/qr?text=http://x/?code=ABCD")).await.unwrap();
+    let qr = reqwest::get(format!("http://{addr}/api/qr?text=http://x/?code=ABCD"))
+        .await
+        .unwrap();
     assert_eq!(qr.headers()["content-type"], "image/svg+xml");
 }
 
@@ -218,7 +369,9 @@ async fn static_pages_are_served() {
 async fn ratings_filter_questions() {
     use triviabix::db::{Db, Rating};
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
-    let db = Db::connect(&format!("sqlite://{}", path.display())).await.unwrap();
+    let db = Db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .unwrap();
     let total = db.question_count().await.unwrap() as usize;
 
     let pg = db.random_questions(total, Rating::Pg, &[]).await.unwrap();
@@ -235,23 +388,351 @@ async fn ratings_filter_questions() {
 }
 
 #[tokio::test]
+async fn name_that_tune_plays_clips_on_the_tv_only() {
+    let addr = start_server().await;
+    let (code, host_token) = create_room_with(
+        &addr,
+        json!({ "rounds": 3, "mode": "songs", "clip_ms": 1000, "max_rating": "PG" }),
+    )
+    .await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phones = Vec::new();
+    for name in ["Ann", "Bo"] {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut ws).await;
+        phones.push(ws);
+    }
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 2).await;
+    assert_eq!(lobby["settings"]["mode"], "songs");
+    assert_eq!(lobby["settings"]["clip_ms"], 1000);
+
+    send(&mut host, json!({ "type": "start" })).await;
+    let mut played = Vec::new();
+    for round in 1..=3 {
+        let q = wait_state(&mut host, |s| {
+            s["phase"] == "question" && s["round"] == round
+        })
+        .await;
+        let question = &q["question"];
+        assert_eq!(question["kind"], "song");
+        assert!(
+            question["category"]
+                .as_str()
+                .unwrap()
+                .starts_with("Name That Tune")
+        );
+        let clip = &question["clip"];
+        assert!(
+            clip["preview_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("https://previews.test/")
+        );
+        assert_eq!(clip["clip_ms"], 1000);
+        assert!(clip["start_ms"].as_u64().unwrap() <= 20_000);
+        // The TV gets the next clip early so it can buffer; the last round has none.
+        assert_eq!(q["next_clip"].is_string(), round < 3, "{q}");
+
+        let choices: Vec<&str> = question["choices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c.as_str().unwrap())
+            .collect();
+        assert_eq!(choices.len(), 4);
+        assert!(choices.iter().all(|c| c.contains(" — ")));
+        let mut unique = choices.clone();
+        unique.dedup();
+        assert_eq!(unique.len(), 4);
+
+        // Phones see the choices but never the audio or the answer.
+        let p = wait_state(&mut phones[0], |s| {
+            s["phase"] == "question" && s["round"] == round
+        })
+        .await;
+        assert!(
+            p["question"]["clip"].is_null() && p["next_clip"].is_null() && p["reveal"].is_null(),
+            "{p}"
+        );
+
+        for ws in phones.iter_mut() {
+            send(ws, json!({ "type": "answer", "choice": 0 })).await;
+        }
+        let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+        let song = &reveal["reveal"]["song"];
+        let correct = reveal["reveal"]["correct"].as_u64().unwrap() as usize;
+        let label = format!(
+            "{} — {}",
+            song["title"].as_str().unwrap(),
+            song["artist"].as_str().unwrap()
+        );
+        assert_eq!(choices[correct], label);
+        assert!(
+            song["store_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("https://music.test/")
+        );
+        assert!(
+            song["artwork_url"]
+                .as_str()
+                .unwrap()
+                .ends_with("600x600bb.jpg")
+        );
+        // PG room: no explicit tracks (Rihanna is always explicit in the fake), nothing unplayable.
+        assert!(
+            !label.contains("Rihanna") && !label.contains("Gotye"),
+            "{label}"
+        );
+        played.push(label);
+    }
+    wait_state(&mut host, |s| s["phase"] == "final").await;
+
+    // A rematch picks different songs.
+    send(&mut host, json!({ "type": "play_again" })).await;
+    wait_state(&mut host, |s| s["phase"] == "lobby").await;
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    send(&mut phones[0], json!({ "type": "answer", "choice": 0 })).await;
+    send(&mut phones[1], json!({ "type": "answer", "choice": 0 })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let song = &reveal["reveal"]["song"];
+    let label = format!(
+        "{} — {}",
+        song["title"].as_str().unwrap(),
+        song["artist"].as_str().unwrap()
+    );
+    assert!(!played.contains(&label), "{label} repeated");
+    assert_eq!(q["question"]["kind"], "song");
+}
+
+#[tokio::test]
+async fn song_rounds_respect_ratings_and_cache_tracks() {
+    use triviabix::db::{Db, Rating};
+    use triviabix::music::{Itunes, build_round};
+    let fake = FakeItunes::start().await;
+    let itunes = Itunes::new(&fake.url, "US");
+    let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
+    let db = Db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .unwrap();
+
+    let pg_songs = db.songs(Rating::Pg).await.unwrap();
+    let all_songs = db.songs(Rating::Nc17).await.unwrap();
+    assert!(pg_songs.len() >= 50 && all_songs.len() > pg_songs.len());
+
+    let round = build_round(&db, &itunes, 5, Rating::Pg, &[]).await.unwrap();
+    assert_eq!(round.len(), 5);
+    for q in &round {
+        assert!(pg_songs.iter().any(|s| s.id == q.id));
+        // Wrong answers come from the same rating pool too.
+        for c in &q.choices {
+            assert!(
+                pg_songs
+                    .iter()
+                    .any(|s| *c == format!("{} — {}", s.title, s.artist)),
+                "{c}"
+            );
+        }
+    }
+    let searched = fake.searches.load(Ordering::SeqCst);
+    assert!(searched >= 5);
+
+    // The same songs again are refreshed with one lookup, not searched again.
+    let lookups = fake.lookups.load(Ordering::SeqCst);
+    let ids: Vec<i64> = all_songs
+        .iter()
+        .map(|s| s.id)
+        .filter(|id| !round.iter().any(|q| q.id == *id))
+        .collect();
+    let again = build_round(&db, &itunes, 5, Rating::Pg, &ids)
+        .await
+        .unwrap();
+    assert_eq!(again.len(), 5);
+    assert_eq!(fake.searches.load(Ordering::SeqCst), searched);
+    assert_eq!(fake.lookups.load(Ordering::SeqCst), lookups + 1);
+
+    // An MA room can play Rihanna's explicit track; Gotye has no preview and gets retired.
+    // Searches are capped per game, so it takes a few games to find everything.
+    let mut everything = Vec::new();
+    for _ in 0..6 {
+        everything = build_round(&db, &itunes, 100, Rating::Ma, &[])
+            .await
+            .unwrap();
+    }
+    assert!(everything.len() > pg_songs.len());
+    assert!(
+        everything
+            .iter()
+            .any(|q| q.choices[q.answer].contains("Rihanna"))
+    );
+    assert!(
+        everything
+            .iter()
+            .all(|q| !q.choices[q.answer].contains("Gotye"))
+    );
+    assert!(
+        !everything
+            .iter()
+            .any(|q| q.choices[q.answer].contains("Nine Inch Nails")),
+        "NC-17 song in an MA room"
+    );
+}
+
+/// Starts a speed hangman room whose only puzzle is "Hat Trick", with `n` players.
+async fn hangman_room(n: usize) -> (Ws, Vec<Ws>) {
+    let (addr, database_url) = start_server_with_db().await;
+    let pool = sqlx::SqlitePool::connect(&database_url).await.unwrap();
+    sqlx::query("DELETE FROM hangman_phrases WHERE phrase <> 'Hat Trick'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (code, host_token) =
+        create_room_with(&addr, json!({ "rounds": 3, "mode": "hangman" })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut players = Vec::new();
+    for i in 0..n {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name=P{i}")).await;
+        recv(&mut ws).await;
+        players.push(ws);
+    }
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == n).await;
+    assert_eq!(lobby["settings"]["mode"], "hangman");
+    send(&mut host, json!({ "type": "start" })).await;
+    (host, players)
+}
+
+#[tokio::test]
+async fn speed_hangman_letters_strikes_and_solve() {
+    let (mut host, mut players) = hangman_room(2).await;
+
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    // There was only one puzzle to load, so the game is one round long.
+    assert_eq!(q["total_rounds"], 1);
+    assert!(q["question"].is_null());
+    assert_eq!(
+        q["hangman"]["board"], "___ _____",
+        "the phrase must not leak"
+    );
+    assert_eq!(q["hangman"]["category"], "Sports");
+
+    let ids: Vec<Value> = q["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].clone())
+        .collect();
+
+    // A hit reveals every T and pays per tile.
+    send(&mut players[0], json!({ "type": "guess", "letter": "t" })).await;
+    let s = wait_state(&mut host, |s| s["hangman"]["hits"] == "T").await;
+    assert_eq!(s["hangman"]["board"], "__t T____");
+    assert_eq!(s["players"][0]["score"], 150);
+
+    // Guessing again straight away is too fast, and taken letters are refused.
+    send(&mut players[0], json!({ "type": "guess", "letter": "z" })).await;
+    assert_eq!(next_error(&mut players[0]).await["fatal"], false);
+    send(&mut players[1], json!({ "type": "guess", "letter": "T" })).await;
+    assert!(
+        next_error(&mut players[1]).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("taken")
+    );
+
+    // A miss costs points and a strike for the whole room.
+    send(&mut players[1], json!({ "type": "guess", "letter": "z" })).await;
+    let s = wait_state(&mut host, |s| s["hangman"]["strikes"] == 1).await;
+    assert_eq!(s["hangman"]["misses"], "Z");
+    assert_eq!(s["players"][1]["score"], -50);
+
+    // A wrong solve is another strike and locks that player out of solving.
+    send(
+        &mut players[1],
+        json!({ "type": "solve", "text": "hat trik" }),
+    )
+    .await;
+    let mine = wait_state(&mut players[1], |s| s["hangman"]["strikes"] == 2).await;
+    assert_eq!(mine["you"]["hangman"]["solve_locked"], true);
+    send(
+        &mut players[1],
+        json!({ "type": "solve", "text": "hat trick" }),
+    )
+    .await;
+    assert_eq!(next_error(&mut players[1]).await["fatal"], false);
+
+    // The right answer ends the round at once and shows the phrase.
+    send(
+        &mut players[0],
+        json!({ "type": "solve", "text": "HAT-TRICK" }),
+    )
+    .await;
+    let r = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert_eq!(r["hangman"]["outcome"], "solved");
+    assert_eq!(r["hangman"]["solved_by"], ids[0]);
+    assert_eq!(r["hangman"]["board"], "Hat Trick");
+    // 150 for the Ts, then 250 + 50 for each of the 7 blanks + a speed bonus.
+    let score = r["players"][0]["score"].as_i64().unwrap();
+    assert!(score > 150 + 250 + 7 * 50, "{score}");
+    assert_eq!(r["hangman"]["results"][0]["points"], score);
+
+    wait_state(&mut host, |s| s["phase"] == "final").await;
+}
+
+#[tokio::test]
+async fn speed_hangman_six_misses_hangs_everyone() {
+    let (mut host, mut players) = hangman_room(6).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+    for (ws, letter) in players.iter_mut().zip(["B", "D", "E", "F", "G", "J"]) {
+        send(ws, json!({ "type": "guess", "letter": letter })).await;
+    }
+    let r = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert_eq!(r["hangman"]["outcome"], "hanged");
+    assert_eq!(r["hangman"]["strikes"], 6);
+    assert!(r["hangman"]["solved_by"].is_null());
+    assert_eq!(r["hangman"]["board"], "Hat Trick");
+
+    // Trivia answers are refused in a hangman game.
+    send(&mut players[0], json!({ "type": "answer", "choice": 0 })).await;
+    assert_eq!(next_error(&mut players[0]).await["fatal"], false);
+}
+
+#[tokio::test]
 async fn players_pick_unique_characters_and_names() {
     let addr = start_server().await;
     let (code, host_token) = create_room(&addr, 3).await;
     let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
 
-    let chars: Value = reqwest::get(format!("http://{addr}/api/characters")).await.unwrap().json().await.unwrap();
+    let chars: Value = reqwest::get(format!("http://{addr}/api/characters"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert!(chars.as_array().unwrap().len() >= MAX_PLAYERS);
 
-    let mut fox = open(&addr, &format!("/ws/play?code={code}&name=Ana&character=fox")).await;
+    let mut fox = open(
+        &addr,
+        &format!("/ws/play?code={code}&name=Ana&character=fox"),
+    )
+    .await;
     recv(&mut fox).await;
     let s = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 1).await;
     assert_eq!(s["players"][0]["character"], "fox");
 
     // The fox is taken, and made-up characters are refused.
-    let mut copy = open(&addr, &format!("/ws/play?code={code}&name=Ben&character=fox")).await;
+    let mut copy = open(
+        &addr,
+        &format!("/ws/play?code={code}&name=Ben&character=fox"),
+    )
+    .await;
     assert_eq!(recv(&mut copy).await["fatal"], true);
-    let mut fake = open(&addr, &format!("/ws/play?code={code}&name=Ben&character=dragon-king")).await;
+    let mut fake = open(
+        &addr,
+        &format!("/ws/play?code={code}&name=Ben&character=dragon-king"),
+    )
+    .await;
     assert_eq!(recv(&mut fake).await["fatal"], true);
 
     // No pick gets a random free character.
@@ -262,23 +743,36 @@ async fn players_pick_unique_characters_and_names() {
     assert!(!bens.is_empty() && bens != "fox");
 
     // The room info lists taken characters for the join screen.
-    let info: Value = reqwest::get(format!("http://{addr}/api/rooms/{code}")).await.unwrap().json().await.unwrap();
+    let info: Value = reqwest::get(format!("http://{addr}/api/rooms/{code}"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(info["taken_characters"].as_array().unwrap().len(), 2);
 
     // Changing your look in the lobby.
     send(&mut ben, json!({ "type": "profile", "character": "fox" })).await;
     let err = loop {
         let m = recv(&mut ben).await;
-        if m["type"] == "error" { break m; }
+        if m["type"] == "error" {
+            break m;
+        }
     };
     assert_eq!(err["fatal"], false);
-    send(&mut ben, json!({ "type": "profile", "character": "robot", "name": "Big Ben" })).await;
+    send(
+        &mut ben,
+        json!({ "type": "profile", "character": "robot", "name": "Big Ben" }),
+    )
+    .await;
     let s = wait_state(&mut host, |s| s["players"][1]["character"] == "robot").await;
     assert_eq!(s["players"][1]["name"], "Big Ben");
     send(&mut ben, json!({ "type": "profile", "name": "ana" })).await;
     let err = loop {
         let m = recv(&mut ben).await;
-        if m["type"] == "error" { break m; }
+        if m["type"] == "error" {
+            break m;
+        }
     };
     assert!(err["message"].as_str().unwrap().contains("already called"));
 }
@@ -309,7 +803,13 @@ async fn late_joiners_play_from_the_next_question() {
 
     // From the next question Bob is a full player.
     let q2 = wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == 2).await;
-    assert!(q2["players"].as_array().unwrap().iter().all(|p| p["waiting"] == false));
+    assert!(
+        q2["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["waiting"] == false)
+    );
     send(&mut alice, json!({ "type": "answer", "choice": 0 })).await;
     send(&mut bob, json!({ "type": "answer", "choice": 1 })).await;
     let reveal = wait_state(&mut host, |s| s["phase"] == "reveal" && s["round"] == 2).await;
@@ -343,7 +843,10 @@ async fn teams_are_balanced_and_scored_by_average() {
         .json()
         .await
         .unwrap();
-    let (code, host_token) = (res["code"].as_str().unwrap(), res["host_token"].as_str().unwrap());
+    let (code, host_token) = (
+        res["code"].as_str().unwrap(),
+        res["host_token"].as_str().unwrap(),
+    );
     let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
 
     let mut players = Vec::new();
@@ -353,7 +856,12 @@ async fn teams_are_balanced_and_scored_by_average() {
         players.push(ws);
     }
     let s = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 3).await;
-    let teams: Vec<_> = s["players"].as_array().unwrap().iter().map(|p| p["team"].as_u64().unwrap()).collect();
+    let teams: Vec<_> = s["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["team"].as_u64().unwrap())
+        .collect();
     assert_eq!(teams, [0, 1, 0]);
 
     // C switches to the blue team from their phone.
@@ -369,10 +877,28 @@ async fn teams_are_balanced_and_scored_by_average() {
         send(ws, json!({ "type": "answer", "choice": 0 })).await;
     }
     let s = wait_state(&mut host, |s| s["phase"] == "reveal").await;
-    let score = |id: u64| s["players"].as_array().unwrap().iter().find(|p| p["id"] == id).unwrap()["score"].as_i64().unwrap();
+    let score = |id: u64| {
+        s["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == id)
+            .unwrap()["score"]
+            .as_i64()
+            .unwrap()
+    };
     for team in s["teams"].as_array().unwrap() {
-        let members: Vec<i64> = team["members"].as_array().unwrap().iter().map(|m| score(m.as_u64().unwrap())).collect();
-        assert_eq!(team["score"].as_i64().unwrap(), members.iter().sum::<i64>() / members.len() as i64, "{team}");
+        let members: Vec<i64> = team["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| score(m.as_u64().unwrap()))
+            .collect();
+        assert_eq!(
+            team["score"].as_i64().unwrap(),
+            members.iter().sum::<i64>() / members.len() as i64,
+            "{team}"
+        );
     }
 }
 
@@ -414,7 +940,9 @@ async fn admin_sees_and_runs_every_room() {
     let addr = start_server().await;
 
     // Locked without a login.
-    let res = reqwest::get(format!("http://{addr}/api/admin/rooms")).await.unwrap();
+    let res = reqwest::get(format!("http://{addr}/api/admin/rooms"))
+        .await
+        .unwrap();
     assert_eq!(res.status(), 401);
     let (status, _) = admin(&addr, "tbx_admin=forged", "rooms", None).await;
     assert_eq!(status, 401);
@@ -422,7 +950,13 @@ async fn admin_sees_and_runs_every_room() {
 
     // Two games side by side: one made by a TV, one from the admin panel.
     let (code_a, token_a) = create_room(&addr, 5).await;
-    let (status, made) = admin(&addr, &cookie, "rooms", Some(json!({ "rounds": 3, "max_rating": "PG-13" }))).await;
+    let (status, made) = admin(
+        &addr,
+        &cookie,
+        "rooms",
+        Some(json!({ "rounds": 3, "max_rating": "PG-13" })),
+    )
+    .await;
     assert_eq!(status, 200);
     let code_b = made["code"].as_str().unwrap().to_string();
     let token_b = made["host_token"].as_str().unwrap().to_string();
@@ -446,37 +980,100 @@ async fn admin_sees_and_runs_every_room() {
 
     // Run room A from the panel: start, skip, kick, end.
     let act = |code: &str| format!("rooms/{code}");
-    let (status, _) = admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "start" }))).await;
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "start" })),
+    )
+    .await;
     assert_eq!(status, 200);
     wait_state(&mut host_a, |s| s["phase"] == "question").await;
     let (_, list) = admin(&addr, &cookie, "rooms", None).await;
-    let a = list["rooms"].as_array().unwrap().iter().find(|r| r["code"] == code_a.as_str()).unwrap().clone();
-    assert!(a["question"]["answer"].is_string(), "the operator can see the answer");
+    let a = list["rooms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == code_a.as_str())
+        .unwrap()
+        .clone();
+    assert!(
+        a["question"]["answer"].is_string(),
+        "the operator can see the answer"
+    );
 
-    admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "skip" }))).await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "skip" })),
+    )
+    .await;
     wait_state(&mut host_a, |s| s["phase"] == "reveal").await;
 
-    admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "kick", "player_id": sam_id }))).await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "kick", "player_id": sam_id })),
+    )
+    .await;
     assert_eq!(next_error(&mut sam).await["fatal"], true);
 
-    let (status, _) = admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "end_game" }))).await;
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "end_game" })),
+    )
+    .await;
     assert_eq!(status, 200);
     let fin = wait_state(&mut host_a, |s| s["phase"] == "final").await;
     assert_eq!(fin["players"].as_array().unwrap().len(), 1);
-    let (status, err) = admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "skip" }))).await;
+    let (status, err) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "skip" })),
+    )
+    .await;
     assert_eq!(status, 409, "{err}");
 
     // Settings and teams from the panel.
-    admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "lobby" }))).await;
-    admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "settings", "teams": 3, "late_join": false }))).await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "lobby" })),
+    )
+    .await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "settings", "teams": 3, "late_join": false })),
+    )
+    .await;
     let s = wait_state(&mut host_a, |s| s["settings"]["teams"] == 3).await;
     assert_eq!(s["settings"]["late_join"], false);
     let kim_id = s["players"][0]["id"].clone();
-    admin(&addr, &cookie, &act(&code_a), Some(json!({ "action": "set_team", "player_id": kim_id, "team": 2 }))).await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "set_team", "player_id": kim_id, "team": 2 })),
+    )
+    .await;
     wait_state(&mut host_a, |s| s["players"][0]["team"] == 2).await;
 
     // Closing room B sends its TV away and drops it from the list.
-    admin(&addr, &cookie, &act(&code_b), Some(json!({ "action": "close" }))).await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_b),
+        Some(json!({ "action": "close" })),
+    )
+    .await;
     assert_eq!(next_error(&mut host_b).await["fatal"], true);
     tokio::time::sleep(Duration::from_millis(100)).await;
     let (_, list) = admin(&addr, &cookie, "rooms", None).await;
@@ -484,7 +1081,11 @@ async fn admin_sees_and_runs_every_room() {
 
     // Logging out ends the session.
     let http = reqwest::Client::new();
-    http.post(format!("http://{addr}/api/admin/logout")).header("cookie", &cookie).send().await.unwrap();
+    http.post(format!("http://{addr}/api/admin/logout"))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
     let (status, _) = admin(&addr, &cookie, "rooms", None).await;
     assert_eq!(status, 401);
 }

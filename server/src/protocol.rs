@@ -12,6 +12,10 @@ pub enum ClientMsg {
     Start,
     /// Player: lock in an answer for the current question.
     Answer { choice: usize },
+    /// Player, speed hangman: guess one letter.
+    Guess { letter: char },
+    /// Player, speed hangman: try to solve the whole phrase.
+    Solve { text: String },
     /// Host or VIP: skip the rest of the current timer.
     Next,
     /// Host or VIP: back to the lobby after the final scores.
@@ -20,17 +24,35 @@ pub enum ClientMsg {
     Settings {
         rounds: Option<usize>,
         max_rating: Option<Rating>,
+        mode: Option<GameMode>,
+        clip_ms: Option<u64>,
         teams: Option<u8>,
         late_join: Option<bool>,
     },
     /// Player: switch to another team while in the lobby.
     Team { team: u8 },
     /// Player, in the lobby: change your name and/or character.
-    Profile { name: Option<String>, character: Option<String> },
+    Profile {
+        name: Option<String>,
+        character: Option<String>,
+    },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
     Ping,
+}
+
+/// Which game a room plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameMode {
+    /// Multiple choice questions.
+    #[default]
+    Trivia,
+    /// One shared phrase per round; everyone guesses letters against the clock.
+    Hangman,
+    /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
+    Songs,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,9 +65,12 @@ pub enum ServerMsg<'a> {
         player_id: Option<u32>,
         token: &'a str,
     },
-    State(StateView<'a>),
+    State(Box<StateView<'a>>),
     /// `fatal` errors are followed by the server closing the socket.
-    Error { message: &'a str, fatal: bool },
+    Error {
+        message: &'a str,
+        fatal: bool,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -65,7 +90,13 @@ pub struct StateView<'a> {
     /// Milliseconds until the current phase advances on its own.
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
-    pub reveal: Option<RevealView>,
+    pub reveal: Option<RevealView<'a>>,
+    /// TV only: the next round's song preview, so it can load before it's needed.
+    pub next_clip: Option<&'a str>,
+    /// Only in speed hangman rounds.
+    pub hangman: Option<HangmanView<'a>>,
+    /// What the host is saying right now, with graphics for the TV to show alongside it.
+    pub host: Option<HostView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
 }
@@ -88,6 +119,8 @@ pub struct PlayerView<'a> {
 pub struct SettingsView {
     pub rounds: usize,
     pub max_rating: Rating,
+    pub mode: GameMode,
+    pub clip_ms: u64,
     /// Number of teams; 0 means everyone plays for themselves.
     pub teams: u8,
     /// Whether new players can join after the game has started.
@@ -106,15 +139,37 @@ pub struct TeamView {
 
 #[derive(Debug, Serialize)]
 pub struct QuestionView<'a> {
+    /// "trivia" or "song".
+    pub kind: &'static str,
     pub category: &'a str,
     pub prompt: &'a str,
     pub choices: &'a [String],
+    /// TV only: what to play. Phones never get the audio, so they have to listen.
+    pub clip: Option<ClipView<'a>>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct RevealView {
+pub struct ClipView<'a> {
+    pub preview_url: &'a str,
+    pub start_ms: u64,
+    pub clip_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RevealView<'a> {
     pub correct: usize,
     pub results: Vec<ResultView>,
+    pub song: Option<SongView<'a>>,
+}
+
+/// Shown once a song round closes, with credit and a link to the full track.
+#[derive(Debug, Serialize)]
+pub struct SongView<'a> {
+    pub title: &'a str,
+    pub artist: &'a str,
+    pub year: i64,
+    pub artwork_url: Option<&'a str>,
+    pub store_url: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,13 +180,71 @@ pub struct ResultView {
 }
 
 #[derive(Debug, Serialize)]
+pub struct HostView<'a> {
+    pub name: &'a str,
+    /// Changes with every new line, so the TV speaks each one once.
+    pub id: u64,
+    pub text: &'a str,
+    pub callouts: &'a [Callout],
+}
+
+/// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
+#[derive(Debug, Serialize, Clone)]
+pub struct Callout {
+    /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
+    /// leader, tie, last_place, winner.
+    pub kind: &'static str,
+    pub player_id: Option<u32>,
+    /// Short overlay text, like "3 IN A ROW".
+    pub label: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct YouView {
     pub player_id: u32,
     pub answer: Option<usize>,
     pub is_vip: bool,
     pub rank: usize,
+    pub hangman: Option<HangmanYouView>,
     pub team: Option<u8>,
     pub waiting: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanView<'a> {
+    pub category: &'a str,
+    /// The phrase with unfound letters as `_`. The whole phrase once the round is over.
+    pub board: &'a str,
+    pub hits: &'a str,
+    pub misses: &'a str,
+    pub strikes: usize,
+    pub max_strikes: usize,
+    /// The latest guesses, oldest first.
+    pub feed: &'a [GuessView],
+    /// Points each player has won or lost this round so far.
+    pub results: Vec<ResultView>,
+    /// `solved`, `hanged` or `time`, once the round is over.
+    pub outcome: Option<&'static str>,
+    pub solved_by: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct GuessView {
+    pub player_id: u32,
+    /// The letter guessed, or the attempted answer for a solve.
+    pub guess: String,
+    pub solve: bool,
+    pub hit: bool,
+    /// How many times a guessed letter appears.
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanYouView {
+    /// A wrong solve locks a player out of solving for the rest of the round.
+    pub solve_locked: bool,
+    /// Milliseconds before this player may guess another letter.
+    pub cooldown_ms: u64,
 }
 
 /// Operator commands from the admin panel. Admins can do anything the host can.
@@ -146,11 +259,18 @@ pub enum AdminCmd {
     Lobby,
     /// Shut the room down and disconnect everyone.
     Close,
-    Kick { player_id: u32 },
-    SetTeam { player_id: u32, team: Option<u8> },
+    Kick {
+        player_id: u32,
+    },
+    SetTeam {
+        player_id: u32,
+        team: Option<u8>,
+    },
     Settings {
         rounds: Option<usize>,
         max_rating: Option<Rating>,
+        mode: Option<GameMode>,
+        clip_ms: Option<u64>,
         teams: Option<u8>,
         late_join: Option<bool>,
     },

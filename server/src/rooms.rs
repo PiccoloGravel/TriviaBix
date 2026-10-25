@@ -6,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use rand::Rng;
 
 use crate::db::Db;
+use crate::host::Script;
+use crate::music::Itunes;
 use crate::room::{Room, RoomHandle, Settings, Timing};
 
 /// No vowels, so random codes can't spell anything rude, and no letters that
@@ -17,14 +19,31 @@ const CODE_LEN: usize = 4;
 pub struct Rooms {
     inner: Arc<Mutex<HashMap<String, RoomHandle>>>,
     db: Db,
+    script: Arc<Script>,
+    itunes: Itunes,
     timing: Timing,
     max_players: usize,
     max_rooms: usize,
 }
 
 impl Rooms {
-    pub fn new(db: Db, timing: Timing, max_players: usize, max_rooms: usize) -> Self {
-        Self { inner: Default::default(), db, timing, max_players, max_rooms }
+    pub fn new(
+        db: Db,
+        script: Script,
+        itunes: Itunes,
+        timing: Timing,
+        max_players: usize,
+        max_rooms: usize,
+    ) -> Self {
+        Self {
+            inner: Default::default(),
+            db,
+            script: Arc::new(script),
+            itunes,
+            timing,
+            max_players,
+            max_rooms,
+        }
     }
 
     /// Creates a room and returns its code and the secret host token.
@@ -52,6 +71,8 @@ impl Rooms {
             self.timing.clone(),
             self.max_players,
             self.db.clone(),
+            self.script.clone(),
+            self.itunes.clone(),
             move || {
                 registry.lock().unwrap().remove(&closing);
             },
@@ -62,7 +83,11 @@ impl Rooms {
     }
 
     pub fn get(&self, code: &str) -> Option<RoomHandle> {
-        self.inner.lock().unwrap().get(&normalize_code(code)).cloned()
+        self.inner
+            .lock()
+            .unwrap()
+            .get(&normalize_code(code))
+            .cloned()
     }
 
     /// Every live room, for the admin panel.
