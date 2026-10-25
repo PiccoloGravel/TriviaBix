@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Default)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Difficulty {
     Easy,
@@ -25,7 +27,9 @@ impl Difficulty {
 
 /// How saucy a question is, like a movie rating. A room picks the highest rating it
 /// allows and gets every question at or below it.
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Default)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Default,
+)]
 pub enum Rating {
     /// Fine for kids and grandparents.
     #[default]
@@ -130,9 +134,13 @@ pub enum QuestionKind {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         keep_order: bool,
     },
-    TrueFalse { answer: bool },
+    TrueFalse {
+        answer: bool,
+    },
     /// Players type an answer. Spelling slips are forgiven. The first entry is shown on the reveal.
-    TypeAnswer { answers: Vec<String> },
+    TypeAnswer {
+        answers: Vec<String>,
+    },
     /// Players guess a number and the closest guess wins.
     ClosestNumber {
         answer: f64,
@@ -225,7 +233,9 @@ pub struct PublicQuestion {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PublicKind {
-    MultipleChoice { choices: Vec<String> },
+    MultipleChoice {
+        choices: Vec<String>,
+    },
     TrueFalse,
     TypeAnswer,
     ClosestNumber {
@@ -255,6 +265,10 @@ pub struct Judgement {
 
 impl Judgement {
     pub(crate) fn binary(correct: bool) -> Self {
-        Judgement { correct, score: if correct { 1.0 } else { 0.0 }, distance: None }
+        Judgement {
+            correct,
+            score: if correct { 1.0 } else { 0.0 },
+            distance: None,
+        }
     }
 }

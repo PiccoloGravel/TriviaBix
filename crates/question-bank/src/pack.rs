@@ -84,8 +84,15 @@ impl PackFile {
                     }
                 }
                 Question {
-                    id: q.id.clone().unwrap_or_else(|| generated_id(pack_key, &q.prompt)),
-                    category: q.category.clone().or_else(|| meta.category.clone()).unwrap_or_default(),
+                    id: q
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| generated_id(pack_key, &q.prompt)),
+                    category: q
+                        .category
+                        .clone()
+                        .or_else(|| meta.category.clone())
+                        .unwrap_or_default(),
                     tags,
                     difficulty: q.difficulty.or(meta.difficulty).unwrap_or_default(),
                     rating: q.rating.or(meta.rating).unwrap_or_default(),
@@ -177,13 +184,21 @@ difficulty = "medium"
         assert!(qs[0].id.starts_with("sample-"));
         assert_eq!(qs[1].id, "wall");
         assert_eq!(qs[1].difficulty, Difficulty::Medium);
-        assert!(matches!(qs[1].kind, QuestionKind::ClosestNumber { answer, .. } if answer == 1989.0));
+        assert!(
+            matches!(qs[1].kind, QuestionKind::ClosestNumber { answer, .. } if answer == 1989.0)
+        );
     }
 
     #[test]
     fn generated_ids_ignore_punctuation_and_case() {
-        assert_eq!(generated_id("p", "Who is it?"), generated_id("p", "who is it"));
-        assert_ne!(generated_id("p", "Who is it?"), generated_id("p", "Who was it?"));
+        assert_eq!(
+            generated_id("p", "Who is it?"),
+            generated_id("p", "who is it")
+        );
+        assert_ne!(
+            generated_id("p", "Who is it?"),
+            generated_id("p", "Who was it?")
+        );
     }
 
     #[test]

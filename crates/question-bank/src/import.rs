@@ -12,12 +12,20 @@ use crate::judge::normalize;
 use crate::model::*;
 use crate::pack::generated_id;
 
-pub const OPENTDB_SOURCE: (&str, &str, &str) = ("Open Trivia DB", "https://opentdb.com", "CC BY-SA 4.0");
-pub const TRIVIA_API_SOURCE: (&str, &str, &str) =
-    ("The Trivia API", "https://the-trivia-api.com", "Free for non-commercial use; see the-trivia-api.com");
+pub const OPENTDB_SOURCE: (&str, &str, &str) =
+    ("Open Trivia DB", "https://opentdb.com", "CC BY-SA 4.0");
+pub const TRIVIA_API_SOURCE: (&str, &str, &str) = (
+    "The Trivia API",
+    "https://the-trivia-api.com",
+    "Free for non-commercial use; see the-trivia-api.com",
+);
 
 fn source(s: (&str, &str, &str)) -> Source {
-    Source { name: s.0.into(), url: Some(s.1.into()), license: Some(s.2.into()) }
+    Source {
+        name: s.0.into(),
+        url: Some(s.1.into()),
+        license: Some(s.2.into()),
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -68,10 +76,14 @@ fn map_opentdb_category(name: &str) -> (&'static str, Option<String>) {
         "Entertainment: Music" | "Entertainment: Musicals & Theatres" => "music",
         "Entertainment: Television" | "Entertainment: Cartoon & Animations" => "tv",
         "Entertainment: Video Games" | "Entertainment: Board Games" => "video-games",
-        "Celebrities" | "Entertainment: Comics" | "Entertainment: Japanese Anime & Manga" => "pop-culture",
-        "Science & Nature" | "Science: Computers" | "Science: Mathematics" | "Science: Gadgets" | "Animals" => {
-            "science"
+        "Celebrities" | "Entertainment: Comics" | "Entertainment: Japanese Anime & Manga" => {
+            "pop-culture"
         }
+        "Science & Nature"
+        | "Science: Computers"
+        | "Science: Mathematics"
+        | "Science: Gadgets"
+        | "Animals" => "science",
         "Geography" => "geography",
         "History" | "Politics" | "Mythology" => "history",
         "Sports" | "Vehicles" => "sports",
@@ -112,7 +124,8 @@ fn opentdb_error(code: u32) -> ImportError {
 
 /// Parse an Open Trivia DB response fetched with `encode=base64`.
 pub fn parse_opentdb(json: &str) -> Result<Vec<Question>, ImportError> {
-    let resp: OpenTdbResponse = serde_json::from_str(json).map_err(|e| ImportError::Format(e.to_string()))?;
+    let resp: OpenTdbResponse =
+        serde_json::from_str(json).map_err(|e| ImportError::Format(e.to_string()))?;
     if resp.response_code != 0 {
         return Err(opentdb_error(resp.response_code));
     }
@@ -128,13 +141,19 @@ pub fn parse_opentdb(json: &str) -> Result<Vec<Question>, ImportError> {
         let prompt = b64(&r.question)?;
         let correct = b64(&r.correct_answer)?;
         let kind = match b64(&r.kind)?.as_str() {
-            "boolean" => QuestionKind::TrueFalse { answer: correct.eq_ignore_ascii_case("true") },
+            "boolean" => QuestionKind::TrueFalse {
+                answer: correct.eq_ignore_ascii_case("true"),
+            },
             _ => {
                 let mut choices = vec![correct.clone()];
                 for w in &r.incorrect_answers {
                     choices.push(b64(w)?);
                 }
-                QuestionKind::MultipleChoice { choices, answer: correct, keep_order: false }
+                QuestionKind::MultipleChoice {
+                    choices,
+                    answer: correct,
+                    keep_order: false,
+                }
             }
         };
         let (category, extra_tag) = map_opentdb_category(&category_name);
@@ -168,7 +187,8 @@ pub struct OpenTdbQuery {
 /// respect its rate limit. A session token keeps it from repeating questions.
 pub fn fetch_opentdb(q: &OpenTdbQuery) -> Result<Vec<Question>, ImportError> {
     let agent = agent();
-    let token: serde_json::Value = get_json(&agent, "https://opentdb.com/api_token.php?command=request")?;
+    let token: serde_json::Value =
+        get_json(&agent, "https://opentdb.com/api_token.php?command=request")?;
     let token = token["token"].as_str().map(str::to_string);
 
     let mut out = Vec::new();
@@ -240,12 +260,18 @@ fn map_trivia_api_category(name: &str) -> &'static str {
 /// Turn a Trivia API tag into a TriviaBix tag: `1980's` becomes `80s`, `pop_music` becomes `pop-music`.
 fn map_trivia_api_tag(tag: &str) -> String {
     let t = tag.trim().to_lowercase();
-    if let Some(decade) = t.strip_prefix("19").and_then(|r| r.strip_suffix("0's").or(r.strip_suffix("0s"))) {
+    if let Some(decade) = t
+        .strip_prefix("19")
+        .and_then(|r| r.strip_suffix("0's").or(r.strip_suffix("0s")))
+    {
         if decade.len() == 1 {
             return format!("{decade}0s");
         }
     }
-    if let Some(decade) = t.strip_prefix("20").and_then(|r| r.strip_suffix("0's").or(r.strip_suffix("0s"))) {
+    if let Some(decade) = t
+        .strip_prefix("20")
+        .and_then(|r| r.strip_suffix("0's").or(r.strip_suffix("0s")))
+    {
         if decade.len() == 1 {
             return format!("20{decade}0s");
         }
@@ -269,11 +295,12 @@ pub fn parse_trivia_api(json: &str) -> Result<Vec<Question>, ImportError> {
                 }
             }
             // Film and TV share a category upstream; send obvious TV questions to tv.
-            let category = if category == "movies" && tags.iter().any(|t| t == "television" || t == "tv") {
-                "tv"
-            } else {
-                category
-            };
+            let category =
+                if category == "movies" && tags.iter().any(|t| t == "television" || t == "tv") {
+                    "tv"
+                } else {
+                    category
+                };
             let mut choices = vec![r.correct_answer.clone()];
             choices.extend(r.incorrect_answers);
             Question {
@@ -283,7 +310,11 @@ pub fn parse_trivia_api(json: &str) -> Result<Vec<Question>, ImportError> {
                 difficulty: parse_difficulty(&r.difficulty),
                 rating: Rating::Pg,
                 prompt: r.question.text,
-                kind: QuestionKind::MultipleChoice { choices, answer: r.correct_answer, keep_order: false },
+                kind: QuestionKind::MultipleChoice {
+                    choices,
+                    answer: r.correct_answer,
+                    keep_order: false,
+                },
                 fun_fact: None,
                 host_quip: None,
                 source: Some(source(TRIVIA_API_SOURCE)),
@@ -307,7 +338,10 @@ pub fn fetch_trivia_api(q: &TriviaApiQuery) -> Result<Vec<Question>, ImportError
     let mut seen = HashSet::new();
     let mut misses = 0;
     while out.len() < q.amount && misses < 3 {
-        let mut url = format!("https://the-trivia-api.com/v2/questions?limit={}", (q.amount - out.len()).min(50));
+        let mut url = format!(
+            "https://the-trivia-api.com/v2/questions?limit={}",
+            (q.amount - out.len()).min(50)
+        );
         if !q.categories.is_empty() {
             url.push_str(&format!("&categories={}", q.categories.join(",")));
         }
@@ -343,11 +377,16 @@ fn parse_difficulty(s: &str) -> Difficulty {
 
 /// Drop questions whose prompt is already in `existing_prompts` (normalized) or repeats in `new`.
 pub fn dedupe(new: Vec<Question>, existing_prompts: &mut HashSet<String>) -> Vec<Question> {
-    new.into_iter().filter(|q| existing_prompts.insert(normalize(&q.prompt))).collect()
+    new.into_iter()
+        .filter(|q| existing_prompts.insert(normalize(&q.prompt)))
+        .collect()
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout(Duration::from_secs(20)).user_agent("triviabix-questions").build()
+    ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(20))
+        .user_agent("triviabix-questions")
+        .build()
 }
 
 fn get_text(agent: &ureq::Agent, url: &str) -> Result<String, ImportError> {
@@ -378,17 +417,29 @@ mod tests {
               {{"type":"{}","difficulty":"{}","category":"{}","question":"{}","correct_answer":"{}","incorrect_answers":["{}","{}","{}"]}},
               {{"type":"{}","difficulty":"{}","category":"{}","question":"{}","correct_answer":"{}","incorrect_answers":["{}"]}}
             ]}}"#,
-            enc("multiple"), enc("easy"), enc("Entertainment: Music"), enc("Who sang \"Thriller\"?"),
-            enc("Michael Jackson"), enc("Prince"), enc("Madonna"), enc("Whitney Houston"),
-            enc("boolean"), enc("hard"), enc("Geography"), enc("Canberra is Australia's capital."),
-            enc("True"), enc("False"),
+            enc("multiple"),
+            enc("easy"),
+            enc("Entertainment: Music"),
+            enc("Who sang \"Thriller\"?"),
+            enc("Michael Jackson"),
+            enc("Prince"),
+            enc("Madonna"),
+            enc("Whitney Houston"),
+            enc("boolean"),
+            enc("hard"),
+            enc("Geography"),
+            enc("Canberra is Australia's capital."),
+            enc("True"),
+            enc("False"),
         );
         let qs = parse_opentdb(&json).unwrap();
         assert_eq!(qs.len(), 2);
         assert_eq!(qs[0].category, "music");
         assert_eq!(qs[0].prompt, "Who sang \"Thriller\"?");
-        assert!(matches!(&qs[0].kind, QuestionKind::MultipleChoice { choices, answer, .. }
-            if choices.len() == 4 && answer == "Michael Jackson"));
+        assert!(
+            matches!(&qs[0].kind, QuestionKind::MultipleChoice { choices, answer, .. }
+            if choices.len() == 4 && answer == "Michael Jackson")
+        );
         assert_eq!(qs[1].difficulty, Difficulty::Hard);
         assert_eq!(qs[1].kind, QuestionKind::TrueFalse { answer: true });
         assert!(crate::validate_question(&qs[0]).is_empty());
@@ -396,7 +447,10 @@ mod tests {
 
     #[test]
     fn opentdb_error_codes_surface() {
-        assert!(matches!(parse_opentdb(r#"{"response_code":5,"results":[]}"#), Err(ImportError::OpenTdb(5, _))));
+        assert!(matches!(
+            parse_opentdb(r#"{"response_code":5,"results":[]}"#),
+            Err(ImportError::OpenTdb(5, _))
+        ));
     }
 
     #[test]
@@ -431,7 +485,10 @@ mod pack_tests {
           "question":{"text":"Who sang 'Livin' on a Prayer'?"},"tags":["1980's"],"difficulty":"easy"}]"#;
         let qs = parse_trivia_api(json).unwrap();
         let pack = PackFile {
-            pack: PackMeta { name: "Imported".into(), ..Default::default() },
+            pack: PackMeta {
+                name: "Imported".into(),
+                ..Default::default()
+            },
             questions: qs.iter().map(PackQuestion::from).collect(),
         };
         let text = pack.to_toml().unwrap();

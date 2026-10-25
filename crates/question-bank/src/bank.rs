@@ -15,7 +15,10 @@ use crate::pack::PackFile;
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
     #[error("could not read {path}: {source}")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("could not parse {path}: {message}")]
     Parse { path: PathBuf, message: String },
     #[error("{} problem(s) in the question bank:\n{}", .0.len(), .0.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n"))]
@@ -69,7 +72,10 @@ impl Filter {
             && (self.difficulties.is_empty() || self.difficulties.contains(&q.difficulty))
             && (self.types.is_empty() || self.types.contains(&q.question_type()))
             && (self.topics.is_empty()
-                || self.topics.iter().any(|t| *t == q.category || q.tags.contains(t)))
+                || self
+                    .topics
+                    .iter()
+                    .any(|t| *t == q.category || q.tags.contains(t)))
     }
 }
 
@@ -86,8 +92,10 @@ impl QuestionBank {
         let dir = dir.as_ref();
         let cat_path = dir.join("categories.toml");
         let text = read(&cat_path)?;
-        let cats: CategoriesFile = toml::from_str(&text)
-            .map_err(|e| LoadError::Parse { path: cat_path.clone(), message: e.to_string() })?;
+        let cats: CategoriesFile = toml::from_str(&text).map_err(|e| LoadError::Parse {
+            path: cat_path.clone(),
+            message: e.to_string(),
+        })?;
 
         let mut files = Vec::new();
         collect_pack_files(&dir.join("packs"), &mut files)?;
@@ -101,16 +109,24 @@ impl QuestionBank {
     }
 
     /// Build a bank from parts, validating everything.
-    pub fn new(categories: Vec<Category>, mut questions: Vec<Question>) -> Result<Self, Vec<Problem>> {
+    pub fn new(
+        categories: Vec<Category>,
+        mut questions: Vec<Question>,
+    ) -> Result<Self, Vec<Problem>> {
         let mut problems = Vec::new();
         let mut cat_slugs = HashSet::new();
         for c in &categories {
             if !cat_slugs.insert(c.slug.clone()) {
-                problems.push(problem(&format!("category {}", c.slug), "duplicate category slug"));
+                problems.push(problem(
+                    &format!("category {}", c.slug),
+                    "duplicate category slug",
+                ));
             }
         }
-        let min_rating: HashMap<&str, Rating> =
-            categories.iter().map(|c| (c.slug.as_str(), c.rating)).collect();
+        let min_rating: HashMap<&str, Rating> = categories
+            .iter()
+            .map(|c| (c.slug.as_str(), c.rating))
+            .collect();
 
         let mut by_id = HashMap::new();
         let mut prompts: HashMap<String, String> = HashMap::new();
@@ -133,7 +149,11 @@ impl QuestionBank {
             }
         }
         if problems.is_empty() {
-            Ok(QuestionBank { categories, questions, by_id })
+            Ok(QuestionBank {
+                categories,
+                questions,
+                by_id,
+            })
         } else {
             Err(problems)
         }
@@ -158,7 +178,12 @@ impl QuestionBank {
 
     /// Pick up to `count` random questions. Questions are dealt round robin across
     /// categories so a mixed round doesn't end up all geography.
-    pub fn pick<R: Rng + ?Sized>(&self, filter: &Filter, count: usize, rng: &mut R) -> Vec<&Question> {
+    pub fn pick<R: Rng + ?Sized>(
+        &self,
+        filter: &Filter,
+        count: usize,
+        rng: &mut R,
+    ) -> Vec<&Question> {
         let mut groups: BTreeMap<&str, Vec<&Question>> = BTreeMap::new();
         for q in self.questions.iter().filter(|q| filter.matches(q)) {
             groups.entry(q.category.as_str()).or_default().push(q);
@@ -194,9 +219,15 @@ impl QuestionBank {
         for q in &self.questions {
             s.total += 1;
             *s.by_category.entry(q.category.clone()).or_default() += 1;
-            *s.by_type.entry(q.question_type().as_str().to_string()).or_default() += 1;
-            *s.by_difficulty.entry(q.difficulty.as_str().to_string()).or_default() += 1;
-            *s.by_rating.entry(q.rating.as_str().to_string()).or_default() += 1;
+            *s.by_type
+                .entry(q.question_type().as_str().to_string())
+                .or_default() += 1;
+            *s.by_difficulty
+                .entry(q.difficulty.as_str().to_string())
+                .or_default() += 1;
+            *s.by_rating
+                .entry(q.rating.as_str().to_string())
+                .or_default() += 1;
             for t in &q.tags {
                 *s.by_tag.entry(t.clone()).or_default() += 1;
             }
@@ -217,7 +248,10 @@ pub struct Stats {
 }
 
 fn problem(location: &str, message: &str) -> Problem {
-    Problem { location: location.to_string(), message: message.to_string() }
+    Problem {
+        location: location.to_string(),
+        message: message.to_string(),
+    }
 }
 
 /// Problems with a single question, independent of the rest of the bank.
@@ -230,9 +264,14 @@ pub fn validate_question(q: &Question) -> Vec<String> {
         out.push("empty prompt".into());
     }
     match &q.kind {
-        QuestionKind::MultipleChoice { choices, answer, .. } => {
+        QuestionKind::MultipleChoice {
+            choices, answer, ..
+        } => {
             if !(2..=6).contains(&choices.len()) {
-                out.push(format!("multiple choice needs 2 to 6 choices, has {}", choices.len()));
+                out.push(format!(
+                    "multiple choice needs 2 to 6 choices, has {}",
+                    choices.len()
+                ));
             }
             if !choices.iter().any(|c| c.trim() == answer.trim()) {
                 out.push(format!("answer {answer:?} is not one of the choices"));
@@ -248,7 +287,9 @@ pub fn validate_question(q: &Question) -> Vec<String> {
                 out.push("type answer needs at least one accepted answer".into());
             }
         }
-        QuestionKind::ClosestNumber { answer, tolerance, .. } => {
+        QuestionKind::ClosestNumber {
+            answer, tolerance, ..
+        } => {
             if !answer.is_finite() {
                 out.push("answer must be a number".into());
             }
@@ -258,7 +299,10 @@ pub fn validate_question(q: &Question) -> Vec<String> {
         }
         QuestionKind::PutInOrder { items, .. } => {
             if !(3..=6).contains(&items.len()) {
-                out.push(format!("put in order needs 3 to 6 items, has {}", items.len()));
+                out.push(format!(
+                    "put in order needs 3 to 6 items, has {}",
+                    items.len()
+                ));
             }
             let unique: HashSet<&str> = items.iter().map(|i| i.trim()).collect();
             if unique.len() != items.len() {
@@ -270,7 +314,10 @@ pub fn validate_question(q: &Question) -> Vec<String> {
 }
 
 fn read(path: &Path) -> Result<String, LoadError> {
-    std::fs::read_to_string(path).map_err(|source| LoadError::Io { path: path.to_path_buf(), source })
+    std::fs::read_to_string(path).map_err(|source| LoadError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Parse one pack file and apply its defaults.
@@ -281,7 +328,10 @@ pub fn load_pack(path: &Path) -> Result<Vec<Question>, LoadError> {
     } else {
         PackFile::from_toml(&text)
     };
-    let pack = parsed.map_err(|message| LoadError::Parse { path: path.to_path_buf(), message })?;
+    let pack = parsed.map_err(|message| LoadError::Parse {
+        path: path.to_path_buf(),
+        message,
+    })?;
     let key = path.file_stem().and_then(|s| s.to_str()).unwrap_or("pack");
     Ok(pack.resolve(key))
 }
@@ -290,9 +340,17 @@ fn collect_pack_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), LoadErro
     if !dir.exists() {
         return Ok(());
     }
-    let entries = std::fs::read_dir(dir).map_err(|source| LoadError::Io { path: dir.to_path_buf(), source })?;
+    let entries = std::fs::read_dir(dir).map_err(|source| LoadError::Io {
+        path: dir.to_path_buf(),
+        source,
+    })?;
     for entry in entries {
-        let path = entry.map_err(|source| LoadError::Io { path: dir.to_path_buf(), source })?.path();
+        let path = entry
+            .map_err(|source| LoadError::Io {
+                path: dir.to_path_buf(),
+                source,
+            })?
+            .path();
         if path.is_dir() {
             collect_pack_files(&path, out)?;
         } else if path.extension().is_some_and(|e| e == "toml" || e == "json") {
@@ -313,7 +371,11 @@ mod tests {
             emoji: String::new(),
             color: String::new(),
             description: String::new(),
-            rating: if slug == "after-dark" { Rating::Pg13 } else { Rating::Pg },
+            rating: if slug == "after-dark" {
+                Rating::Pg13
+            } else {
+                Rating::Pg
+            },
         }
     }
 
@@ -348,7 +410,10 @@ mod tests {
     #[test]
     fn topics_match_category_or_tag() {
         let b = bank();
-        let f = Filter { topics: vec!["80s".into()], ..Default::default() };
+        let f = Filter {
+            topics: vec!["80s".into()],
+            ..Default::default()
+        };
         assert_eq!(b.count(&f), 2);
     }
 
@@ -357,15 +422,30 @@ mod tests {
         let b = bank();
         assert_eq!(b.get("d").unwrap().rating, Rating::Pg13);
         assert_eq!(b.count(&Filter::default()), 3);
-        assert_eq!(b.count(&Filter { max_rating: Rating::Pg13, ..Default::default() }), 4);
-        assert_eq!(b.count(&Filter { max_rating: Rating::Nc17, ..Default::default() }), 4);
+        assert_eq!(
+            b.count(&Filter {
+                max_rating: Rating::Pg13,
+                ..Default::default()
+            }),
+            4
+        );
+        assert_eq!(
+            b.count(&Filter {
+                max_rating: Rating::Nc17,
+                ..Default::default()
+            }),
+            4
+        );
     }
 
     #[test]
     fn pick_respects_count_and_exclusions() {
         let b = bank();
         let mut rng = rand::thread_rng();
-        let f = Filter { exclude_ids: ["a".to_string()].into(), ..Default::default() };
+        let f = Filter {
+            exclude_ids: ["a".to_string()].into(),
+            ..Default::default()
+        };
         let picked = b.pick(&f, 10, &mut rng);
         assert_eq!(picked.len(), 2);
         assert!(picked.iter().all(|q| q.id != "a"));
@@ -383,8 +463,14 @@ mod tests {
         let dup = tf("x", "80s", &[]);
         let problems = QuestionBank::new(vec![cat("80s")], vec![bad, dup]).unwrap_err();
         let text: Vec<String> = problems.iter().map(|p| p.to_string()).collect();
-        assert!(text.iter().any(|p| p.contains("unknown category")), "{text:?}");
-        assert!(text.iter().any(|p| p.contains("not one of the choices")), "{text:?}");
+        assert!(
+            text.iter().any(|p| p.contains("unknown category")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|p| p.contains("not one of the choices")),
+            "{text:?}"
+        );
         assert!(text.iter().any(|p| p.contains("duplicate id")), "{text:?}");
     }
 
@@ -395,10 +481,18 @@ mod tests {
         let stats = bank.stats();
         assert!(stats.total >= 150, "only {} questions", stats.total);
         for t in QuestionType::ALL {
-            assert!(stats.by_type.get(t.as_str()).copied().unwrap_or(0) >= 10, "few {}", t.as_str());
+            assert!(
+                stats.by_type.get(t.as_str()).copied().unwrap_or(0) >= 10,
+                "few {}",
+                t.as_str()
+            );
         }
         for c in bank.categories() {
-            assert!(stats.by_category.get(&c.slug).copied().unwrap_or(0) >= 5, "few in {}", c.slug);
+            assert!(
+                stats.by_category.get(&c.slug).copied().unwrap_or(0) >= 5,
+                "few in {}",
+                c.slug
+            );
         }
     }
 }

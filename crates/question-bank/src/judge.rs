@@ -22,7 +22,14 @@ impl Question {
             (QuestionKind::TypeAnswer { answers }, PlayerAnswer::Text(text)) => {
                 Judgement::binary(answers.iter().any(|a| text_matches(a, text)))
             }
-            (QuestionKind::ClosestNumber { answer: right, tolerance, .. }, PlayerAnswer::Number(guess)) => {
+            (
+                QuestionKind::ClosestNumber {
+                    answer: right,
+                    tolerance,
+                    ..
+                },
+                PlayerAnswer::Number(guess),
+            ) => {
                 if !guess.is_finite() {
                     return Judgement::binary(false);
                 }
@@ -41,7 +48,11 @@ impl Question {
                     .filter(|(want, got)| want.trim() == got.trim())
                     .count();
                 let correct = in_place == items.len() && order.len() == items.len();
-                Judgement { correct, score: in_place as f64 / items.len().max(1) as f64, distance: None }
+                Judgement {
+                    correct,
+                    score: in_place as f64 / items.len().max(1) as f64,
+                    distance: None,
+                }
             }
             _ => Judgement::binary(false),
         }
@@ -50,7 +61,11 @@ impl Question {
     /// The question without its answer, with choices and order items shuffled.
     pub fn public_view<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicQuestion {
         let kind = match &self.kind {
-            QuestionKind::MultipleChoice { choices, keep_order, .. } => {
+            QuestionKind::MultipleChoice {
+                choices,
+                keep_order,
+                ..
+            } => {
                 let mut choices = choices.clone();
                 if !keep_order {
                     choices.shuffle(rng);
@@ -59,8 +74,14 @@ impl Question {
             }
             QuestionKind::TrueFalse { .. } => PublicKind::TrueFalse,
             QuestionKind::TypeAnswer { .. } => PublicKind::TypeAnswer,
-            QuestionKind::ClosestNumber { unit, .. } => PublicKind::ClosestNumber { unit: unit.clone() },
-            QuestionKind::PutInOrder { items, first_label, last_label } => {
+            QuestionKind::ClosestNumber { unit, .. } => {
+                PublicKind::ClosestNumber { unit: unit.clone() }
+            }
+            QuestionKind::PutInOrder {
+                items,
+                first_label,
+                last_label,
+            } => {
                 let mut shuffled = items.clone();
                 // Never hand out the answer already in order.
                 for _ in 0..8 {
@@ -89,7 +110,9 @@ impl Question {
     pub fn answer_text(&self) -> String {
         match &self.kind {
             QuestionKind::MultipleChoice { answer, .. } => answer.clone(),
-            QuestionKind::TrueFalse { answer } => if *answer { "True" } else { "False" }.to_string(),
+            QuestionKind::TrueFalse { answer } => {
+                if *answer { "True" } else { "False" }.to_string()
+            }
             QuestionKind::TypeAnswer { answers } => answers.first().cloned().unwrap_or_default(),
             QuestionKind::ClosestNumber { answer, unit, .. } => {
                 let n = format_number(*answer);
@@ -209,7 +232,10 @@ mod tests {
     #[test]
     fn typed_answers_forgive_typos_and_articles() {
         assert!(text_matches("The Transformers", "transformers"));
-        assert!(text_matches("Smells Like Teen Spirit", "smells like teen sprit"));
+        assert!(text_matches(
+            "Smells Like Teen Spirit",
+            "smells like teen sprit"
+        ));
         assert!(text_matches("Piña Colada", "pina colada"));
         assert!(text_matches("Guns N' Roses", "guns n roses"));
         assert!(text_matches("AC/DC", "acdc"));
@@ -221,7 +247,11 @@ mod tests {
 
     #[test]
     fn closest_number_reports_distance() {
-        let question = q(QuestionKind::ClosestNumber { answer: 1989.0, unit: None, tolerance: 0.0 });
+        let question = q(QuestionKind::ClosestNumber {
+            answer: 1989.0,
+            unit: None,
+            tolerance: 0.0,
+        });
         let exact = question.check(&PlayerAnswer::Number(1989.0));
         assert!(exact.correct);
         let off = question.check(&PlayerAnswer::Number(1985.0));
@@ -233,9 +263,15 @@ mod tests {
     #[test]
     fn put_in_order_gives_partial_credit() {
         let items: Vec<String> = ["a", "b", "c", "d"].map(String::from).to_vec();
-        let question = q(QuestionKind::PutInOrder { items: items.clone(), first_label: None, last_label: None });
+        let question = q(QuestionKind::PutInOrder {
+            items: items.clone(),
+            first_label: None,
+            last_label: None,
+        });
         assert!(question.check(&PlayerAnswer::Order(items)).correct);
-        let half = question.check(&PlayerAnswer::Order(["a", "b", "d", "c"].map(String::from).to_vec()));
+        let half = question.check(&PlayerAnswer::Order(
+            ["a", "b", "d", "c"].map(String::from).to_vec(),
+        ));
         assert!(!half.correct);
         assert_eq!(half.score, 0.5);
     }
@@ -243,7 +279,11 @@ mod tests {
     #[test]
     fn public_view_hides_answer_and_shuffles_order() {
         let items: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
-        let question = q(QuestionKind::PutInOrder { items: items.clone(), first_label: None, last_label: None });
+        let question = q(QuestionKind::PutInOrder {
+            items: items.clone(),
+            first_label: None,
+            last_label: None,
+        });
         let mut rng = rand::thread_rng();
         for _ in 0..20 {
             match question.public_view(&mut rng).kind {

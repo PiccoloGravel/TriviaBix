@@ -134,7 +134,11 @@ fn run(cli: &Cli) -> Result<(), String> {
             }
             println!("\nBy rating:");
             for r in Rating::ALL {
-                println!("  {:<32} {:>4}", r.as_str(), s.by_rating.get(r.as_str()).copied().unwrap_or(0));
+                println!(
+                    "  {:<32} {:>4}",
+                    r.as_str(),
+                    s.by_rating.get(r.as_str()).copied().unwrap_or(0)
+                );
             }
             println!("\nBy difficulty:");
             for (k, v) in &s.by_difficulty {
@@ -147,9 +151,17 @@ fn run(cli: &Cli) -> Result<(), String> {
                 println!("  {k:<32} {v:>4}");
             }
         }
-        Command::Sample { count, topics, rating } => {
+        Command::Sample {
+            count,
+            topics,
+            rating,
+        } => {
             let bank = load(&cli.content)?;
-            let filter = Filter { topics: topics.clone(), max_rating: *rating, ..Default::default() };
+            let filter = Filter {
+                topics: topics.clone(),
+                max_rating: *rating,
+                ..Default::default()
+            };
             let mut rng = rand::thread_rng();
             for q in bank.pick(&filter, *count, &mut rng) {
                 let view = q.public_view(&mut rng);
@@ -162,8 +174,12 @@ fn run(cli: &Cli) -> Result<(), String> {
                     q.prompt
                 );
                 match &view.kind {
-                    PublicKind::MultipleChoice { choices } => println!("    choices: {}", choices.join(" | ")),
-                    PublicKind::PutInOrder { items, .. } => println!("    items: {}", items.join(" | ")),
+                    PublicKind::MultipleChoice { choices } => {
+                        println!("    choices: {}", choices.join(" | "))
+                    }
+                    PublicKind::PutInOrder { items, .. } => {
+                        println!("    items: {}", items.join(" | "))
+                    }
                     _ => {}
                 }
                 println!("    answer: {}", q.answer_text());
@@ -180,7 +196,11 @@ fn run(cli: &Cli) -> Result<(), String> {
             let bank = load(&cli.content)?;
             let json = serde_json::to_string_pretty(bank.questions()).map_err(|e| e.to_string())?;
             std::fs::write(out, json).map_err(|e| e.to_string())?;
-            println!("Wrote {} questions to {}", bank.questions().len(), out.display());
+            println!(
+                "Wrote {} questions to {}",
+                bank.questions().len(),
+                out.display()
+            );
         }
         Command::Import { source } => import_cmd(&cli.content, source)?,
     }
@@ -193,22 +213,51 @@ fn load(dir: &Path) -> Result<QuestionBank, String> {
 
 fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
     let (questions, pack_name, default_out) = match source {
-        ImportSource::Opentdb { list_categories: true, .. } => {
+        ImportSource::Opentdb {
+            list_categories: true,
+            ..
+        } => {
             for (id, name) in import::OPENTDB_CATEGORIES {
                 println!("{id:>3}  {name}");
             }
             return Ok(());
         }
-        ImportSource::Opentdb { amount, category, difficulty, kind, out, .. } => {
-            let q = OpenTdbQuery { amount: *amount, category: *category, difficulty: *difficulty, kind: kind.clone() };
+        ImportSource::Opentdb {
+            amount,
+            category,
+            difficulty,
+            kind,
+            out,
+            ..
+        } => {
+            let q = OpenTdbQuery {
+                amount: *amount,
+                category: *category,
+                difficulty: *difficulty,
+                kind: kind.clone(),
+            };
             eprintln!("Fetching {amount} questions from Open Trivia DB...");
             let qs = import::fetch_opentdb(&q).map_err(|e| e.to_string())?;
-            let label = category.map(|c| c.to_string()).unwrap_or_else(|| "mixed".into());
-            (qs, format!("Open Trivia DB ({label})"), out.clone().unwrap_or_else(|| {
-                content.join("packs/imported").join(format!("opentdb-{label}.toml"))
-            }))
+            let label = category
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "mixed".into());
+            (
+                qs,
+                format!("Open Trivia DB ({label})"),
+                out.clone().unwrap_or_else(|| {
+                    content
+                        .join("packs/imported")
+                        .join(format!("opentdb-{label}.toml"))
+                }),
+            )
         }
-        ImportSource::TriviaApi { amount, categories, tags, difficulty, out } => {
+        ImportSource::TriviaApi {
+            amount,
+            categories,
+            tags,
+            difficulty,
+            out,
+        } => {
             let q = TriviaApiQuery {
                 amount: *amount,
                 categories: categories.clone(),
@@ -217,14 +266,21 @@ fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
             };
             eprintln!("Fetching {amount} questions from The Trivia API...");
             let qs = import::fetch_trivia_api(&q).map_err(|e| e.to_string())?;
-            let mut label: Vec<String> = tags.iter().chain(categories).map(|s| slugify(s)).collect();
+            let mut label: Vec<String> =
+                tags.iter().chain(categories).map(|s| slugify(s)).collect();
             if label.is_empty() {
                 label.push("mixed".into());
             }
             let label = label.join("-");
-            (qs, format!("The Trivia API ({label})"), out.clone().unwrap_or_else(|| {
-                content.join("packs/imported").join(format!("trivia-api-{label}.toml"))
-            }))
+            (
+                qs,
+                format!("The Trivia API ({label})"),
+                out.clone().unwrap_or_else(|| {
+                    content
+                        .join("packs/imported")
+                        .join(format!("trivia-api-{label}.toml"))
+                }),
+            )
         }
     };
 
@@ -236,13 +292,22 @@ fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
         let text = std::fs::read_to_string(&default_out).map_err(|e| e.to_string())?;
         PackFile::from_toml(&text)?
     } else {
-        PackFile { pack: PackMeta { name: pack_name, ..Default::default() }, questions: vec![] }
+        PackFile {
+            pack: PackMeta {
+                name: pack_name,
+                ..Default::default()
+            },
+            questions: vec![],
+        }
     };
     existing.extend(pack.resolve("existing"));
     let mut seen: HashSet<String> = existing.iter().map(|q| normalize(&q.prompt)).collect();
     let fetched = questions.len();
     let fresh = import::dedupe(questions, &mut seen);
-    let fresh: Vec<Question> = fresh.into_iter().filter(|q| validate_question(q).is_empty()).collect();
+    let fresh: Vec<Question> = fresh
+        .into_iter()
+        .filter(|q| validate_question(q).is_empty())
+        .collect();
     let added = fresh.len();
     pack.questions.extend(fresh.iter().map(PackQuestion::from));
 
