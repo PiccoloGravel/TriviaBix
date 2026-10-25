@@ -37,6 +37,24 @@ them in the admin panel.
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
 
+### Trivia rounds
+
+A trivia game is 3 or 4 rounds (3, 5 or 7 questions each, picked on the setup screen) that climb in difficulty:
+
+| Round | Questions | Points |
+|---|---|---|
+| 1 | Easy | ×1 |
+| 2 | Medium | ×1.5 |
+| 3 | Hard | ×2 |
+| Final (4-round games) | Hardest, from every category | ×3 |
+
+Each of the first rounds is themed on one category when the question bank has enough of it at that difficulty (it tops up
+with the nearest difficulty, and falls back to "Anything Goes"). Every round opens with a title card showing its theme,
+difficulty and points, plus a staircase of the whole game where later themes stay hidden. After each round the TV shows a
+recap: the scoreboard with what everyone won that round, and every question with its answer and who got it right. Phones
+get their own round summary. Each question in the database has a `difficulty` of `easy`, `medium` or `hard` (default
+`medium`).
+
 ### Speed Hangman
 
 Pick **Speed Hangman** on the setup screen instead of Trivia. Each round puts one phrase on the TV with its category, and
@@ -122,6 +140,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MAX_ROOMS` | `500` | |
 | `QUESTION_SECS` / `REVEAL_SECS` / `SCOREBOARD_SECS` | `20` / `7` / `6` | Minimums; the host's lines can stretch them |
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
+| `ROUND_INTRO_SECS` / `RECAP_SECS` | `5` / `14` | Trivia round title card, and the scores and recap after each round |
 | `HOST_TALK_CPS` | `13` | Voice speed estimate in characters per second, for pacing; `0` stops waiting for the host |
 | `HOST_SCRIPT` | | Path to a host script to use instead of the built-in one |
 | `CONTENT_DIR` | `content` | Question packs and host scripts, loaded into the database at startup |
@@ -140,6 +159,7 @@ cargo test                    # unit tests plus full games over WebSockets
     `src/music.rs` the song lookups for Name That Tune.
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
+  - `src/rounds.rs` plans a trivia game's rounds: difficulty, theme and points.
   - `migrations/` creates the tables and seeds hangman phrases and songs.
   - `src/content.rs` loads the question packs into the database at startup.
 - `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
@@ -153,8 +173,10 @@ The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`)
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
 Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`,
 `play_again`, `profile {name, character}` and `team {team}` (phones, lobby only), and from the TV
-`settings {rounds, max_rating, mode, clip_ms, teams, late_join}` and `kick {player_id}`.
+`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round}` and `kick {player_id}`.
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
-The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
-and `final`; each state carries `host {name, id, text, callouts}`, the current host line and the graphics that go with it.
+The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `round_intro`, `question`, `reveal`,
+`scoreboard`, `recap` and `final`. Trivia goes `round_intro`, then question and reveal for each question in the round, then
+`recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. Other modes
+use `scoreboard` after each reveal; each state carries `host {name, id, text, callouts}`, the current host line and the graphics that go with it.

@@ -61,6 +61,45 @@ macro_rules! playable {
     };
 }
 
+/// How hard a question is. Trivia rounds get harder as the game goes on.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Difficulty {
+    Easy,
+    #[default]
+    Medium,
+    Hard,
+}
+
+impl Difficulty {
+    pub fn name(self) -> &'static str {
+        match self {
+            Difficulty::Easy => "easy",
+            Difficulty::Medium => "medium",
+            Difficulty::Hard => "hard",
+        }
+    }
+
+    /// Unknown values count as medium, like the column's default.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "easy" => Difficulty::Easy,
+            "hard" => Difficulty::Hard,
+            _ => Difficulty::Medium,
+        }
+    }
+}
+
+/// Just enough about a question to plan a game's rounds before loading the questions themselves.
+#[derive(Debug, Clone)]
+pub struct PoolEntry {
+    pub id: i64,
+    pub category: String,
+    pub difficulty: Difficulty,
+}
+
 /// A question ready to be played, with its choices already shuffled.
 #[derive(Debug, Clone)]
 pub struct Question {
@@ -181,34 +220,9 @@ impl Db {
             if exclude.contains(&id) {
                 continue;
             }
-            let correct: String = row.get("correct");
-            let wrong: Vec<String> = serde_json::from_str(row.get::<&str, _>("wrong"))
-                .with_context(|| format!("question {id} has bad `wrong` JSON"))?;
-            let authored: Option<Vec<String>> = row
-                .get::<Option<&str>, _>("choices")
-                .and_then(|c| serde_json::from_str(c).ok());
-            let choices = match authored {
-                Some(choices) if row.get::<i64, _>("keep_order") != 0 => choices,
-                _ => {
-                    let mut choices = wrong;
-                    choices.push(correct.clone());
-                    choices.shuffle(&mut rand::rng());
-                    choices
-                }
-            };
-            let Some(answer) = choices.iter().position(|c| *c == correct) else {
-                tracing::warn!("question {id} has no correct choice; skipping it");
-                continue;
-            };
-            out.push(Question {
-                id,
-                category: row.get("category"),
-                prompt: row.get("prompt"),
-                choices,
-                answer,
-                song: None,
-                lines: QuestionLines::default(),
-            });
+            if let Some(q) = question_from_row(&row)? {
+                out.push(q);
+            }
             if out.len() == n {
                 break;
             }
@@ -270,6 +284,57 @@ impl Db {
             }
         }
         Ok(out)
+    }
+
+    /// Every question a room rated `max_rating` may play, for planning rounds.
+    pub async fn question_pool(&self, max_rating: Rating) -> anyhow::Result<Vec<PoolEntry>> {
+        let rows = sqlx::query(concat!(
+            "SELECT id, category, difficulty FROM questions
+             WHERE CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1
+               AND ",
+            playable!()
+        ))
+        .bind(max_rating.level())
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| PoolEntry {
+                id: row.get("id"),
+                category: row.get("category"),
+                difficulty: Difficulty::parse(row.get("difficulty")),
+            })
+            .collect())
+    }
+
+    /// Loads questions by id, in the order given, with their choices shuffled and the host lines a
+    /// room rated `max_rating` may hear. Ids that no longer exist are skipped.
+    pub async fn questions_by_ids(
+        &self,
+        ids: &[i64],
+        max_rating: Rating,
+    ) -> anyhow::Result<Vec<Question>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query(
+            "SELECT id, category, prompt, correct, wrong, choices, keep_order FROM questions
+             WHERE id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(serde_json::to_string(ids)?)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut by_id = HashMap::new();
+        for row in rows {
+            if let Some(q) = question_from_row(&row)? {
+                by_id.insert(q.id, q);
+            }
+        }
+        let mut lines = self.question_lines(ids, max_rating).await?;
+        for q in by_id.values_mut() {
+            q.lines = lines.remove(&q.id).unwrap_or_default();
+        }
+        Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
     }
 
     /// Picks up to `n` random hangman phrases rated at most `max_rating`, skipping ids in `exclude`.
@@ -392,4 +457,39 @@ impl Db {
             .await?;
         Ok(row.get("n"))
     }
+}
+
+/// Builds a playable question from a `questions` row, shuffling the right answer in with the wrong ones.
+/// Builds a question from a row with `id, category, prompt, correct, wrong, choices, keep_order`.
+/// Choices are shuffled unless the pack fixed their order. None if the right answer is missing.
+fn question_from_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Option<Question>> {
+    let id: i64 = row.get("id");
+    let correct: String = row.get("correct");
+    let wrong: Vec<String> = serde_json::from_str(row.get::<&str, _>("wrong"))
+        .with_context(|| format!("question {id} has bad `wrong` JSON"))?;
+    let authored: Option<Vec<String>> = row
+        .get::<Option<&str>, _>("choices")
+        .and_then(|c| serde_json::from_str(c).ok());
+    let choices = match authored {
+        Some(choices) if row.get::<i64, _>("keep_order") != 0 => choices,
+        _ => {
+            let mut choices = wrong;
+            choices.push(correct.clone());
+            choices.shuffle(&mut rand::rng());
+            choices
+        }
+    };
+    let Some(answer) = choices.iter().position(|c| *c == correct) else {
+        tracing::warn!("question {id} has no correct choice; skipping it");
+        return Ok(None);
+    };
+    Ok(Some(Question {
+        id,
+        category: row.get("category"),
+        prompt: row.get("prompt"),
+        choices,
+        answer,
+        song: None,
+        lines: QuestionLines::default(),
+    }))
 }

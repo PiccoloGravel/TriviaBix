@@ -29,6 +29,7 @@ use crate::room::{
     clamp_teams,
 };
 use crate::rooms::Rooms;
+use crate::rounds;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -149,6 +150,8 @@ pub(crate) struct CreateRoom {
     clip_ms: Option<u64>,
     teams: Option<u8>,
     late_join: Option<bool>,
+    trivia_rounds: Option<u8>,
+    per_round: Option<usize>,
 }
 
 impl CreateRoom {
@@ -163,6 +166,14 @@ impl CreateRoom {
                 .clamp(MIN_CLIP_MS, MAX_CLIP_MS),
             teams: clamp_teams(self.teams.unwrap_or(0)),
             late_join: self.late_join.unwrap_or(true),
+            trivia_rounds: self
+                .trivia_rounds
+                .unwrap_or(rounds::MAX_ROUNDS)
+                .clamp(rounds::MIN_ROUNDS, rounds::MAX_ROUNDS),
+            per_round: self
+                .per_round
+                .unwrap_or(5)
+                .clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND),
         }
     }
 }

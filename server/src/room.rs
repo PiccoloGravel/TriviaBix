@@ -9,11 +9,12 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
 
 use crate::characters::{self, CHARACTERS};
-use crate::db::{Db, Question, Rating, Standing};
+use crate::db::{Db, Difficulty, Question, Rating, Standing};
 use crate::hangman::{self, Guess, Puzzle};
 use crate::host::{self, Host, Script};
 use crate::music::{self, Itunes};
 use crate::protocol::*;
+use crate::rounds;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
 
@@ -58,6 +59,10 @@ pub struct Timing {
     pub song_question: Duration,
     pub reveal: Duration,
     pub scoreboard: Duration,
+    /// The title card before each trivia round.
+    pub round_intro: Duration,
+    /// The scores and question recap after each trivia round.
+    pub recap: Duration,
     /// The host's opening before the first question.
     pub intro: Duration,
     /// How fast the TV's voice talks, in characters per second. Phases stretch so the host can finish
@@ -78,6 +83,10 @@ pub struct Settings {
     pub teams: u8,
     /// Let new players join a running game; they start at the next question.
     pub late_join: bool,
+    /// Trivia: rounds per game, from rounds::MIN_ROUNDS to rounds::MAX_ROUNDS.
+    pub trivia_rounds: u8,
+    /// Trivia: questions per round.
+    pub per_round: usize,
 }
 
 impl Settings {
@@ -89,6 +98,8 @@ impl Settings {
             clip_ms: self.clip_ms,
             teams: self.teams,
             late_join: self.late_join,
+            trivia_rounds: self.trivia_rounds,
+            per_round: self.per_round,
         }
     }
 }
@@ -106,6 +117,8 @@ pub struct SettingsChange {
     pub clip_ms: Option<u64>,
     pub teams: Option<u8>,
     pub late_join: Option<bool>,
+    pub trivia_rounds: Option<u8>,
+    pub per_round: Option<usize>,
 }
 
 pub enum Join {
@@ -200,9 +213,13 @@ impl RoomHandle {
 enum Phase {
     Lobby,
     Intro,
+    /// A trivia round's title card: its number, theme, difficulty and points.
+    RoundIntro,
     Question,
     Reveal,
     Scoreboard,
+    /// After a trivia round: scores and a look back at its questions.
+    Recap,
     Final,
 }
 
@@ -211,9 +228,11 @@ impl Phase {
         match self {
             Phase::Lobby => "lobby",
             Phase::Intro => "intro",
+            Phase::RoundIntro => "round_intro",
             Phase::Question => "question",
             Phase::Reveal => "reveal",
             Phase::Scoreboard => "scoreboard",
+            Phase::Recap => "recap",
             Phase::Final => "final",
         }
     }
@@ -293,6 +312,16 @@ impl Outcome {
     }
 }
 
+/// One round of a trivia game, covering `len` questions from `start` in `Room::questions`.
+struct Stage {
+    difficulty: Difficulty,
+    category: String,
+    points_pct: u32,
+    final_round: bool,
+    start: usize,
+    len: usize,
+}
+
 pub struct Room {
     code: String,
     host_token: String,
@@ -319,6 +348,13 @@ pub struct Room {
     used_phrase_ids: Vec<i64>,
     used_song_ids: Vec<i64>,
     hm: HangmanRound,
+    /// Trivia only: the game's rounds. Empty in other modes.
+    stages: Vec<Stage>,
+    /// Trivia only: who got each question right, by question index.
+    right_answers: Vec<Vec<u32>>,
+    /// Trivia only: points each player has won in the current round.
+    stage_points: HashMap<u32, i64>,
+    /// Index of the current question, puzzle or song (one "round" in hangman and songs).
     round: usize,
     question_started: Instant,
     question_len: Duration,
@@ -372,6 +408,9 @@ impl Room {
             used_phrase_ids: Vec::new(),
             used_song_ids: Vec::new(),
             hm: HangmanRound::default(),
+            stages: Vec::new(),
+            right_answers: Vec::new(),
+            stage_points: HashMap::new(),
             round: 0,
             question_started: Instant::now(),
             question_len: Duration::ZERO,
@@ -778,6 +817,8 @@ impl Room {
                 clip_ms,
                 teams,
                 late_join,
+                trivia_rounds,
+                per_round,
             } => {
                 if !is_host {
                     return Err("Only the host can change settings.".into());
@@ -789,6 +830,8 @@ impl Room {
                     clip_ms,
                     teams,
                     late_join,
+                    trivia_rounds,
+                    per_round,
                 })?;
             }
             ClientMsg::Team { team } => {
@@ -861,10 +904,7 @@ impl Room {
                 }
             }
             AdminCmd::EndGame => {
-                if !matches!(
-                    self.phase,
-                    Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard
-                ) {
+                if !self.running() {
                     return Err("There's no game running.".into());
                 }
                 if self.phase == Phase::Question && self.settings.mode != GameMode::Hangman {
@@ -917,6 +957,8 @@ impl Room {
                 clip_ms,
                 teams,
                 late_join,
+                trivia_rounds,
+                per_round,
             } => {
                 self.change_settings(SettingsChange {
                     rounds,
@@ -925,6 +967,8 @@ impl Room {
                     clip_ms,
                     teams,
                     late_join,
+                    trivia_rounds,
+                    per_round,
                 })?;
             }
         }
@@ -933,10 +977,7 @@ impl Room {
 
     /// Moves on from the intro, question, reveal or scoreboard. False if there was nothing to skip.
     async fn skip(&mut self) -> bool {
-        let running = matches!(
-            self.phase,
-            Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard
-        );
+        let running = self.running();
         if running {
             self.advance().await;
         }
@@ -963,12 +1004,16 @@ impl Room {
             clip_ms,
             teams,
             late_join,
+            trivia_rounds,
+            per_round,
         } = change;
         let locked = rounds.is_some()
             || max_rating.is_some()
             || mode.is_some()
             || clip_ms.is_some()
-            || teams.is_some();
+            || teams.is_some()
+            || trivia_rounds.is_some()
+            || per_round.is_some();
         if locked && self.phase != Phase::Lobby {
             return Err("Settings are locked once the game starts.".into());
         }
@@ -992,6 +1037,12 @@ impl Room {
         }
         if let Some(l) = late_join {
             self.settings.late_join = l;
+        }
+        if let Some(r) = trivia_rounds {
+            self.settings.trivia_rounds = r.clamp(rounds::MIN_ROUNDS, rounds::MAX_ROUNDS);
+        }
+        if let Some(n) = per_round {
+            self.settings.per_round = n.clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND);
         }
         self.broadcast();
         Ok(())
@@ -1036,18 +1087,22 @@ impl Room {
         }
         match self.settings.mode {
             GameMode::Trivia => {
-                self.load_questions().await?;
+                self.load_trivia().await?;
                 self.puzzles.clear();
             }
             GameMode::Songs => {
                 self.load_songs().await?;
                 self.puzzles.clear();
+                self.stages.clear();
             }
             GameMode::Hangman => {
                 self.load_puzzles().await?;
                 self.questions.clear();
+                self.stages.clear();
             }
         }
+        self.right_answers.clear();
+        self.stage_points.clear();
         for p in &mut self.players {
             p.score = 0;
             p.streak = 0;
@@ -1083,33 +1138,61 @@ impl Room {
         Ok(())
     }
 
-    async fn load_questions(&mut self) -> Result<(), String> {
+    /// Plans the game's rounds, easiest first, and loads their questions.
+    async fn load_trivia(&mut self) -> Result<(), String> {
+        let load_error = |e: anyhow::Error| {
+            tracing::error!("loading questions: {e:#}");
+            "Couldn't load questions. Try again?".to_string()
+        };
         if self.used_question_ids.len() > 200 {
             self.used_question_ids.clear();
         }
-        let mut questions = self
+        let pool = self
             .db
-            .random_questions(
-                self.settings.rounds,
-                self.settings.max_rating,
-                &self.used_question_ids,
-            )
+            .question_pool(self.settings.max_rating)
             .await
-            .map_err(|e| {
-                tracing::error!("loading questions: {e:#}");
-                "Couldn't load questions. Try again?".to_string()
-            })?;
-        if questions.len() < self.settings.rounds {
-            // Ran out of unseen questions; allow repeats rather than a short game.
+            .map_err(load_error)?;
+        let played: HashSet<i64> = self.used_question_ids.iter().copied().collect();
+        let (plan, reset) = rounds::plan(
+            &pool,
+            self.settings.trivia_rounds,
+            self.settings.per_round,
+            &played,
+            &mut rand::rng(),
+        );
+        if reset {
+            // Ran out of unseen questions; repeats beat a short game.
             self.used_question_ids.clear();
-            questions = self
-                .db
-                .random_questions(self.settings.rounds, self.settings.max_rating, &[])
-                .await
-                .map_err(|e| e.to_string())?;
         }
+        let ids: Vec<i64> = plan.iter().flat_map(|r| r.ids.iter().copied()).collect();
+        let questions = self
+            .db
+            .questions_by_ids(&ids, self.settings.max_rating)
+            .await
+            .map_err(load_error)?;
         if questions.is_empty() {
             return Err("The question bank is empty.".into());
+        }
+        // Lay the rounds over the loaded questions; a question deleted meanwhile just drops out.
+        self.stages.clear();
+        let mut start = 0;
+        for r in plan {
+            let len = questions[start..]
+                .iter()
+                .take_while(|q| r.ids.contains(&q.id))
+                .count();
+            if len == 0 {
+                continue;
+            }
+            self.stages.push(Stage {
+                difficulty: r.difficulty,
+                category: r.category,
+                points_pct: r.points_pct,
+                final_round: r.final_round,
+                start,
+                len,
+            });
+            start += len;
         }
         self.used_question_ids
             .extend(questions.iter().map(|q| q.id));
@@ -1242,7 +1325,12 @@ impl Room {
             GameMode::Trivia | GameMode::Songs => self.questions[self.round].category.clone(),
             GameMode::Hangman => self.puzzles[self.round].category.clone(),
         };
-        let (round, total) = ((self.round + 1).to_string(), total.to_string());
+        // In trivia the host counts questions within the round.
+        let (round, total) = match self.stage_idx().map(|i| &self.stages[i]) {
+            Some(st) => (self.round - st.start + 1, st.len),
+            None => (self.round + 1, total),
+        };
+        let (round, total) = (round.to_string(), total.to_string());
         let line = self.line(
             event,
             &[
@@ -1273,7 +1361,11 @@ impl Room {
     async fn advance(&mut self) {
         let pause = Duration::from_millis(1500);
         match self.phase {
-            Phase::Intro => {
+            Phase::Intro if !self.stages.is_empty() => {
+                self.begin_stage();
+                return;
+            }
+            Phase::Intro | Phase::RoundIntro => {
                 self.begin_question();
                 return;
             }
@@ -1290,13 +1382,27 @@ impl Room {
                     Some(self.timing.reveal.max(self.talk() + pause)),
                 );
             }
-            Phase::Reveal if self.round + 1 >= self.game_len() => {
+            Phase::Reveal if self.stage_ends_here() => {
+                self.recap();
+                self.set_phase(
+                    Phase::Recap,
+                    Some(self.timing.recap.max(self.talk() + pause)),
+                );
+            }
+            Phase::Reveal | Phase::Recap if self.round + 1 >= self.game_len() => {
                 self.finale();
                 self.set_phase(Phase::Final, None);
                 self.record_results().await;
             }
+            // Trivia goes straight to the next question; the scores wait for the end of the round.
+            Phase::Reveal if !self.stages.is_empty() => {
+                self.round += 1;
+                self.begin_question();
+                return;
+            }
             Phase::Reveal => {
-                self.score_update();
+                let (parts, callouts) = self.score_update();
+                self.speak(parts, callouts);
                 self.set_phase(
                     Phase::Scoreboard,
                     Some(self.timing.scoreboard.max(self.talk() + pause)),
@@ -1307,14 +1413,20 @@ impl Room {
                 self.begin_question();
                 return;
             }
+            Phase::Recap => {
+                self.round += 1;
+                self.begin_stage();
+                return;
+            }
             Phase::Lobby | Phase::Final => self.set_phase(self.phase, None),
         }
         self.broadcast();
     }
 
-    /// Correct answers earn 500 points plus up to 500 more for speed. Then the host reacts: the answer,
+    /// Correct answers earn 500 points plus up to 500 more for speed, scaled up in harder trivia rounds. Then the host reacts: the answer,
     /// who got it, and one extra beat (a streak, a broken streak, or a roast of a wrong answer).
     fn score_question(&mut self) {
+        let scale = self.stage_idx().map_or(100, |i| self.stages[i].points_pct) as f64 / 100.0;
         let q = &self.questions[self.round];
         let limit = self.question_len.as_secs_f64().max(0.001);
         let (mut right, mut wrong, mut silent, mut streaks, mut broken) =
@@ -1324,12 +1436,13 @@ impl Room {
             let points = match answer {
                 Some(a) if a.choice == q.answer => {
                     let speed = (1.0 - a.after.as_secs_f64() / limit).clamp(0.0, 1.0);
-                    500 + (500.0 * speed).round() as i64
+                    ((500.0 + 500.0 * speed) * scale).round() as i64
                 }
                 _ => 0,
             };
             p.score += points;
             self.last_points.insert(p.id, points);
+            *self.stage_points.entry(p.id).or_default() += points;
             if points > 0 {
                 p.streak += 1;
                 right.push((p.id, points));
@@ -1349,6 +1462,10 @@ impl Room {
             }
         }
 
+        if !self.stages.is_empty() {
+            self.right_answers.resize(self.questions.len(), Vec::new());
+            self.right_answers[self.round] = right.iter().map(|r| r.0).collect();
+        }
         let answer = q.choices[q.answer].clone();
         let n = self.players.len();
         let mut parts = vec![self.line("reveal_answer", &[("answer", &answer)])];
@@ -1440,7 +1557,7 @@ impl Room {
 
     /// The host's take on the scoreboard: who leads (or just took over), a tie, and sometimes a dig
     /// at last place.
-    fn score_update(&mut self) {
+    fn score_update(&mut self) -> (Vec<String>, Vec<Callout>) {
         let ranked: Vec<(usize, u32, String, i64)> = self
             .ranked()
             .into_iter()
@@ -1490,8 +1607,94 @@ impl Room {
                 });
             }
         }
-        if self.round + 2 == self.game_len() {
+        if self.round + 2 == self.game_len() && self.stages.is_empty() {
             parts.push(self.line("one_left", &[]));
+        }
+        (parts, callouts)
+    }
+
+    /// Opens a trivia round with its title card: number, theme, difficulty and what it's worth.
+    fn begin_stage(&mut self) {
+        let Some(i) = self.stage_idx() else {
+            return self.begin_question();
+        };
+        self.answers.clear();
+        self.last_points.clear();
+        self.stage_points.clear();
+        let st = &self.stages[i];
+        let (final_round, category, difficulty, points) = (
+            st.final_round,
+            st.category.clone(),
+            st.difficulty.name(),
+            rounds::points_phrase(st.points_pct),
+        );
+        let (round, total) = ((i + 1).to_string(), self.stages.len().to_string());
+        let line = if final_round {
+            self.line(
+                "round_final",
+                &[("category", &category), ("points", points)],
+            )
+        } else {
+            self.line(
+                "round_intro",
+                &[
+                    ("round", &round),
+                    ("total", &total),
+                    ("category", &category),
+                    ("difficulty", difficulty),
+                    ("points", points),
+                ],
+            )
+        };
+        self.speak(vec![line], Vec::new());
+        let pause = Duration::from_millis(1000);
+        self.set_phase(
+            Phase::RoundIntro,
+            Some(self.timing.round_intro.max(self.talk() + pause)),
+        );
+        self.broadcast();
+    }
+
+    /// The host wraps up a trivia round: who won it, then the standings unless the finale is next.
+    fn recap(&mut self) {
+        let Some(i) = self.stage_idx() else {
+            return;
+        };
+        let round = (i + 1).to_string();
+        let best = self
+            .players
+            .iter()
+            .filter(|p| !p.waiting)
+            .map(|p| self.stage_points.get(&p.id).copied().unwrap_or(0))
+            .max()
+            .unwrap_or(0);
+        let mut parts = Vec::new();
+        let mut callouts = Vec::new();
+        if best <= 0 {
+            parts.push(self.line("recap_nobody", &[("round", &round)]));
+        } else {
+            let winners: Vec<(u32, String)> = self
+                .players
+                .iter()
+                .filter(|p| !p.waiting && self.stage_points.get(&p.id) == Some(&best))
+                .map(|p| (p.id, p.name.clone()))
+                .collect();
+            let names: Vec<&str> = winners.iter().map(|w| w.1.as_str()).collect();
+            let (names, points) = (host::name_list(&names), best.to_string());
+            parts.push(self.line(
+                "recap",
+                &[("round", &round), ("name", &names), ("points", &points)],
+            ));
+            callouts.push(Callout {
+                kind: "round_winner",
+                player_id: (winners.len() == 1).then(|| winners[0].0),
+                label: format!("WON ROUND {round}"),
+            });
+        }
+        if i + 1 < self.stages.len() {
+            let (more, more_callouts) = self.score_update();
+            parts.extend(more);
+            callouts.extend(more_callouts);
         }
         self.speak(parts, callouts);
     }
@@ -1657,6 +1860,99 @@ impl Room {
         teams
     }
 
+    /// A game is under way (anything but the lobby and the final scores).
+    fn running(&self) -> bool {
+        !matches!(self.phase, Phase::Lobby | Phase::Final)
+    }
+
+    /// Trivia: the round the current question belongs to.
+    fn stage_idx(&self) -> Option<usize> {
+        self.stages
+            .iter()
+            .position(|st| (st.start..st.start + st.len).contains(&self.round))
+    }
+
+    /// Trivia: the last question of a round has just been played.
+    fn stage_ends_here(&self) -> bool {
+        self.stage_idx().is_some_and(|i| {
+            let st = &self.stages[i];
+            self.round + 1 == st.start + st.len
+        })
+    }
+
+    /// Trivia: the round being played, from its title card to its recap.
+    fn current_stage(&self) -> Option<usize> {
+        match self.phase {
+            Phase::RoundIntro | Phase::Question | Phase::Reveal | Phase::Recap => self.stage_idx(),
+            _ => None,
+        }
+    }
+
+    /// The round ladder for the TV. Themes of rounds not yet reached stay hidden.
+    fn stage_views(&self) -> Vec<StageView> {
+        if self.phase == Phase::Lobby {
+            return Vec::new();
+        }
+        let current = self.current_stage();
+        self.stages
+            .iter()
+            .enumerate()
+            .map(|(i, st)| {
+                let status = if self.phase == Phase::Final || current.is_some_and(|c| i < c) {
+                    "done"
+                } else if current == Some(i) {
+                    "current"
+                } else {
+                    "next"
+                };
+                StageView {
+                    number: i + 1,
+                    title: if st.final_round {
+                        "Final Round".into()
+                    } else {
+                        format!("Round {}", i + 1)
+                    },
+                    category: (status != "next").then(|| st.category.clone()),
+                    difficulty: st.difficulty,
+                    points_pct: st.points_pct,
+                    final_round: st.final_round,
+                    questions: st.len,
+                    status,
+                }
+            })
+            .collect()
+    }
+
+    fn recap_view(&self) -> Option<RecapView<'_>> {
+        let i = self
+            .current_stage()
+            .filter(|_| self.phase == Phase::Recap)?;
+        let st = &self.stages[i];
+        Some(RecapView {
+            stage: i + 1,
+            questions: (st.start..st.start + st.len)
+                .map(|n| {
+                    let q = &self.questions[n];
+                    RecapQuestionView {
+                        prompt: &q.prompt,
+                        answer: &q.choices[q.answer],
+                        right: self.right_answers.get(n).cloned().unwrap_or_default(),
+                    }
+                })
+                .collect(),
+            points: self
+                .players
+                .iter()
+                .filter(|p| !p.waiting)
+                .map(|p| ResultView {
+                    player_id: p.id,
+                    choice: None,
+                    points: self.stage_points.get(&p.id).copied().unwrap_or(0),
+                })
+                .collect(),
+        })
+    }
+
     fn in_round(&self) -> bool {
         matches!(
             self.phase,
@@ -1665,16 +1961,21 @@ impl Room {
     }
 
     fn round_number(&self) -> usize {
-        if self.in_round() || self.phase == Phase::Final {
-            self.round + 1
-        } else {
-            0
+        match self.phase {
+            _ if self.in_round() => self.round + 1,
+            Phase::Final | Phase::Recap => self.round + 1,
+            // The title card comes before the round's first question.
+            Phase::RoundIntro => self.round,
+            _ => 0,
         }
     }
 
     fn total_rounds(&self) -> usize {
         if self.phase == Phase::Lobby {
-            self.settings.rounds
+            match self.settings.mode {
+                GameMode::Trivia => self.settings.trivia_rounds as usize * self.settings.per_round,
+                _ => self.settings.rounds,
+            }
         } else {
             self.game_len()
         }
@@ -1711,6 +2012,9 @@ impl Room {
             phase: self.phase.name(),
             round: self.round_number(),
             total_rounds: self.total_rounds(),
+            stage: self
+                .current_stage()
+                .and_then(|i| self.stage_views().into_iter().nth(i)),
             ms_left: self.ms_left(),
             settings: self.settings.view(),
             max_players: self.max_players,
@@ -1778,6 +2082,15 @@ impl Room {
             .map(|s| s.preview_url.as_str());
 
         let teams = self.team_views();
+        let stages = self.stage_views();
+        let stage = self.current_stage();
+        let stage_question = match (stage, self.phase) {
+            (Some(i), Phase::Question | Phase::Reveal | Phase::Recap) => {
+                self.round - self.stages[i].start + 1
+            }
+            _ => 0,
+        };
+        let recap = self.recap_view();
 
         for conn in self.conns.values() {
             let is_host = matches!(conn.role, Role::Host);
@@ -1824,16 +2137,12 @@ impl Room {
                 max_players: self.max_players,
                 settings: self.settings.view(),
                 teams: teams.clone(),
-                round: if in_round || self.phase == Phase::Final {
-                    self.round + 1
-                } else {
-                    0
-                },
-                total_rounds: if self.phase == Phase::Lobby {
-                    self.settings.rounds
-                } else {
-                    self.game_len()
-                },
+                round: self.round_number(),
+                total_rounds: self.total_rounds(),
+                stages: stages.clone(),
+                stage: stage.map_or(0, |i| i + 1),
+                stage_question,
+                recap: recap.clone(),
                 question: question.map(|q| QuestionView {
                     kind: if q.song.is_some() { "song" } else { "trivia" },
                     category: &q.category,

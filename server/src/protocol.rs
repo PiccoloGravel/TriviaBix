@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::db::Rating;
+use crate::db::{Difficulty, Rating};
 
 /// Messages sent by the TV host screen or by a phone.
 #[derive(Debug, Deserialize)]
@@ -28,6 +28,8 @@ pub enum ClientMsg {
         clip_ms: Option<u64>,
         teams: Option<u8>,
         late_join: Option<bool>,
+        trivia_rounds: Option<u8>,
+        per_round: Option<usize>,
     },
     /// Player: switch to another team while in the lobby.
     Team { team: u8 },
@@ -83,9 +85,17 @@ pub struct StateView<'a> {
     pub settings: SettingsView,
     /// Team standings, best first; empty when teams are off.
     pub teams: Vec<TeamView>,
-    /// 1-based round number; 0 in the lobby.
+    /// 1-based number of the current question, puzzle or song across the whole game; 0 in the lobby.
     pub round: usize,
     pub total_rounds: usize,
+    /// Trivia only: the game's rounds, easiest first. Empty in the lobby and in other modes.
+    pub stages: Vec<StageView>,
+    /// 1-based number of the round being played; 0 when there is none.
+    pub stage: usize,
+    /// 1-based question number within the round; 0 on the round's title card.
+    pub stage_question: usize,
+    /// Between rounds: what the round asked and who scored.
+    pub recap: Option<RecapView<'a>>,
     pub question: Option<QuestionView<'a>>,
     /// Milliseconds until the current phase advances on its own.
     pub ms_left: Option<u64>,
@@ -125,6 +135,10 @@ pub struct SettingsView {
     pub teams: u8,
     /// Whether new players can join after the game has started.
     pub late_join: bool,
+    /// Trivia only: how many rounds a game has (3 or 4), each harder than the last.
+    pub trivia_rounds: u8,
+    /// Trivia only: questions in each round.
+    pub per_round: usize,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -135,6 +149,40 @@ pub struct TeamView {
     /// The average of its playing members' scores, so uneven teams stay fair.
     pub score: i64,
     pub members: Vec<u32>,
+}
+
+/// One round of a trivia game: its theme, difficulty and how much its questions are worth.
+#[derive(Debug, Serialize, Clone)]
+pub struct StageView {
+    pub number: usize,
+    /// "Round 2", or "Final Round".
+    pub title: String,
+    /// Kept secret until the round starts.
+    pub category: Option<String>,
+    pub difficulty: Difficulty,
+    /// Points are scaled by this percentage: 100, 150, 200 or 300.
+    pub points_pct: u32,
+    pub final_round: bool,
+    pub questions: usize,
+    /// done, current or next.
+    pub status: &'static str,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct RecapView<'a> {
+    /// 1-based number of the round that just ended.
+    pub stage: usize,
+    pub questions: Vec<RecapQuestionView<'a>>,
+    /// Points each playing player won in the round.
+    pub points: Vec<ResultView>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct RecapQuestionView<'a> {
+    pub prompt: &'a str,
+    pub answer: &'a str,
+    /// Players who got it right.
+    pub right: Vec<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,7 +220,7 @@ pub struct SongView<'a> {
     pub store_url: Option<&'a str>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ResultView {
     pub player_id: u32,
     pub choice: Option<usize>,
@@ -192,7 +240,7 @@ pub struct HostView<'a> {
 #[derive(Debug, Serialize, Clone)]
 pub struct Callout {
     /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
-    /// leader, tie, last_place, winner.
+    /// leader, tie, last_place, round_winner, winner.
     pub kind: &'static str,
     pub player_id: Option<u32>,
     /// Short overlay text, like "3 IN A ROW".
@@ -273,6 +321,8 @@ pub enum AdminCmd {
         clip_ms: Option<u64>,
         teams: Option<u8>,
         late_join: Option<bool>,
+        trivia_rounds: Option<u8>,
+        per_round: Option<usize>,
     },
 }
 
@@ -287,6 +337,8 @@ pub struct AdminRoomView {
     pub phase: &'static str,
     pub round: usize,
     pub total_rounds: usize,
+    /// Trivia only: the round being played, if any.
+    pub stage: Option<StageView>,
     pub ms_left: Option<u64>,
     pub settings: SettingsView,
     pub max_players: usize,
