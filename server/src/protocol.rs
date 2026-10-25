@@ -18,6 +18,8 @@ pub enum ClientMsg {
     PlayAgain,
     /// Host only: change settings while in the lobby.
     Settings { rounds: Option<usize>, max_rating: Option<Rating> },
+    /// Player, in the lobby: change your name and/or character.
+    Profile { name: Option<String>, character: Option<String> },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
@@ -65,6 +67,7 @@ pub struct PlayerView<'a> {
     pub name: &'a str,
     pub score: i64,
     pub color: &'static str,
+    pub character: &'a str,
     pub connected: bool,
     pub answered: bool,
 }

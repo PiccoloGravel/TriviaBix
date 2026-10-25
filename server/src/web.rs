@@ -43,6 +43,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route("/healthz", get(health))
         .route("/api/config", get(client_config))
         .route("/api/qr", get(qr_svg))
+        .route("/api/characters", get(|| async { Json(crate::characters::CHARACTERS) }))
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{code}", get(room_info))
         .route("/ws/host", get(ws_host))
@@ -129,6 +130,7 @@ struct PlayQuery {
     code: String,
     name: Option<String>,
     token: Option<String>,
+    character: Option<String>,
 }
 
 async fn ws_host(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<HostQuery>) -> Response {
@@ -138,7 +140,7 @@ async fn ws_host(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Qu
 
 async fn ws_play(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<PlayQuery>) -> Response {
     let room = app.rooms.get(&q.code);
-    ws.on_upgrade(move |socket| run_socket(socket, room, Join::Player { name: q.name, token: q.token }))
+    ws.on_upgrade(move |socket| run_socket(socket, room, Join::Player { name: q.name, token: q.token, character: q.character }))
 }
 
 /// Pumps messages between one browser socket and its room until either side goes away.

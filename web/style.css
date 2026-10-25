@@ -72,6 +72,20 @@ input:focus { outline: none; border-color: var(--accent); }
   flex: none;
 }
 
+.char-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.char {
+  font-size: 30px;
+  aspect-ratio: 1;
+  padding: 0;
+  background: var(--panel);
+  box-shadow: none;
+  border-radius: 14px;
+  line-height: 1;
+}
+.char.sel { background: rgba(255, 210, 63, 0.35); outline: 3px solid var(--accent); }
+.char:disabled { opacity: 0.2; }
+.char-label { font-size: 14px; color: var(--muted); text-align: center; min-height: 1.2em; margin-top: 6px; }
+
 .timer-track { height: 100%; background: var(--panel); border-radius: 999px; overflow: hidden; }
 .timer-fill { height: 100%; width: 100%; background: var(--accent); transform-origin: left; }
 

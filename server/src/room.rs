@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
 
+use crate::characters::{self, CHARACTERS};
 use crate::db::{Db, Question, Rating, Standing};
 use crate::protocol::*;
 
@@ -38,7 +39,7 @@ pub struct Settings {
 
 pub enum Join {
     Host { token: String },
-    Player { name: Option<String>, token: Option<String> },
+    Player { name: Option<String>, token: Option<String>, character: Option<String> },
 }
 
 pub enum RoomCmd {
@@ -59,6 +60,8 @@ pub struct RoomInfo {
     pub players: usize,
     pub max_players: usize,
     pub joinable: bool,
+    /// Characters already picked, so the join screen can grey them out.
+    pub taken_characters: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -113,6 +116,7 @@ struct Player {
     token: String,
     score: i64,
     color: &'static str,
+    character: String,
     /// Number of open sockets for this player (a phone may briefly have two).
     conns: usize,
 }
@@ -264,6 +268,7 @@ impl Room {
                     players: self.players.len(),
                     max_players: self.max_players,
                     joinable: self.phase == Phase::Lobby && self.players.len() < self.max_players,
+                    taken_characters: self.players.iter().map(|p| p.character.clone()).collect(),
                 });
             }
         }
@@ -277,7 +282,7 @@ impl Room {
                 }
                 (Role::Host, token)
             }
-            Join::Player { name, token } => {
+            Join::Player { name, token, character } => {
                 // Rejoining with a token (page refresh, phone went to sleep).
                 if let Some(p) = token
                     .as_deref()
@@ -296,11 +301,15 @@ impl Room {
                     if self.players.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
                         return Err(format!("Someone is already called {name}. Pick another name."));
                     }
+                    let character = match character.filter(|c| !c.is_empty()) {
+                        Some(c) => self.check_character(&c, None)?,
+                        None => self.free_character(),
+                    };
                     let id = self.next_player_id;
                     self.next_player_id += 1;
                     let color = self.free_color();
                     let token = uuid::Uuid::new_v4().to_string();
-                    self.players.push(Player { id, name, token: token.clone(), score: 0, color, conns: 1 });
+                    self.players.push(Player { id, name, token: token.clone(), score: 0, color, character, conns: 1 });
                     (Role::Player(id), token)
                 }
             }
@@ -321,6 +330,28 @@ impl Room {
         self.conns.insert(conn_id, Conn { tx, role });
         self.empty_since = None;
         Ok(conn_id)
+    }
+
+    /// Validates a requested character; `me` is the player changing theirs.
+    fn check_character(&self, id: &str, me: Option<u32>) -> Result<String, String> {
+        if !characters::exists(id) {
+            return Err("That character doesn't exist.".into());
+        }
+        if self.players.iter().any(|p| p.character == id && Some(p.id) != me) {
+            return Err("Someone already picked that character.".into());
+        }
+        Ok(id.to_string())
+    }
+
+    /// A random character nobody has yet (or any, if a huge room used them all).
+    fn free_character(&self) -> String {
+        use rand::seq::IndexedRandom;
+        let free: Vec<_> = CHARACTERS
+            .iter()
+            .filter(|c| !self.players.iter().any(|p| p.character == c.id))
+            .collect();
+        let pool: Vec<_> = if free.is_empty() { CHARACTERS.iter().collect() } else { free };
+        pool.choose(&mut rand::rng()).unwrap().id.to_string()
     }
 
     fn free_color(&self) -> &'static str {
@@ -399,6 +430,34 @@ impl Room {
                 }
                 if let Some(r) = max_rating {
                     self.settings.max_rating = r;
+                }
+                self.broadcast();
+            }
+            ClientMsg::Profile { name, character } => {
+                let Role::Player(pid) = role else {
+                    return Err("The TV doesn't get a character.".into());
+                };
+                if self.phase != Phase::Lobby {
+                    return Err("You can change your look between games.".into());
+                }
+                let name = match name {
+                    Some(n) => {
+                        let n = clean_name(&n)?;
+                        if self.players.iter().any(|p| p.id != pid && p.name.eq_ignore_ascii_case(&n)) {
+                            return Err(format!("Someone is already called {n}. Pick another name."));
+                        }
+                        Some(n)
+                    }
+                    None => None,
+                };
+                let character = character.map(|c| self.check_character(&c, Some(pid))).transpose()?;
+                if let Some(p) = self.player_mut(pid) {
+                    if let Some(n) = name {
+                        p.name = n;
+                    }
+                    if let Some(c) = character {
+                        p.character = c;
+                    }
                 }
                 self.broadcast();
             }
@@ -604,6 +663,7 @@ impl Room {
                         name: &p.name,
                         score: p.score,
                         color: p.color,
+                        character: &p.character,
                         connected: p.conns > 0,
                         answered: self.answers.contains_key(&p.id),
                     })

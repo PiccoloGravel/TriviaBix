@@ -48,6 +48,10 @@ const LINES = {
     "{n} takes the crown. Speech! Actually, no, please don't.",
   ],
 };
+const nameWithCharacter = (p) => {
+  const ch = TBX.characters[p.character];
+  return ch && Math.random() < 0.5 ? `${p.name} the ${ch.name}` : p.name;
+};
 const line = (key, name) => pick(LINES[key]).replace(/\{n\}/g, name || "");
 
 // ---------- Setup ----------
@@ -140,7 +144,7 @@ function renderLobby(s, changed) {
   slots.replaceChildren();
   for (const p of s.players) {
     const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away") },
-      TBX.avatar(p, "8vh"),
+      TBX.avatar(p, "10vh"),
       el("div", { class: "name" }, p.name),
       p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null);
     slots.append(slot);
@@ -158,7 +162,7 @@ function renderLobby(s, changed) {
 
   if (prev && prev.phase === "lobby") {
     for (const p of s.players) {
-      if (!prev.players.some((q) => q.id === p.id)) voice.say(line("join", p.name));
+      if (!prev.players.some((q) => q.id === p.id)) voice.say(line("join", nameWithCharacter(p)));
     }
   }
 }
@@ -316,6 +320,7 @@ document.addEventListener("keydown", (e) => {
 
 (async function boot() {
   renderSetup();
+  await TBX.loadCharacters();
   try {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
