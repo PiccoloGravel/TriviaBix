@@ -65,6 +65,23 @@
     .step .block { width: 100%; border-radius: 2vh 2vh 0 0; background: var(--panel); display: flex; align-items: flex-start; justify-content: center; padding-top: 2vh; font-family: "Bungee", sans-serif; font-size: 7vh; }
     .rest { text-align: center; font-size: 3vh; margin-top: 3vh; color: var(--muted); }
 
+    /* Name That Tune */
+    .eq { display: flex; justify-content: center; align-items: flex-end; gap: 1vw; height: 14vh; margin: 1vh 0 3vh; }
+    .eq span { width: 2.2vw; height: 20%; border-radius: 1vh; background: var(--accent); transition: height .2s; }
+    .eq.playing span { animation: eq .5s ease-in-out infinite alternate; }
+    .eq.playing span:nth-child(2) { animation-delay: -.15s; background: #2ec4b6; }
+    .eq.playing span:nth-child(3) { animation-delay: -.3s; background: #ff4f81; }
+    .eq.playing span:nth-child(4) { animation-delay: -.45s; background: #7b5cff; }
+    .eq.playing span:nth-child(5) { animation-delay: -.2s; background: #3fa9f5; }
+    @keyframes eq { from { height: 15%; } to { height: 100%; } }
+    .listen { text-align: center; font-size: 3vh; color: var(--muted); min-height: 4vh; }
+    .song-card { display: flex; align-items: center; justify-content: center; gap: 3vw; margin: 2vh 0 3vh; }
+    .song-card img { width: 20vh; height: 20vh; border-radius: 2vh; object-fit: cover; box-shadow: 0 1vh 3vh rgba(0,0,0,.4); }
+    .song-card .title { font-size: 6vh; line-height: 1.1; }
+    .song-card .artist { font-size: 4vh; color: var(--accent); }
+    .song-card .credit { font-size: 2vh; margin-top: 1vh; }
+    .choice .song { display: flex; flex-direction: column; line-height: 1.15; }
+    .choice .song small { font-size: .65em; opacity: .85; }
     /* Speed hangman */
     .secs.danger { color: var(--bad); animation: pulse .5s ease-in-out infinite alternate; }
     @keyframes pulse { to { transform: scale(1.25); } }
@@ -195,9 +212,16 @@
       <span>Game</span>
       <button class="secondary" data-mode="trivia">Trivia</button>
       <button class="secondary" data-mode="hangman">Speed Hangman</button>
+      <button class="secondary" data-mode="songs">🎵 Name That Tune</button>
+    </div>
+    <div class="opts" id="clip-opts">
+      <span>Clip</span>
+      <button class="secondary" data-clip="1000">1 second</button>
+      <button class="secondary" data-clip="2000">2 seconds</button>
+      <button class="secondary" data-clip="3000">3 seconds</button>
     </div>
     <div class="opts">
-      <span>Rounds</span>
+      <span id="rounds-label">Rounds</span>
       <button class="secondary" data-rounds="5">5</button>
       <button class="secondary" data-rounds="10">10</button>
       <button class="secondary" data-rounds="15">15</button>
@@ -242,6 +266,8 @@
     <div class="topbar"><span id="q-round"></span><span class="secs" id="q-secs"></span><span class="code-chip" id="q-code"></span></div>
     <div class="cat" id="q-cat"></div>
     <div class="prompt" id="q-prompt"></div>
+    <div class="eq hidden" id="q-eq"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="listen hidden" id="q-listen"></div>
     <div class="choices" id="q-choices"></div>
     <div class="timer"><div class="timer-track"><div class="timer-fill" id="q-timer"></div></div></div>
     <div class="answered-row" id="q-answered"></div>
@@ -251,6 +277,14 @@
     <div class="topbar"><span id="r-round"></span><span></span><span class="code-chip" id="r-code"></span></div>
     <div class="cat" id="r-cat"></div>
     <div class="prompt" id="r-prompt"></div>
+    <div class="song-card hidden" id="r-song">
+      <img id="r-art" alt="">
+      <div>
+        <div class="title" id="r-title"></div>
+        <div class="artist" id="r-artist"></div>
+        <div class="muted credit">Song preview courtesy of Apple Music</div>
+      </div>
+    </div>
     <div class="choices" id="r-choices"></div>
     <div class="timer"><div class="timer-track"><div class="timer-fill" id="r-timer"></div></div></div>
   </section>
@@ -305,6 +339,7 @@
   <canvas id="confetti"></canvas>
 
   <div class="corner">
+    <button class="secondary hidden" id="sound-btn">🔈 Tap for sound</button>
     <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
     <button class="secondary" id="voice-btn" title="V">🗣 Voice</button>
     <button class="secondary" id="fs-btn" title="F">⛶ Fullscreen</button>

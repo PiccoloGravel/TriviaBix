@@ -12,6 +12,7 @@ use crate::characters::{self, CHARACTERS};
 use crate::db::{Db, Question, Rating, Standing};
 use crate::hangman::{self, Guess, Puzzle};
 use crate::host::{self, Host, Script};
+use crate::music::{self, Itunes};
 use crate::protocol::*;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
@@ -22,6 +23,8 @@ const COLORS: [&str; 16] = [
 ];
 
 pub const MIN_ROUNDS: usize = 3;
+pub const MIN_CLIP_MS: u64 = 500;
+pub const MAX_CLIP_MS: u64 = 5_000;
 pub const MAX_ROUNDS: usize = 30;
 const MAX_NAME_CHARS: usize = 16;
 
@@ -42,6 +45,8 @@ pub struct Timing {
     pub question: Duration,
     /// Time to crack one speed hangman phrase.
     pub hangman: Duration,
+    /// Answer time for a Name That Tune round.
+    pub song_question: Duration,
     pub reveal: Duration,
     pub scoreboard: Duration,
     /// The host's opening before the first question.
@@ -58,6 +63,8 @@ pub struct Settings {
     pub rounds: usize,
     pub max_rating: Rating,
     pub mode: GameMode,
+    /// How much of the song the TV plays in Name That Tune.
+    pub clip_ms: u64,
 }
 
 pub enum Join {
@@ -227,6 +234,7 @@ pub struct Room {
     timing: Timing,
     max_players: usize,
     db: Db,
+    itunes: Itunes,
     host: Host,
     host_line: Option<HostLine>,
     host_seq: u64,
@@ -243,6 +251,7 @@ pub struct Room {
     used_question_ids: Vec<i64>,
     puzzles: Vec<Puzzle>,
     used_phrase_ids: Vec<i64>,
+    used_song_ids: Vec<i64>,
     hm: HangmanRound,
     round: usize,
     question_started: Instant,
@@ -257,6 +266,7 @@ pub struct Room {
 
 impl Room {
     /// Spawns the room task. `on_close` runs once the room shuts down.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         code: String,
         host_token: String,
@@ -265,6 +275,7 @@ impl Room {
         max_players: usize,
         db: Db,
         script: Arc<Script>,
+        itunes: Itunes,
         on_close: impl FnOnce() + Send + 'static,
     ) -> RoomHandle {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -275,6 +286,7 @@ impl Room {
             timing,
             max_players,
             db,
+            itunes,
             host: Host::new(script),
             host_line: None,
             host_seq: 0,
@@ -289,6 +301,7 @@ impl Room {
             used_question_ids: Vec::new(),
             puzzles: Vec::new(),
             used_phrase_ids: Vec::new(),
+            used_song_ids: Vec::new(),
             hm: HangmanRound::default(),
             round: 0,
             question_started: Instant::now(),
@@ -530,7 +543,7 @@ impl Room {
                 let Role::Player(pid) = role else {
                     return Err("The TV can't answer, nice try.".into());
                 };
-                if self.phase != Phase::Question || self.settings.mode != GameMode::Trivia {
+                if self.phase != Phase::Question || self.settings.mode == GameMode::Hangman {
                     return Err("Not taking answers right now.".into());
                 }
                 let n = self.questions[self.round].choices.len();
@@ -663,6 +676,7 @@ impl Room {
                 rounds,
                 max_rating,
                 mode,
+                clip_ms,
             } => {
                 if !is_host {
                     return Err("Only the host can change settings.".into());
@@ -678,6 +692,9 @@ impl Room {
                 }
                 if let Some(m) = mode {
                     self.settings.mode = m;
+                }
+                if let Some(ms) = clip_ms {
+                    self.settings.clip_ms = ms.clamp(MIN_CLIP_MS, MAX_CLIP_MS);
                 }
                 self.broadcast();
             }
@@ -766,6 +783,10 @@ impl Room {
                 self.load_questions().await?;
                 self.puzzles.clear();
             }
+            GameMode::Songs => {
+                self.load_songs().await?;
+                self.puzzles.clear();
+            }
             GameMode::Hangman => {
                 self.load_puzzles().await?;
                 self.questions.clear();
@@ -840,6 +861,34 @@ impl Room {
         Ok(())
     }
 
+    async fn load_songs(&mut self) -> Result<(), String> {
+        let questions = music::build_round(
+            &self.db,
+            &self.itunes,
+            self.settings.rounds,
+            self.settings.max_rating,
+            &self.used_song_ids,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("loading songs: {e:#}");
+            "Couldn't reach Apple Music for song clips. Check the server's internet and try again."
+                .to_string()
+        })?;
+        if questions.is_empty() {
+            return Err(
+                "Couldn't find any playable songs right now. Try again in a minute.".into(),
+            );
+        }
+        // build_round falls back to repeats on its own once the list is used up.
+        if questions.iter().any(|q| self.used_song_ids.contains(&q.id)) {
+            self.used_song_ids.clear();
+        }
+        self.used_song_ids.extend(questions.iter().map(|q| q.id));
+        self.questions = questions;
+        Ok(())
+    }
+
     async fn load_puzzles(&mut self) -> Result<(), String> {
         let (n, rating) = (self.settings.rounds, self.settings.max_rating);
         let load_error = |e: anyhow::Error| {
@@ -872,7 +921,7 @@ impl Room {
 
     fn game_len(&self) -> usize {
         match self.settings.mode {
-            GameMode::Trivia => self.questions.len(),
+            GameMode::Trivia | GameMode::Songs => self.questions.len(),
             GameMode::Hangman => self.puzzles.len(),
         }
     }
@@ -927,7 +976,7 @@ impl Room {
             _ => "question",
         };
         let category = match self.settings.mode {
-            GameMode::Trivia => self.questions[self.round].category.clone(),
+            GameMode::Trivia | GameMode::Songs => self.questions[self.round].category.clone(),
             GameMode::Hangman => self.puzzles[self.round].category.clone(),
         };
         let (round, total) = ((self.round + 1).to_string(), total.to_string());
@@ -943,6 +992,7 @@ impl Room {
         // The clock starts now, but players get extra time while the host does the intro banter.
         let base = match self.settings.mode {
             GameMode::Trivia => self.timing.question,
+            GameMode::Songs => self.timing.song_question,
             GameMode::Hangman => self.timing.hangman,
         };
         self.question_len = base + self.talk();
@@ -961,7 +1011,7 @@ impl Room {
             }
             Phase::Question => {
                 match self.settings.mode {
-                    GameMode::Trivia => self.score_question(),
+                    GameMode::Trivia | GameMode::Songs => self.score_question(),
                     GameMode::Hangman => {
                         self.hm.outcome.get_or_insert(Outcome::Time);
                         self.react_to_puzzle();
@@ -1261,7 +1311,7 @@ impl Room {
     }
 
     fn all_answered(&self) -> bool {
-        if self.settings.mode != GameMode::Trivia {
+        if self.settings.mode == GameMode::Hangman {
             return false;
         }
         let mut active = self.players.iter().filter(|p| p.conns > 0).peekable();
@@ -1323,8 +1373,19 @@ impl Room {
         let ms_left = self
             .deadline
             .map(|d| d.saturating_duration_since(Instant::now()).as_millis() as u64);
+        // The TV preloads the next song: the first one during the intro, then one round ahead.
+        let next_round = match self.phase {
+            Phase::Intro => Some(0),
+            _ if in_round => Some(self.round + 1),
+            _ => None,
+        };
+        let next_clip = next_round
+            .and_then(|r| self.questions.get(r))
+            .and_then(|q| q.song.as_ref())
+            .map(|s| s.preview_url.as_str());
 
         for conn in self.conns.values() {
+            let is_host = matches!(conn.role, Role::Host);
             let you = match conn.role {
                 Role::Host => None,
                 Role::Player(id) => Some(YouView {
@@ -1362,6 +1423,7 @@ impl Room {
                     rounds: self.settings.rounds,
                     max_rating: self.settings.max_rating,
                     mode: self.settings.mode,
+                    clip_ms: self.settings.clip_ms,
                 },
                 round: if in_round || self.phase == Phase::Final {
                     self.round + 1
@@ -1374,9 +1436,15 @@ impl Room {
                     self.game_len()
                 },
                 question: question.map(|q| QuestionView {
+                    kind: if q.song.is_some() { "song" } else { "trivia" },
                     category: &q.category,
                     prompt: &q.prompt,
                     choices: &q.choices,
+                    clip: q.song.as_ref().filter(|_| is_host).map(|s| ClipView {
+                        preview_url: &s.preview_url,
+                        start_ms: s.start_ms,
+                        clip_ms: self.settings.clip_ms,
+                    }),
                 }),
                 ms_left,
                 phase_ms: self.phase_len.map(|d| d.as_millis() as u64),
@@ -1394,7 +1462,15 @@ impl Room {
                                 points: self.last_points.get(&p.id).copied().unwrap_or(0),
                             })
                             .collect(),
+                        song: q.song.as_ref().map(|s| SongView {
+                            title: &s.title,
+                            artist: &s.artist,
+                            year: s.year,
+                            artwork_url: s.artwork_url.as_deref(),
+                            store_url: s.store_url.as_deref(),
+                        }),
                     }),
+                next_clip: next_clip.filter(|_| is_host),
                 hangman: puzzle.map(|p| HangmanView {
                     category: &p.category,
                     board: board.as_deref().unwrap_or_default(),

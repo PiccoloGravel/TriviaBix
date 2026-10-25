@@ -106,6 +106,9 @@ function render(s) {
     $("#r-text").textContent = right ? "Correct!" : result.choice == null ? "Too slow!" : "Nope!";
     $("#r-points").textContent = right ? `+${result.points}` : "";
     $("#r-answer").textContent = `Answer: ${s.question.choices[s.reveal.correct]}`;
+    const song = s.reveal.song;
+    $("#r-link").classList.toggle("hidden", !(song && song.store_url));
+    if (song && song.store_url) $("#r-link").href = song.store_url;
     // If the host called you out on the TV, you get the badge too.
     const mine = s.host && s.host.callouts.find((c) => c.player_id === you.player_id);
     $("#r-badge").classList.toggle("hidden", !mine);
@@ -126,13 +129,14 @@ function render(s) {
 
 function renderQuestion(s, fresh) {
   const picked = s.you.answer;
-  $("#q-prompt").textContent = s.question.prompt;
+  const song = s.question.kind === "song";
+  $("#q-prompt").textContent = song ? "🎧 Listen to the TV! Name that tune." : s.question.prompt;
   if (fresh) {
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
     $("#q-status").textContent = "";
     $("#answers").replaceChildren(...s.question.choices.map((text, i) =>
       el("button", { class: `choice-${i}`, onclick: () => answer(i) },
-        el("span", { class: "shape" }, TBX.SHAPES[i]), el("span", {}, text))));
+        el("span", { class: "shape" }, TBX.SHAPES[i]), song ? songLabel(text) : el("span", {}, text))));
   }
   const buttons = [...$("#answers").children];
   buttons.forEach((b, i) => { b.disabled = picked != null; b.classList.toggle("picked", picked === i); });
@@ -141,6 +145,12 @@ function renderQuestion(s, fresh) {
     const waiting = s.players.filter((p) => p.connected && !p.answered).length;
     $("#q-status").textContent = waiting ? `Locked in! Waiting on ${waiting} more…` : "Locked in!";
   }
+}
+
+/** "Title — Artist" as a bold title over a smaller artist. */
+function songLabel(text) {
+  const [title, artist] = text.split(" — ");
+  return el("span", { class: "song" }, el("b", {}, title), artist ? el("small", {}, artist) : null);
 }
 
 function answer(i) {

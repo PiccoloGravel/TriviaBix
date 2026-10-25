@@ -21,8 +21,11 @@ use tower_http::trace::TraceLayer;
 
 use crate::Config;
 use crate::db::{Db, Rating};
+use crate::music::{self, Itunes};
 use crate::protocol::{ClientMsg, GameMode, ServerMsg};
-use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings};
+use crate::room::{
+    Join, MAX_CLIP_MS, MAX_ROUNDS, MIN_CLIP_MS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings,
+};
 use crate::rooms::Rooms;
 
 #[derive(Clone)]
@@ -39,9 +42,14 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         Some(path) => crate::host::Script::load(path)?,
         None => crate::host::Script::builtin(),
     };
+    let itunes = Itunes::new(&config.itunes_url, &config.music_country);
+    if config.music_warmup {
+        tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
+    }
     let rooms = Rooms::new(
         db.clone(),
         script,
+        itunes,
         config.timing.clone(),
         config.max_players,
         config.max_rooms,
@@ -119,6 +127,7 @@ struct CreateRoom {
     rounds: Option<usize>,
     max_rating: Option<Rating>,
     mode: Option<GameMode>,
+    clip_ms: Option<u64>,
 }
 
 async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>) -> Response {
@@ -127,6 +136,10 @@ async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>
         rounds: body.rounds.unwrap_or(10).clamp(MIN_ROUNDS, MAX_ROUNDS),
         max_rating: body.max_rating.unwrap_or_default(),
         mode: body.mode.unwrap_or_default(),
+        clip_ms: body
+            .clip_ms
+            .unwrap_or(2_000)
+            .clamp(MIN_CLIP_MS, MAX_CLIP_MS),
     };
     match app.rooms.create(settings) {
         Ok((code, host_token)) => {

@@ -25,6 +25,7 @@ pub enum ClientMsg {
         rounds: Option<usize>,
         max_rating: Option<Rating>,
         mode: Option<GameMode>,
+        clip_ms: Option<u64>,
     },
     /// Player, in the lobby: change your name and/or character.
     Profile {
@@ -46,6 +47,8 @@ pub enum GameMode {
     Trivia,
     /// One shared phrase per round; everyone guesses letters against the clock.
     Hangman,
+    /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
+    Songs,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,7 +84,9 @@ pub struct StateView<'a> {
     /// Milliseconds until the current phase advances on its own.
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
-    pub reveal: Option<RevealView>,
+    pub reveal: Option<RevealView<'a>>,
+    /// TV only: the next round's song preview, so it can load before it's needed.
+    pub next_clip: Option<&'a str>,
     /// Only in speed hangman rounds.
     pub hangman: Option<HangmanView<'a>>,
     /// What the host is saying right now, with graphics for the TV to show alongside it.
@@ -106,19 +111,42 @@ pub struct SettingsView {
     pub rounds: usize,
     pub max_rating: Rating,
     pub mode: GameMode,
+    pub clip_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QuestionView<'a> {
+    /// "trivia" or "song".
+    pub kind: &'static str,
     pub category: &'a str,
     pub prompt: &'a str,
     pub choices: &'a [String],
+    /// TV only: what to play. Phones never get the audio, so they have to listen.
+    pub clip: Option<ClipView<'a>>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct RevealView {
+pub struct ClipView<'a> {
+    pub preview_url: &'a str,
+    pub start_ms: u64,
+    pub clip_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RevealView<'a> {
     pub correct: usize,
     pub results: Vec<ResultView>,
+    pub song: Option<SongView<'a>>,
+}
+
+/// Shown once a song round closes, with credit and a link to the full track.
+#[derive(Debug, Serialize)]
+pub struct SongView<'a> {
+    pub title: &'a str,
+    pub artist: &'a str,
+    pub year: i64,
+    pub artwork_url: Option<&'a str>,
+    pub store_url: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]

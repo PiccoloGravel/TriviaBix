@@ -9,7 +9,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && cp target/release/triviabix /usr/local/bin/triviabix
 
 FROM debian:bookworm-slim
-RUN useradd --system --uid 10001 --home /app triviabix \
+# CA certificates for HTTPS calls to the iTunes Search API (Name That Tune).
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --home /app triviabix \
  && mkdir -p /app /data && chown triviabix /data
 WORKDIR /app
 COPY --from=build /usr/local/bin/triviabix /usr/local/bin/triviabix
