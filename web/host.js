@@ -4,7 +4,7 @@
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG" };
+let settings = { rounds: 10, max_rating: "PG", mode: "trivia" };
 let conn = null;
 let state = null;
 let prev = null;
@@ -122,9 +122,9 @@ function showCallouts(s) {
 function sweepCard(s) {
   const last = s.round === s.total_rounds && s.total_rounds > 1;
   const card = el("div", { class: "card-sweep" + (last ? " final-q" : "") },
-    el("div", { class: "small" }, last ? "Final question" : `Question ${s.round} of ${s.total_rounds}`),
+    el("div", { class: "small" }, last ? (s.hangman ? "Final puzzle" : "Final question") : roundLabel(s)),
     el("div", { class: "big" }, last ? "LAST ONE" : `Q${s.round}`),
-    el("div", { class: "small" }, s.question.category));
+    el("div", { class: "small" }, (s.question || s.hangman).category));
   document.body.append(card);
   setTimeout(() => card.remove(), 1700);
 }
@@ -164,6 +164,9 @@ function confetti() {
 // ---------- Setup ----------
 
 function renderSetup() {
+  document.querySelectorAll("[data-mode]").forEach((b) => {
+    b.classList.toggle("secondary", b.dataset.mode !== settings.mode);
+  });
   document.querySelectorAll("[data-rounds]").forEach((b) => {
     b.classList.toggle("secondary", Number(b.dataset.rounds) !== settings.rounds);
   });
@@ -174,6 +177,8 @@ function renderSetup() {
 
 document.querySelectorAll("[data-rounds]").forEach((b) =>
   b.addEventListener("click", () => { settings.rounds = Number(b.dataset.rounds); renderSetup(); }));
+document.querySelectorAll("[data-mode]").forEach((b) =>
+  b.addEventListener("click", () => { settings.mode = b.dataset.mode; renderSetup(); }));
 document.querySelectorAll("[data-rating]").forEach((b) =>
   b.addEventListener("click", () => { settings.max_rating = b.dataset.rating; renderSetup(); }));
 
@@ -231,6 +236,11 @@ function render(s) {
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
   $("#skip-btn").classList.toggle("hidden", !["intro", "question", "reveal", "scoreboard"].includes(s.phase));
   if (phaseChanged) $("#callouts").replaceChildren();
+  if (s.hangman && (s.phase === "question" || s.phase === "reveal")) {
+    show("hangman");
+    renderHangman(s, phaseChanged);
+    return hostSays(s);
+  }
   show(s.phase);
   ({ lobby: renderLobby, intro: renderIntro, question: renderQuestion, reveal: renderReveal, scoreboard: renderScores, final: renderFinal })[s.phase](s, phaseChanged);
   // The question is read out after the host's banter.
@@ -239,7 +249,7 @@ function render(s) {
 
 function renderIntro(s, changed) {
   if (!changed) return;
-  $("#i-tagline").textContent = `${s.total_rounds} questions · rated ${s.settings.max_rating} · ${s.players.length} contestants`;
+  $("#i-tagline").textContent = `${s.total_rounds} ${s.settings.mode === "hangman" ? "puzzles" : "questions"} · rated ${s.settings.max_rating} · ${s.players.length} contestants`;
   $("#i-lineup").replaceChildren(...s.players.map((p, i) =>
     el("div", { style: `--i:${i}` }, TBX.avatar(p, "11vh"), el("div", {}, p.name))));
 }
@@ -254,7 +264,9 @@ function renderLobby(s, changed) {
     qr.dataset.link = link;
     qr.src = "/api/qr?text=" + encodeURIComponent(link);
   }
-  $("#lobby-settings").textContent = `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
+  $("#lobby-settings").textContent = s.settings.mode === "hangman"
+    ? `Speed Hangman · ${s.settings.rounds} puzzles · rated ${s.settings.max_rating}`
+    : `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
 
   const slots = $("#slots");
   slots.replaceChildren();
@@ -281,7 +293,7 @@ function choiceTile(text, i) {
   return el("div", { class: `choice choice-${i}`, style: `--i:${i}` }, el("span", { class: "shape" }, TBX.SHAPES[i]), el("span", {}, text));
 }
 
-function roundLabel(s) { return `Question ${s.round} of ${s.total_rounds}`; }
+function roundLabel(s) { return `${s.hangman ? "Puzzle" : "Question"} ${s.round} of ${s.total_rounds}`; }
 
 function renderQuestion(s, changed) {
   $("#q-round").textContent = roundLabel(s);
@@ -291,7 +303,7 @@ function renderQuestion(s, changed) {
   if (changed) {
     $("#q-choices").replaceChildren(...s.question.choices.map(choiceTile));
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
-    startSecs(s.ms_left);
+    startSecs($("#q-secs"), s.ms_left);
     sweepCard(s);
     enter($("#question"));
   }
@@ -303,13 +315,14 @@ function renderQuestion(s, changed) {
   }));
 }
 
-function startSecs(ms) {
+function startSecs(target, ms, dangerAt = 0) {
   clearInterval(secsTimer);
   const end = Date.now() + (ms || 0);
   const tick = () => {
     const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-    $("#q-secs").textContent = left;
-    $("#question").classList.toggle("hurry", left > 0 && left <= 5);
+    target.textContent = left;
+    target.classList.toggle("danger", left > 0 && left <= dangerAt);
+    if (target.id === "q-secs") $("#question").classList.toggle("hurry", left > 0 && left <= 5);
     if (left === 0) clearInterval(secsTimer);
   };
   tick();
@@ -343,12 +356,90 @@ function renderReveal(s, changed) {
   }
 }
 
+// ---------- Speed hangman ----------
+
+function renderHangman(s, changed) {
+  const h = s.hangman;
+  const live = s.phase === "question";
+  const before = prev && prev.hangman && !changed ? prev.hangman : null;
+  const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
+  $("#h-round").textContent = roundLabel(s);
+  $("#h-code").textContent = s.code;
+  $("#h-cat").textContent = h.category;
+
+  // The board: one group per word so words never break across lines.
+  const board = $("#h-board");
+  board.classList.toggle("long", h.board.length > 18);
+  let i = 0;
+  board.replaceChildren(...h.board.split(" ").map((word) => {
+    const group = el("div", { class: "hm-word" });
+    for (const ch of word) {
+      const wasBlank = before && before.board[i] === "_";
+      const tile = el("div", { class: "tile" }, ch === "_" ? "" : ch);
+      if (ch === "_") tile.classList.add("blank");
+      else if (!/[A-Za-z]/.test(ch)) tile.classList.add("punct");
+      else if (wasBlank && live) tile.classList.add("pop");
+      // On the reveal, letters the solver filled in go green, or red if nobody got it.
+      if (!live && /[A-Za-z]/.test(ch) && !h.hits.includes(ch.toUpperCase())) {
+        tile.classList.add(h.outcome === "solved" ? "solved" : "missed");
+      }
+      group.append(tile);
+      i++;
+    }
+    i++; // the space
+    return group;
+  }));
+
+  const gallows = $("#h-gallows");
+  gallows.querySelectorAll(".part").forEach((part, n) => part.classList.toggle("on", n < h.strikes));
+  gallows.classList.toggle("dead", h.outcome === "hanged");
+  if (before && h.strikes > before.strikes) {
+    gallows.classList.remove("shake");
+    void gallows.offsetWidth;
+    gallows.classList.add("shake");
+  }
+
+  $("#h-letters").replaceChildren(..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((c) =>
+    el("span", { class: h.hits.includes(c) ? "hit" : h.misses.includes(c) ? "miss" : "" }, c)));
+
+  $("#h-feed").replaceChildren(...h.feed.slice(-4).reverse().map((g) => {
+    const p = byId[g.player_id];
+    if (!p) return null;
+    let text, cls;
+    if (g.solve) [text, cls] = g.hit ? ["SOLVED IT!", "win"] : [`tried "${g.guess}"`, "bad"];
+    else [text, cls] = g.hit ? [`${g.guess}${g.count > 1 ? " ×" + g.count : ""}`, "good"] : [g.guess, "bad"];
+    return el("div", {}, TBX.avatar(p, "3.4vh"), el("span", {}, p.name), el("span", { class: cls }, text));
+  }).filter(Boolean));
+
+  $("#h-scores").replaceChildren(...sortedPlayers(s).map((p) =>
+    el("div", {}, TBX.avatar(p, "3.4vh"), el("span", {}, p.name), el("b", {}, p.score.toLocaleString()))));
+
+  const banner = $("#h-banner");
+  banner.className = "hm-banner " + (h.outcome || "");
+  const solver = byId[h.solved_by];
+  banner.textContent = h.outcome === "solved" ? `${solver ? solver.name : "Someone"} solved it!`
+    : h.outcome === "hanged" ? "Hanged!" : h.outcome === "time" ? "Time's up!" : "";
+
+  if (changed) {
+    TBX.runTimer($("#h-timer"), s.ms_left, s.phase_ms);
+    if (live) {
+      startSecs($("#h-secs"), s.ms_left, 10);
+      sweepCard(s);
+    } else {
+      clearInterval(secsTimer);
+      $("#h-secs").textContent = "";
+      $("#h-secs").classList.remove("danger");
+    }
+  }
+}
+
 function sortedPlayers(s) { return [...s.players].sort((a, b) => b.score - a.score); }
 
 function renderScores(s, changed) {
   $("#s-round").textContent = roundLabel(s);
   $("#s-code").textContent = s.code;
-  const gains = Object.fromEntries((s.reveal ? s.reveal.results : []).map((r) => [r.player_id, r.points]));
+  const results = s.reveal ? s.reveal.results : s.hangman ? s.hangman.results : [];
+  const gains = Object.fromEntries(results.map((r) => [r.player_id, r.points]));
   let rank = 0, last = null;
   const n = s.players.length;
   const board = $("#s-board");
@@ -363,7 +454,7 @@ function renderScores(s, changed) {
       el("span", { class: "rank" }, `#${rank}`),
       TBX.avatar(p, "1.3em"),
       el("span", { class: "name" }, p.name),
-      gains[p.id] ? el("span", { class: "gain" }, `+${gains[p.id]}`) : null,
+      gains[p.id] ? el("span", { class: "gain", style: gains[p.id] < 0 ? "color:var(--bad)" : "" }, `${gains[p.id] > 0 ? "+" : ""}${gains[p.id]}`) : null,
       score);
     if (changed && gains[p.id]) countUp(score, p.score - gains[p.id], p.score);
     return row;

@@ -31,6 +31,17 @@ each, and only placeholders that event fills in). Reveals and scoreboards stretc
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
 
+### Speed Hangman
+
+Pick **Speed Hangman** on the setup screen instead of Trivia. Each round puts one phrase on the TV with its category, and
+everyone races to crack it from their phone at the same time:
+
+- Tap a letter to guess it (one guess per second each). Every tile it reveals is worth 75 points.
+- A wrong letter costs you 50 points and adds a strike for the **whole room**. Six strikes and he's hanged and nobody solves it.
+- Know the answer? Type it in. Solving pays 250, plus 50 for every letter still blank, plus up to 250 for time left.
+  A wrong solve is a strike, costs 50, and locks you out of solving for the rest of that puzzle.
+- Rounds are 45 seconds (`HANGMAN_SECS`). Phrases follow the room's rating, from PG up to NC-17.
+
 Phones that lock or refresh rejoin automatically as the same player. A room closes after 15 minutes with nobody connected.
 
 ## Running it
@@ -65,6 +76,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
 | `HOST_TALK_CPS` | `13` | Voice speed estimate in characters per second, for pacing; `0` stops waiting for the host |
 | `HOST_SCRIPT` | | Path to a host script to use instead of the built-in one |
+| `HANGMAN_SECS` | `45` | Time to crack one Speed Hangman phrase |
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
 
 ## Layout
@@ -72,13 +84,15 @@ cargo test                    # unit tests plus full games over WebSockets
 - `server/` is the Rust game server (axum + WebSockets + SQLite via sqlx). Each room is its own task that owns the game state.
   - `src/room.rs` holds the game rules, `src/host.rs` the host, `src/protocol.rs` the JSON messages, `src/db.rs` the database.
   - `host-script.json` is everything the host says.
-  - `migrations/` creates the tables and seeds a starter question bank.
+  - `src/hangman.rs` holds the Speed Hangman puzzle rules.
+  - `migrations/` creates the tables and seeds a starter question bank and hangman phrases.
 - `web/` is the TV page (`host.html`) and the phone page (`index.html`), plain HTML/JS with no build step.
 
 ### WebSocket protocol
 
 The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`), phones to `/ws/play?code=ABCD&name=Sam`
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
-Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`, `play_again`, `profile {name, character}` (lobby only), and from the TV `settings {rounds, max_rating}` and `kick {player_id}`.
-The correct answer is never sent until the question closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
+Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`, `play_again`, `profile {name, character}` (lobby only), and from the TV `settings {rounds, max_rating, mode}` and `kick {player_id}`.
+In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
+The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
 and `final`; each state carries `host {name, id, text, callouts}`, the current host line and the graphics that go with it.

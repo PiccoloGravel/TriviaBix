@@ -1,5 +1,6 @@
 pub mod characters;
 pub mod db;
+pub mod hangman;
 pub mod host;
 pub mod protocol;
 pub mod room;
@@ -26,7 +27,10 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         fn var<T: std::str::FromStr>(key: &str, default: T) -> T {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         }
         let secs = |key, default| Duration::from_secs(var(key, default));
         Config {
@@ -37,13 +41,17 @@ impl Config {
             max_rooms: var("MAX_ROOMS", 500usize),
             timing: room::Timing {
                 question: secs("QUESTION_SECS", 20),
+                hangman: secs("HANGMAN_SECS", 45),
                 reveal: secs("REVEAL_SECS", 7),
                 scoreboard: secs("SCOREBOARD_SECS", 6),
                 intro: secs("INTRO_SECS", 6),
                 talk_cps: var("HOST_TALK_CPS", 13.0),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),
             },
-            host_script: std::env::var("HOST_SCRIPT").ok().filter(|p| !p.is_empty()).map(PathBuf::from),
+            host_script: std::env::var("HOST_SCRIPT")
+                .ok()
+                .filter(|p| !p.is_empty())
+                .map(PathBuf::from),
         }
     }
 }

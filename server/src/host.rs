@@ -41,8 +41,12 @@ pub const EVENTS: &[(&str, &[&str])] = &[
     ("sign_off", &[]),
 ];
 
-const RATINGS: [(&str, Rating); 4] =
-    [("PG", Rating::Pg), ("PG-13", Rating::Pg13), ("MA", Rating::Ma), ("NC-17", Rating::Nc17)];
+const RATINGS: [(&str, Rating); 4] = [
+    ("PG", Rating::Pg),
+    ("PG-13", Rating::Pg13),
+    ("MA", Rating::Ma),
+    ("NC-17", Rating::Nc17),
+];
 
 #[derive(Deserialize)]
 struct RawScript {
@@ -63,7 +67,8 @@ impl Script {
     }
 
     pub fn load(path: &Path) -> anyhow::Result<Self> {
-        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         Self::parse(&text).with_context(|| format!("in host script {}", path.display()))
     }
 
@@ -94,14 +99,19 @@ impl Script {
         if let Some((missing, _)) = EVENTS.iter().find(|(k, _)| !lines.contains_key(k)) {
             bail!("missing event {missing:?}");
         }
-        Ok(Script { host_name: raw.host_name, lines })
+        Ok(Script {
+            host_name: raw.host_name,
+            lines,
+        })
     }
 }
 
 fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
     let mut rest = text;
     while let Some(start) = rest.find('{') {
-        let Some(len) = rest[start..].find('}') else { bail!("unclosed {{") };
+        let Some(len) = rest[start..].find('}') else {
+            bail!("unclosed {{")
+        };
         let name = &rest[start + 1..start + len];
         if name != "host" && !vars.contains(&name) {
             bail!("unknown placeholder {{{name}}}; this event has {vars:?}");
@@ -119,7 +129,10 @@ pub struct Host {
 
 impl Host {
     pub fn new(script: std::sync::Arc<Script>) -> Self {
-        Host { script, last: HashMap::new() }
+        Host {
+            script,
+            last: HashMap::new(),
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -205,16 +218,28 @@ mod tests {
         for _ in 0..50 {
             assert!(!host.say("rematch", Rating::Pg13, &[]).contains("SPICY"));
         }
-        let spicy = (0..200).filter(|_| host.say("rematch", Rating::Nc17, &[]).contains("SPICY")).count();
-        assert!(spicy > 100, "spicy tiers should dominate an NC-17 room, got {spicy}/200");
+        let spicy = (0..200)
+            .filter(|_| host.say("rematch", Rating::Nc17, &[]).contains("SPICY"))
+            .count();
+        assert!(
+            spicy > 100,
+            "spicy tiers should dominate an NC-17 room, got {spicy}/200"
+        );
     }
 
     #[test]
     fn placeholders_are_filled() {
         let mut host = Host::new(std::sync::Arc::new(Script::builtin()));
-        let line = host.say("roast", Rating::Nc17, &[("name", "Sam"), ("wrong", "Paris")]);
+        let line = host.say(
+            "roast",
+            Rating::Nc17,
+            &[("name", "Sam"), ("wrong", "Paris")],
+        );
         assert!(!line.contains('{'), "{line}");
         assert_eq!(name_list(&["A", "B", "C"]), "A, B and C");
-        assert_eq!(name_list(&["A", "B", "C", "D", "E", "F"]), "A, B, C and 3 others");
+        assert_eq!(
+            name_list(&["A", "B", "C", "D", "E", "F"]),
+            "A, B, C and 3 others"
+        );
     }
 }

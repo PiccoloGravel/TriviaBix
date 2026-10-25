@@ -46,7 +46,7 @@ function joinGame(code, name, token) {
 function send(msg) { conn && conn.send(msg); }
 
 function flash(text) {
-  const target = !state ? $("#join-error") : state.phase === "question" ? $("#q-status") : $("#lobby-error");
+  const target = !state ? $("#join-error") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
   target.textContent = text;
 }
 
@@ -76,8 +76,12 @@ function render(s) {
     el("span", { class: "score" }, player.score.toLocaleString())));
   document.querySelectorAll("[data-vip-next]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
 
-  show(s.phase);
   const fresh = !prev || prev.phase !== s.phase || prev.round !== s.round;
+  if (s.hangman && s.phase === "question") {
+    show("hangman");
+    return renderHangman(s, fresh);
+  }
+  show(s.phase);
 
   if (s.phase === "lobby") {
     $("#lobby-count").textContent = `${s.players.length} of ${s.max_players} players · room ${s.code}`;
@@ -93,6 +97,8 @@ function render(s) {
     $("#rename-input").placeholder = player.name;
   } else if (s.phase === "question") {
     renderQuestion(s, fresh);
+  } else if (s.phase === "reveal" && s.hangman) {
+    renderHangmanReveal(s, fresh);
   } else if (s.phase === "reveal") {
     const result = s.reveal.results.find((r) => r.player_id === you.player_id) || {};
     const right = result.points > 0;
@@ -141,6 +147,76 @@ function answer(i) {
   if (!state || state.phase !== "question" || state.you.answer != null) return;
   send({ type: "answer", choice: i });
   if (navigator.vibrate) navigator.vibrate(30);
+}
+
+// ---------- Speed hangman ----------
+
+const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+let coolUntil = 0;
+
+function renderHangman(s, fresh) {
+  const h = s.hangman;
+  const mine = s.you.hangman || { solve_locked: false, cooldown_ms: 0 };
+  $("#h-cat").textContent = h.category;
+  $("#h-board").textContent = h.board;
+  $("#h-strikes").textContent = "💀".repeat(h.strikes) + "⬜".repeat(Math.max(0, h.max_strikes - h.strikes));
+  if (fresh) {
+    TBX.runTimer($("#h-timer"), s.ms_left, s.phase_ms);
+    $("#h-status").textContent = "";
+    $("#solve-input").value = "";
+    coolUntil = 0;
+    $("#h-keys").replaceChildren(...KEY_ROWS.map((row) => el("div", { class: "krow" },
+      ...row.split("").map((c) => el("button", { type: "button", "data-key": c, onclick: () => guess(c) }, c)))));
+  }
+  for (const b of $("#h-keys").querySelectorAll("button")) {
+    const c = b.dataset.key;
+    const hit = h.hits.includes(c), miss = h.misses.includes(c);
+    b.classList.toggle("hit", hit);
+    b.classList.toggle("miss", miss);
+    b.disabled = hit || miss;
+  }
+  // Trust the server's cooldown too, e.g. after a refresh.
+  if (mine.cooldown_ms > 0) coolDown(mine.cooldown_ms);
+  $("#solve-input").disabled = mine.solve_locked;
+  $("#solve-form button").disabled = mine.solve_locked;
+  $("#solve-input").placeholder = mine.solve_locked ? "You blew your solve 😬" : "Know it? Solve it";
+}
+
+function coolDown(ms) {
+  coolUntil = Math.max(coolUntil, Date.now() + ms);
+  $("#h-keys").classList.add("cooling");
+  clearTimeout(coolDown.timer);
+  coolDown.timer = setTimeout(() => $("#h-keys").classList.remove("cooling"), coolUntil - Date.now());
+}
+
+function guess(c) {
+  if (!state || !state.hangman || state.phase !== "question" || Date.now() < coolUntil) return;
+  send({ type: "guess", letter: c });
+  coolDown(1000);
+  if (navigator.vibrate) navigator.vibrate(20);
+}
+
+$("#solve-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("#solve-input").value.trim();
+  if (!text || !state || !state.hangman || state.phase !== "question") return;
+  send({ type: "solve", text });
+  $("#solve-input").value = "";
+  $("#solve-input").blur();
+});
+
+function renderHangmanReveal(s, fresh) {
+  const h = s.hangman;
+  const result = h.results.find((r) => r.player_id === s.you.player_id) || { points: 0 };
+  const solvedIt = h.solved_by === s.you.player_id;
+  const solver = s.players.find((p) => p.id === h.solved_by);
+  $("#r-verdict").textContent = solvedIt ? "🏆" : h.outcome === "hanged" ? "💀" : h.outcome === "time" ? "⏰" : result.points > 0 ? "👍" : "😬";
+  $("#r-text").textContent = solvedIt ? "You solved it!"
+    : h.outcome === "solved" ? `${solver ? solver.name : "Someone"} solved it`
+    : h.outcome === "hanged" ? "Hanged!" : "Time's up!";
+  $("#r-points").textContent = result.points ? `${result.points > 0 ? "+" : ""}${result.points}` : "";
+  $("#r-answer").textContent = `Answer: ${h.board}`;
+  if (fresh && navigator.vibrate) navigator.vibrate(solvedIt ? [80, 40, 80] : 60);
 }
 
 function ordinal(n) {

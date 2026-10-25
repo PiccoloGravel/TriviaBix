@@ -25,8 +25,21 @@ pub struct Rooms {
 }
 
 impl Rooms {
-    pub fn new(db: Db, script: Script, timing: Timing, max_players: usize, max_rooms: usize) -> Self {
-        Self { inner: Default::default(), db, script: Arc::new(script), timing, max_players, max_rooms }
+    pub fn new(
+        db: Db,
+        script: Script,
+        timing: Timing,
+        max_players: usize,
+        max_rooms: usize,
+    ) -> Self {
+        Self {
+            inner: Default::default(),
+            db,
+            script: Arc::new(script),
+            timing,
+            max_players,
+            max_rooms,
+        }
     }
 
     /// Creates a room and returns its code and the secret host token.
@@ -65,7 +78,11 @@ impl Rooms {
     }
 
     pub fn get(&self, code: &str) -> Option<RoomHandle> {
-        self.inner.lock().unwrap().get(&normalize_code(code)).cloned()
+        self.inner
+            .lock()
+            .unwrap()
+            .get(&normalize_code(code))
+            .cloned()
     }
 
     pub fn len(&self) -> usize {
