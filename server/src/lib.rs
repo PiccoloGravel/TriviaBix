@@ -1,5 +1,6 @@
 pub mod characters;
 pub mod db;
+pub mod host;
 pub mod protocol;
 pub mod room;
 pub mod rooms;
@@ -18,6 +19,8 @@ pub struct Config {
     pub max_players: usize,
     pub max_rooms: usize,
     pub timing: room::Timing,
+    /// A host script to use instead of the built-in one.
+    pub host_script: Option<PathBuf>,
 }
 
 impl Config {
@@ -36,8 +39,11 @@ impl Config {
                 question: secs("QUESTION_SECS", 20),
                 reveal: secs("REVEAL_SECS", 7),
                 scoreboard: secs("SCOREBOARD_SECS", 6),
+                intro: secs("INTRO_SECS", 6),
+                talk_cps: var("HOST_TALK_CPS", 13.0),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),
             },
+            host_script: std::env::var("HOST_SCRIPT").ok().filter(|p| !p.is_empty()).map(PathBuf::from),
         }
     }
 }

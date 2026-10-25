@@ -25,8 +25,11 @@ async fn start_server() -> String {
             question: Duration::from_secs(5),
             reveal: Duration::from_millis(200),
             scoreboard: Duration::from_millis(200),
+            intro: Duration::from_millis(200),
+            talk_cps: 0.0,
             idle_timeout: Duration::from_secs(60),
         },
+        host_script: None,
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -109,6 +112,10 @@ async fn eight_players_play_a_full_game() {
     // The VIP (first player) starts the game from their phone.
     send(&mut players[0], json!({ "type": "start" })).await;
 
+    // The host opens the show before the first question.
+    let intro = wait_state(&mut host, |s| s["phase"] == "intro").await;
+    assert!(intro["host"]["text"].as_str().unwrap().len() > 10, "{intro}");
+
     for round in 1..=3 {
         let q = wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == round).await;
         assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
@@ -125,10 +132,17 @@ async fn eight_players_play_a_full_game() {
             let right = r["choice"].as_u64() == Some(correct);
             assert_eq!(r["points"].as_i64().unwrap() > 0, right, "{r}");
         }
+        // The host announces the answer and reacts, with graphics for the TV.
+        let answer = reveal["question"]["choices"][correct as usize].as_str().unwrap();
+        let said = reveal["host"]["text"].as_str().unwrap();
+        assert!(said.contains(answer), "host should say the answer: {said}");
+        assert!(!said.contains('{'), "unfilled placeholder: {said}");
+        assert!(!reveal["host"]["callouts"].as_array().unwrap().is_empty());
     }
 
     let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
     assert_eq!(fin["round"], 3);
+    assert!(!fin["host"]["text"].as_str().unwrap().is_empty());
 
     // Players see their own rank in the final state.
     let mine = wait_state(&mut players[3], |s| s["phase"] == "final").await;
