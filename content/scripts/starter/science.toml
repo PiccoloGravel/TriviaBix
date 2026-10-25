@@ -1,0 +1,69 @@
+[[script]]
+question = "science-9d932e65"
+prompt = "Which planet is known as the Red Planet?"
+lead_in = "Space question. Which planet is red?"
+reveal = "It's red because its dust is full of iron oxide. The whole planet is basically rusty."
+
+[[script]]
+question = "science-73635e9d"
+prompt = "Which element has the chemical symbol Au?"
+lead_in = "Chemistry question. What's Au?"
+
+[[script]]
+question = "science-71c9c5e1"
+prompt = "Octopuses have three hearts."
+lead_in = "True or false. Octopus anatomy."
+
+[[script]]
+question = "science-224f92da"
+prompt = "How many bones are in the adult human body?"
+lead_in = "Skeleton question. Count your bones."
+
+[script.reveal]
+PG = "Babies start with around 300. Some fuse together as you grow."
+PG-13 = "Babies have about 300. Then life happens, and a bunch of them fuse. Relatable."
+
+[[script]]
+question = "science-d49ea52e"
+prompt = "Which gas do plants take in from the air to make food?"
+lead_in = "Plant question. What do they take from the air?"
+reveal = "Every leaf is a tiny factory running on sunshine and the air you just breathed out."
+
+[[script]]
+question = "science-a0331568"
+prompt = "Put these planets in order from closest to the Sun to farthest."
+lead_in = "Planets in order. Start close, go far."
+reveal = "Neptune takes about 165 years to go around the Sun once. It finished its first lap since we discovered it in 2011."
+
+[[script]]
+question = "science-09cca1b8"
+prompt = "Lightning never strikes the same place twice."
+lead_in = "True or false. Lightning edition."
+
+[[script]]
+question = "science-50e53b93"
+prompt = "What is the hardest natural substance on Earth?"
+lead_in = "Hard question. The hardest, actually."
+reveal = "Diamonds form deep underground under enormous pressure. Very relatable at this point in the game."
+
+[[script]]
+question = "science-ebc88057"
+prompt = "Roughly how fast does light travel, in kilometers per second?"
+lead_in = "Physics question. Exactly how fast is light?"
+reveal = "That's fast enough to go around the Earth about seven and a half times in one second."
+
+[[script]]
+question = "science-38395113"
+prompt = "What is the largest animal that has ever lived?"
+lead_in = "Biggest animal ever. Dinosaurs included."
+reveal = "Bigger than any dinosaur we know of, and it lives on tiny shrimp called krill."
+
+[[script]]
+question = "science-3f16cf3e"
+prompt = "Botanically speaking, bananas are berries but strawberries are not."
+lead_in = "True or false. Fruit salad edition."
+
+[[script]]
+question = "science-ea96926c"
+prompt = "What is the closest star to Earth?"
+lead_in = "Space question. What's the closest star?"

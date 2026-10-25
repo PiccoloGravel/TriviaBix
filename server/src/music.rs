@@ -257,6 +257,7 @@ pub async fn build_round(
                     artwork_url: track.artwork_url,
                     store_url: track.store_url,
                 }),
+                lines: Default::default(),
             }
         })
         .collect())

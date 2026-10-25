@@ -1,0 +1,71 @@
+[[script]]
+question = "music-ad10193e"
+prompt = 'Which band was nicknamed "the Fab Four"?'
+lead_in = "Music question. Who were the Fab Four?"
+reveal = "They still hold the record for the most number-one hits on the US charts."
+
+[[script]]
+question = "music-325796f8"
+prompt = 'Which singer is known as the "Queen of Pop"?'
+lead_in = "Pop royalty question. Who's the Queen?"
+
+[script.reveal]
+PG = "She's the best-selling female recording artist of all time, according to Guinness."
+PG-13 = "Forty years of reinventions. Most of us can't reinvent our breakfast."
+
+[[script]]
+question = "music-650415f4"
+prompt = "How many keys are on a standard piano?"
+lead_in = "Piano question. Count the keys."
+
+[[script]]
+question = "music-d4535b96"
+prompt = "Freddie Mercury was born Farrokh Bulsara."
+lead_in = "True or false. A rock legend's real name."
+
+[[script]]
+question = "music-29a3ba0a"
+prompt = 'Who released the 1984 album "Purple Rain"?'
+lead_in = "Purple question. Whose rain was it?"
+
+[script.reveal]
+PG = "On his first album he played every single instrument himself. Show-off."
+PG-13 = "He was five foot two in heels and still the coolest person in every room."
+
+[[script]]
+question = "music-4b93efa6"
+prompt = "Put these classic albums in order of release."
+lead_in = "Record store question. Put these albums in order."
+
+[[script]]
+question = "music-91037592"
+prompt = "Which country is ABBA from?"
+lead_in = "Mamma mia, it's a geography question about a band."
+
+[[script]]
+question = "music-e22f2298"
+prompt = "Which rapper was born Marshall Mathers?"
+lead_in = "Rap question. Real names only."
+reveal = "His stage name comes from his initials, M and M. Slim Shady came later."
+
+[[script]]
+question = "music-f74c72f2"
+prompt = "What instrument did Ringo Starr play in the Beatles?"
+lead_in = "Beatles question. What did Ringo play?"
+reveal = "He also narrated Thomas the Tank Engine in the UK. A man of many talents."
+
+[[script]]
+question = "music-20061696"
+prompt = "Beyoncé got her start as a member of Destiny's Child."
+lead_in = "True or false. Where did Beyoncé get her start?"
+reveal = "Destiny's Child is one of the best-selling girl groups ever. Then she went solo and became, well, Beyoncé."
+
+[[script]]
+question = "music-db9d32cf"
+prompt = "In what year did Elvis Presley die?"
+lead_in = "Rock and roll history. When did the King leave the building?"
+
+[[script]]
+question = "music-fe265e1f"
+prompt = 'Which Queen song includes the lyrics "Galileo, Galileo"?'
+lead_in = "Name the Queen song. Scaramouche, scaramouche."

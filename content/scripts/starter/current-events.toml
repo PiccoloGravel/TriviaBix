@@ -1,0 +1,51 @@
+[[script]]
+question = "current-events-5d43b80e"
+prompt = "Which city hosted the 2024 Summer Olympics?"
+lead_in = "Olympics question. Where did the world go in 2024?"
+reveal = "The opening ceremony was held on a river instead of in a stadium. It was the city's third time hosting."
+
+[[script]]
+question = "current-events-8954381f"
+prompt = "Which film won Best Picture at the Oscars in March 2024?"
+lead_in = "Movie award question. Which film took home the big one?"
+
+[script.reveal]
+PG = "It won seven Oscars, including Best Director for Christopher Nolan."
+PG-13 = "Half the world saw it the same weekend as Barbie. That's what we call a balanced diet."
+
+[[script]]
+question = "current-events-d2c4214e"
+prompt = "Twitter was renamed to what single letter in 2023?"
+lead_in = "Social media question. A bird lost its name."
+reveal = "The bird logo was nicknamed Larry, after basketball legend Larry Bird. Rest in peace, Larry."
+
+[[script]]
+question = "current-events-076664c1"
+prompt = "Which country won the 2022 FIFA World Cup in Qatar?"
+lead_in = "World Cup question. Who lifted the trophy in Qatar?"
+
+[[script]]
+question = "current-events-82097052"
+prompt = "Which company released ChatGPT in November 2022?"
+lead_in = "Chatbot question. Who started all this?"
+
+[script.reveal]
+PG = "It reached a hundred million users in about two months, one of the fastest launches ever."
+PG-13 = "Students everywhere suddenly got very good at essays. Teachers noticed."
+
+[[script]]
+question = "current-events-0b058bb5"
+prompt = "The Philadelphia Eagles won Super Bowl LIX in February 2025."
+lead_in = "Football question. Super Bowl fifty-nine."
+
+[[script]]
+question = "current-events-fd60163b"
+prompt = "What papal name did Robert Prevost, the first American pope, choose in May 2025?"
+lead_in = "Big news from Vatican City. What name did the new pope pick?"
+reveal = "He's from Chicago and a White Sox fan. Finally, a pope who understands suffering."
+
+[[script]]
+question = "current-events-617f11d5"
+prompt = "In what year did the World Health Organization declare COVID-19 a pandemic?"
+lead_in = "A recent-history question. You might remember where you were."
+reveal = "Remember banana bread and learning what 'you're on mute' means? Good times. Sort of."

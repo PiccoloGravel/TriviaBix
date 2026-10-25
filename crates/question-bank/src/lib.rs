@@ -9,6 +9,7 @@ mod bank;
 mod judge;
 mod model;
 mod pack;
+mod script;
 
 #[cfg(feature = "cli")]
 pub mod import;
@@ -17,3 +18,4 @@ pub use bank::{load_pack, validate_question, Filter, LoadError, Problem, Questio
 pub use judge::{normalize, text_matches};
 pub use model::*;
 pub use pack::{generated_id, slugify, PackFile, PackMeta, PackQuestion};
+pub use script::{validate_line, Lines, OneOrMany, ScriptEntry, ScriptFile, MAX_LINE_CHARS};

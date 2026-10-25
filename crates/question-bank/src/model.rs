@@ -118,8 +118,46 @@ pub struct Question {
     /// A cheeky line for the text to speech host after the reveal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_quip: Option<String>,
+    /// More lines for the host about this question: lead-ins before it and reveal lines after,
+    /// each rated so a room only hears what its rating allows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub script: Vec<ScriptLine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+}
+
+/// When the host says a question's script line.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptSlot {
+    /// Before the question, to set it up.
+    LeadIn,
+    /// After the answer is shown: a joke, an anecdote, or a fun fact.
+    Reveal,
+}
+
+impl ScriptSlot {
+    pub const ALL: [ScriptSlot; 2] = [ScriptSlot::LeadIn, ScriptSlot::Reveal];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScriptSlot::LeadIn => "lead_in",
+            ScriptSlot::Reveal => "reveal",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<ScriptSlot> {
+        ScriptSlot::ALL.into_iter().find(|slot| slot.as_str() == s)
+    }
+}
+
+/// One thing the host can say about a question.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ScriptLine {
+    pub slot: ScriptSlot,
+    /// The lowest room rating that may hear this line.
+    pub rating: Rating,
+    pub text: String,
 }
 
 /// The question types. Serialized with a `type` field next to the other question fields.

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -17,6 +17,7 @@ use futures_util::future::join_all;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::content::{AdminLine, QuestionSearch};
 use crate::protocol::AdminCmd;
 use crate::web::{AppState, CreateRoom};
 
@@ -75,6 +76,12 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/api/admin/rooms", get(list_rooms).post(create_room))
         .route("/api/admin/rooms/{code}", post(room_action))
+        .route("/api/admin/questions", get(list_questions))
+        .route(
+            "/api/admin/questions/{id}/lines/{slot}",
+            axum::routing::put(set_lines),
+        )
+        .route("/api/admin/content/reload", post(reload_content))
         .route_layer(middleware::from_fn_with_state(state, require_login));
     Router::new()
         .route("/api/admin/session", get(session))
@@ -185,6 +192,54 @@ async fn room_action(
     match room.admin(cmd).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
         Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+async fn list_questions(
+    State(app): State<AppState>,
+    Query(search): Query<QuestionSearch>,
+) -> Response {
+    match app.db.admin_questions(&search).await {
+        Ok(page) => Json(page).into_response(),
+        Err(e) => {
+            tracing::error!("listing questions: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Couldn't load questions." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SetLines {
+    lines: Vec<AdminLine>,
+}
+
+async fn set_lines(
+    State(app): State<AppState>,
+    Path((id, slot)): Path<(i64, String)>,
+    Json(body): Json<SetLines>,
+) -> Response {
+    match app.db.set_edited_lines(id, &slot, &body.lines).await {
+        Ok(()) => {
+            tracing::info!(id, %slot, lines = body.lines.len(), "admin edited host lines");
+            Json(json!({ "ok": true })).into_response()
+        }
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Reloads the question packs and script files from disk, e.g. after an import.
+async fn reload_content(State(app): State<AppState>) -> Response {
+    match crate::web::load_content(&app.db, &app.content_dir).await {
+        Some(report) => Json(report).into_response(),
+        None => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "Couldn't load the question packs; the server log says why." })),
+        )
+            .into_response(),
     }
 }
 

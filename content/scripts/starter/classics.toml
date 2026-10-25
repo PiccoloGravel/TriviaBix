@@ -1,0 +1,368 @@
+[[script]]
+question = "classics-6eee36a2"
+prompt = "Which country has the most lakes?"
+lead_in = "Geography time. Grab a canoe."
+reveal = "It has more lakes than the rest of the world combined. And a moose to guard each one."
+
+[[script]]
+question = "classics-7feb784d"
+prompt = "What is the smallest country in the world by area?"
+lead_in = "Size matters in geography. The smallest wins this time."
+
+[script.reveal]
+PG = "It's about a fifth of a square mile, smaller than many golf courses, and it has its own post office."
+PG-13 = "Smaller than a golf course, and still has its own army. Granted, it's the Swiss Guard in very fancy pajamas."
+
+[[script]]
+question = "classics-f1fd2027"
+prompt = "Which river flows through Baghdad?"
+lead_in = "Ancient history meets geography. Name the river."
+reveal = "It's one of the two rivers of Mesopotamia, where writing was invented. So this whole quiz is technically its fault."
+
+[[script]]
+question = "classics-ae0e2411"
+prompt = "Mount Kilimanjaro is in which country?"
+lead_in = "Big mountain question coming up. Pack a jacket."
+reveal = "It's a dormant volcano and Africa's tallest peak, and it's in snow even though it's near the equator."
+
+[[script]]
+question = "classics-7c990047"
+prompt = "What is the capital of Canada?"
+lead_in = "Capital city question. Hint: it is not the one with the famous tower."
+
+[script.reveal]
+PG = "Queen Victoria picked it in 1857, partly because it was hard for invaders to reach. Also hard for tourists, apparently."
+PG-13 = "Toronto and Montreal both wanted it. The Queen picked neither. Classic mom move."
+
+[[script]]
+question = "classics-f2089d8a"
+prompt = "What is the tallest mountain above sea level?"
+lead_in = "Let's climb. Highest point on Earth, measured from sea level."
+reveal = "Measured from base to peak, Hawaii's Mauna Kea is taller. Most of it is just hiding underwater, being humble."
+
+[[script]]
+question = "classics-7de30688"
+prompt = "What is the longest river in South America?"
+lead_in = "Grab a paddle. Big river question."
+reveal = "It carries more water than the next several biggest rivers combined. It doesn't do small talk."
+
+[[script]]
+question = "classics-45d94315"
+prompt = "What is the chemical symbol for gold?"
+lead_in = "Chemistry time. Bling edition."
+
+[script.reveal]
+PG = "It comes from the Latin aurum. All the gold ever mined would fit in just a few Olympic swimming pools."
+PG-13 = "All the gold ever mined would fit in a few swimming pools. Rappers are working on a fourth."
+
+[[script]]
+question = "classics-64de1d27"
+prompt = "Which planet has the most known moons?"
+lead_in = "Space question. Count the moons, if you can."
+reveal = "It has well over two hundred known moons now, and astronomers keep finding more. It's basically hoarding."
+
+[[script]]
+question = "classics-27a6217a"
+prompt = "Which gas do plants absorb for photosynthesis?"
+lead_in = "Plants are breathing in. What are they breathing?"
+reveal = "Plants inhale what we exhale. So technically, every time you talk, you're feeding a ficus."
+
+[[script]]
+question = "classics-b7eb1eae"
+prompt = "What is the hardest natural substance?"
+lead_in = "Hard question. Literally."
+
+[script.reveal]
+PG = "Hardest, yes. Indestructible, no. Heat a diamond hot enough and it burns, because it's just carbon."
+PG-13 = "Hard as a diamond. Unlike my patience with some of these answers."
+
+[[script]]
+question = "classics-83631acc"
+prompt = "Roughly how fast does light travel?"
+lead_in = "Physics time. How fast is the fastest thing there is?"
+reveal = "Sunlight takes about eight minutes to reach us. So when you look at the Sun, which you shouldn't, you're seeing the past."
+
+[[script]]
+question = "classics-4cee5d8c"
+prompt = "Which blood type is the universal donor?"
+lead_in = "Medical question. Who can give blood to everyone?"
+reveal = "Only about seven percent of people have it, which is why blood banks love them so much."
+
+[[script]]
+question = "classics-f1561b8a"
+prompt = "Which part of the cell is called the powerhouse?"
+lead_in = "Biology flashback. Every science teacher's favorite line is coming up."
+
+[script.reveal]
+PG = "It even has its own DNA, which you inherit only from your mother. Thanks, Mom."
+PG-13 = "The single fact every adult remembers from biology class. Congratulations, education worked."
+
+[[script]]
+question = "classics-97cfc37b"
+prompt = "Which element has atomic number 1?"
+lead_in = "Periodic table time. Start at the very top."
+reveal = "It's the most common element in the universe. About three quarters of all ordinary matter. No pressure."
+
+[[script]]
+question = "classics-e07d6ee5"
+prompt = "Who was the first person to walk on the Moon?"
+lead_in = "One small step for this question."
+
+[script.reveal]
+PG = "With no wind on the Moon, his bootprints are probably still up there."
+PG-13 = "Twelve men have walked on the Moon. Everyone remembers the first. Nobody remembers number nine. Sorry, number nine."
+
+[[script]]
+question = "classics-02133e78"
+prompt = "Which ancient wonder stood in Alexandria?"
+lead_in = "Ancient wonders question. Head to Egypt."
+reveal = "It was called the Pharos, and that word still means lighthouse in languages like French and Italian."
+
+[[script]]
+question = "classics-2507ce48"
+prompt = "In what year did the Titanic sink?"
+lead_in = "History question about a very unlucky boat."
+reveal = "Its maiden voyage lasted less than five days. The movie about it lasted over three hours. Draw your own conclusions."
+
+[[script]]
+question = "classics-d0a36811"
+prompt = "Who painted the Mona Lisa?"
+lead_in = "Art history time. Who painted the most famous smile in the world?"
+
+[script.reveal]
+PG = "It was stolen from the Louvre in 1911, and the theft is a big part of why it's so famous today."
+PG-13 = "She's behind bulletproof glass now. Also, look closely: no eyebrows. Bold choice."
+
+[[script]]
+question = "classics-e35128a9"
+prompt = 'Which band released "Bohemian Rhapsody"?'
+lead_in = "Is this the real life? Is this just trivia?"
+reveal = "Record executives said six minutes was too long for the radio. It went to number one anyway. Mama mia."
+
+[[script]]
+question = "classics-c9c52421"
+prompt = "What is the name of Han Solo's ship?"
+lead_in = "A question from a galaxy far, far away."
+reveal = "It made the Kessel Run in less than twelve parsecs. A parsec is a distance, not a time. We've all made our peace with that."
+
+[[script]]
+question = "classics-2049fce8"
+prompt = "What is the wizarding school in Harry Potter?"
+lead_in = "Grab your wand and your owl. School question."
+
+[script.reveal]
+PG = "Founded by four wizards, and one of them definitely should have had a background check."
+PG-13 = "A school where the staircases move and the teachers keep trying to murder you. Still better than my high school."
+
+[[script]]
+question = "classics-baa6fad2"
+prompt = "Which video game plumber wears a red cap?"
+lead_in = "Video game question. Grab a controller."
+reveal = "He was first called Jumpman, and got his name from Nintendo of America's landlord, Mario Segale."
+
+[[script]]
+question = "classics-eb79877c"
+prompt = "What is Batman's real name?"
+lead_in = "Secret identity question. Very secret. He just wears a mask."
+
+[script.reveal]
+PG = "A billionaire who fights crime at night. Honestly, paying taxes would've helped too."
+PG-13 = "His superpower is being rich. Respect the hustle."
+
+[[script]]
+question = "classics-34d61495"
+prompt = """Which movie made "I'll be back" famous?"""
+lead_in = "Movie quote question. Say it with an accent."
+reveal = "Arnold reportedly wanted to say 'I will be back' because it sounded better to him. The director said no."
+
+[[script]]
+question = "classics-ef7d6495"
+prompt = "Pizza Margherita comes from which country?"
+lead_in = "Pizza question. Fold it, don't fold it, just answer it."
+reveal = "Legend says it was named after Queen Margherita, with tomato, mozzarella and basil for the colors of the flag."
+
+[[script]]
+question = "classics-f894a77c"
+prompt = "Sushi rolls are usually wrapped in what?"
+lead_in = "Sushi question. Chopsticks ready."
+reveal = "It's called nori, and it's pressed into sheets a lot like paper."
+
+[[script]]
+question = "classics-9e10b897"
+prompt = "Which nut is used to make marzipan?"
+lead_in = "Sweet question. Marzipan's secret ingredient."
+reveal = "Germany's Lübeck is famous for it, and has been making it for centuries."
+
+[[script]]
+question = "classics-cfe4e39f"
+prompt = "What is the fastest land animal?"
+lead_in = "On your marks. Fastest land animal."
+
+[script.reveal]
+PG = "It goes from zero to sixty in about three seconds, and it can't roar. It chirps. Like a very fast bird."
+PG-13 = "Fastest animal on land, and it chirps like a canary. Nature has jokes."
+
+[[script]]
+question = "classics-5c85754e"
+prompt = "How many hearts does an octopus have?"
+lead_in = "Ocean question. Count the hearts."
+
+[script.reveal]
+PG = "And it has blue blood. Ocean royalty."
+PG-13 = "Three hearts and blue blood. Still easier to date than some people here."
+
+[[script]]
+question = "classics-af13a5e7"
+prompt = "What is a group of crows called?"
+lead_in = "Bird question. It sounds ominous."
+reveal = "Crows can recognize human faces and hold a grudge for years. Be nice to crows."
+
+[[script]]
+question = "classics-9778825a"
+prompt = "Which mammal can truly fly?"
+lead_in = "Which mammal actually flies? Gliding doesn't count."
+reveal = "About one in five mammal species is a bat. They're quietly winning."
+
+[[script]]
+question = "classics-41d72a5c"
+prompt = "What do giant pandas mostly eat?"
+lead_in = "Cute animal question. What's on the menu?"
+reveal = "Pandas spend around twelve hours a day eating it. Relatable."
+
+[[script]]
+question = "classics-1ce27e8c"
+prompt = "What is the largest mammal on Earth?"
+lead_in = "Big animal question. The biggest, actually."
+reveal = "Its tongue alone can weigh as much as an elephant. Don't think about that too hard."
+
+[[script]]
+question = "classics-432491a8"
+prompt = "How many players does a soccer team have on the field?"
+lead_in = "Football question, or soccer if you're American. Count the players."
+reveal = "Eleven per side, plus a referee everyone yells at. Like this game, but with grass."
+
+[[script]]
+question = "classics-2d634427"
+prompt = "Which country won the first FIFA World Cup in 1930?"
+lead_in = "World Cup history. Back to the very first one."
+reveal = "They hosted it and won it. Home field advantage works."
+
+[[script]]
+question = "classics-c97e70bc"
+prompt = "In tennis, what is a score of zero called?"
+lead_in = "Tennis question. Zero has a romantic name."
+reveal = "One theory says it comes from the French for egg, l'oeuf, because a zero looks like one."
+
+[[script]]
+question = "classics-b24f2508"
+prompt = "How many rings are on the Olympic flag?"
+lead_in = "Olympics question. Count the rings."
+reveal = "Their colors, plus the white background, were picked so every national flag of the time had at least one."
+
+[[script]]
+question = "classics-ee31be65"
+prompt = "What does CPU stand for?"
+lead_in = "Tech question. Three letters, one brain."
+reveal = "It's the brain of your computer. Which means some of you just out-thought a toaster. Congrats."
+
+[[script]]
+question = "classics-7b5742aa"
+prompt = "Which company makes the iPhone?"
+lead_in = "Easy tech question. Look in your pocket."
+reveal = "Fun fact: you're probably holding the answer right now."
+
+[[script]]
+question = "classics-9363c49a"
+prompt = "What is the name of the Rust programming language's crab mascot?"
+lead_in = "Nerd alert. This one's for the programmers."
+reveal = "Rust programmers call themselves Rustaceans. The crab wasn't even an official mascot. It just showed up and nobody left."
+
+[[script]]
+question = "classics-aa096765"
+prompt = "In what year was the first iPhone released?"
+lead_in = "Gadget history. When did your phone get smart?"
+reveal = "That makes the iPhone old enough to drive in some places. Please don't text and drive."
+
+[[script]]
+question = "classics-f7f22606"
+prompt = '"Bonjour" means hello in which language?'
+lead_in = "Language question. Say it with me."
+
+[script.reveal]
+PG = "Bravo. Or as they'd say, bravo. Some words are just free."
+PG-13 = "Ooh la la. Look at you, all cultured."
+
+[[script]]
+question = "classics-8c8f4140"
+prompt = "What color do you get by mixing blue and yellow?"
+lead_in = "Art class question. Get out the paint."
+reveal = "Kindergarten paid off. Somebody tell your teacher."
+
+[[script]]
+question = "classics-0cc1b616"
+prompt = """Which city's motto is basically "what happens here, stays here"?"""
+lead_in = "Let's talk about a city with a very convenient memory."
+
+[script.reveal]
+PG-13 = "The slogan came from a 2003 tourism ad. It's the most honest marketing ever written."
+MA = "What happens there stays there. Except the hangover. That comes home with you."
+
+[[script]]
+question = "classics-fa6a0e8e"
+prompt = "Casanova supposedly ate dozens of which food for breakfast?"
+lead_in = "History's smoothest lover had a famous breakfast."
+reveal = "Oysters are full of zinc. Whether that helps with anything else is between you and your doctor."
+
+[[script]]
+question = "classics-641f40a9"
+prompt = "Which fruit emoji is the internet's favorite stand-in for a butt?"
+lead_in = "Emoji question. You know which one."
+
+[script.reveal]
+PG-13 = "In 2016 Apple redesigned it to look less like a butt. People were so upset they changed it back."
+MA = "Apple tried to make it look less cheeky once. The internet staged a revolt. Democracy works."
+
+[[script]]
+question = "classics-ea7e700e"
+prompt = "The Kama Sutra comes from which country?"
+lead_in = "Book question. Very famous, very misunderstood book."
+reveal = "It was written in Sanskrit nearly two thousand years ago. Turns out people have always had questions."
+
+[[script]]
+question = "classics-d5d91f0b"
+prompt = "What is the Roman god of love called?"
+lead_in = "Who's shooting arrows at your heart?"
+
+[script.reveal]
+PG-13 = "The Greeks called him Eros, which is where we get 'erotic'. A little baby with a big vocabulary."
+MA = "A flying baby with a weapon, in charge of your love life. Explains a lot, honestly."
+
+[[script]]
+question = "classics-b05629d6"
+prompt = "Which spirit is the base of a Sex on the Beach cocktail?"
+lead_in = "Bartender question. What's the base of this beachy cocktail?"
+reveal = "It got popular in the 80s, when bartenders were clearly very bored and very cheeky."
+
+[[script]]
+question = "classics-3a8e4ba8"
+prompt = 'Which hormone is nicknamed the "cuddle hormone"?'
+lead_in = "Science question. It's all about the snuggles."
+
+[script.reveal]
+PG-13 = "It's released when you hug, and is part of why a long hug feels so good. Go hug someone. Ask first."
+MA = "Hugs, childbirth, and orgasms all release it. Busy little molecule."
+
+[[script]]
+question = "classics-4b00488c"
+prompt = "On Tinder, which way do you swipe to like someone?"
+lead_in = "Dating app question. Which way is yes?"
+
+[script.reveal]
+PG-13 = "Right means yes. Left means no. Up means you've accidentally sent a Super Like to your ex."
+MA = "And swiping right on everyone is called a strategy. Allegedly."
+
+[[script]]
+question = "classics-903948d2"
+prompt = "Which 18th-century Venetian's name became slang for a smooth seducer?"
+lead_in = "Who's the most famous flirt in history?"
+reveal = "He also worked as a spy, a violinist, and spent his last years as a librarian. A real renaissance man."

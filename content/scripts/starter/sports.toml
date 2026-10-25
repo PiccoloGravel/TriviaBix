@@ -1,0 +1,59 @@
+[[script]]
+question = "sports-9c042a82"
+prompt = "How many players does a soccer team have on the field at once?"
+lead_in = "Soccer question. How many on the pitch?"
+reveal = "A team needs at least seven players on the field, or the match is called off. Red cards add up."
+
+[[script]]
+question = "sports-f632400d"
+prompt = "Michael Phelps has won more Olympic gold medals than anyone else in history."
+lead_in = "True or false. The most decorated Olympian."
+
+[[script]]
+question = "sports-b553a9ea"
+prompt = "Which sport uses a shuttlecock?"
+lead_in = "Sports question. What do you hit a shuttlecock in?"
+reveal = "The fastest smashes have been clocked at over five hundred kilometers an hour. Faster than a race car."
+
+[[script]]
+question = "sports-db4e31da"
+prompt = "Which country has won the most men's FIFA World Cups?"
+lead_in = "World Cup question. Who has the most trophies?"
+reveal = "Five titles, and they've played in every single World Cup."
+
+[[script]]
+question = "sports-bcebdf24"
+prompt = "In bowling, what are three strikes in a row called?"
+lead_in = "Bowling question. Three strikes in a row is called what?"
+
+[[script]]
+question = "sports-a88a8889"
+prompt = "How many points is a touchdown worth in American football, before the extra point?"
+lead_in = "Football math. What's a touchdown worth?"
+reveal = "Then you kick for one more point or go for two. Choose wisely."
+
+[[script]]
+question = "sports-18a8e9b4"
+prompt = "Put these Summer Olympics hosts in order."
+lead_in = "Olympic history. Put these hosts in order."
+
+[[script]]
+question = "sports-648b2663"
+prompt = "Which Grand Slam tennis tournament is played on grass?"
+lead_in = "Tennis question. Which Grand Slam is played on grass?"
+
+[script.reveal]
+PG = "Fans eat well over a hundred thousand portions of strawberries and cream there every year."
+PG-13 = "All-white clothing, strawberries, and very polite screaming. Very British."
+
+[[script]]
+question = "sports-2d40feed"
+prompt = "A marathon is 26.2 miles long."
+lead_in = "True or false. How long is a marathon?"
+reveal = "The odd distance comes from the 1908 London Olympics, when the course was stretched to finish in front of the royal box."
+
+[[script]]
+question = "sports-f4362a40"
+prompt = 'Which NBA star is nicknamed "King James"?'
+lead_in = "Basketball question. Who's the King?"
+reveal = "He passed Kareem Abdul-Jabbar in 2023 to become the NBA's all-time leading scorer."
