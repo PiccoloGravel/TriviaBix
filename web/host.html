@@ -17,9 +17,6 @@
     #setup { align-items: center; justify-content: center; gap: 3vh; text-align: center; }
     #setup h1 { font-size: 13vh; margin: 0; color: var(--accent); text-shadow: 0 1vh 0 rgba(0,0,0,.35); }
     #setup p { font-size: 3vh; margin: 0; }
-    .opts { display: flex; gap: 2vw; font-size: 3vh; align-items: center; }
-    .opts button { font-size: 3vh; }
-    #create { font-size: 5vh; padding: 2vh 5vw; }
 
     .topbar { display: flex; justify-content: space-between; align-items: center; font-size: 3vh; color: var(--muted); }
     .topbar .code-chip { color: var(--text); background: var(--panel); padding: .4vh 1.2vw; border-radius: 999px; }
@@ -40,7 +37,6 @@
     .team-pill b { font-family: "Bungee", sans-serif; font-weight: 400; }
     .vip-tag { font-size: 1.8vh; background: var(--accent); color: #1a0b3d; padding: .2vh .8vw; border-radius: 999px; }
     .lobby-foot { text-align: center; font-size: 3.4vh; display: flex; justify-content: center; gap: 2vw; align-items: center; }
-    .lobby-foot button { font-size: 3.4vh; }
 
     #question .prompt, #reveal .prompt { font-size: 6vh; line-height: 1.2; text-align: center; margin: 3vh 0; flex: 0 0 auto; }
     .cat { text-align: center; font-size: 3vh; color: var(--accent); text-transform: uppercase; letter-spacing: .2em; }
@@ -127,6 +123,7 @@
 
     .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
+    .sound-hint { font-size: 2vh; align-self: center; background: var(--accent); color: #1a0b3d; border-radius: 1vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
     /* ---------- Game show graphics ---------- */
 
@@ -247,49 +244,7 @@
 
   <section id="setup" class="screen hidden" data-screen>
     <h1>TriviaBix</h1>
-    <p class="muted">Put this on the TV. Everyone else grabs their phone.</p>
-    <div class="opts">
-      <span>Game</span>
-      <button class="secondary" data-mode="trivia">Trivia</button>
-      <button class="secondary" data-mode="hangman">Speed Hangman</button>
-      <button class="secondary" data-mode="songs">🎵 Name That Tune</button>
-    </div>
-    <div class="opts" id="clip-opts">
-      <span>Clip</span>
-      <button class="secondary" data-clip="1000">1 second</button>
-      <button class="secondary" data-clip="2000">2 seconds</button>
-      <button class="secondary" data-clip="3000">3 seconds</button>
-    </div>
-    <div class="opts" id="trivia-opts">
-      <span>Rounds</span>
-      <button class="secondary" data-trivia-rounds="3">3 (easy → hard)</button>
-      <button class="secondary" data-trivia-rounds="4">4 (+ final)</button>
-      <span>Questions each</span>
-      <button class="secondary" data-per-round="3">3</button>
-      <button class="secondary" data-per-round="5">5</button>
-      <button class="secondary" data-per-round="7">7</button>
-    </div>
-    <div class="opts" id="rounds-opts">
-      <span id="rounds-label">Rounds</span>
-      <button class="secondary" data-rounds="5">5</button>
-      <button class="secondary" data-rounds="10">10</button>
-      <button class="secondary" data-rounds="15">15</button>
-    </div>
-    <div class="opts">
-      <span>Rated</span>
-      <button class="secondary" data-rating="PG">PG</button>
-      <button class="secondary" data-rating="PG-13">PG-13</button>
-      <button class="secondary" data-rating="MA">MA</button>
-      <button class="secondary" data-rating="NC-17">NC-17</button>
-    </div>
-    <div class="opts">
-      <span>Teams</span>
-      <button class="secondary" data-teams="0">Off</button>
-      <button class="secondary" data-teams="2">2</button>
-      <button class="secondary" data-teams="3">3</button>
-      <button class="secondary" data-teams="4">4</button>
-    </div>
-    <button id="create" autofocus>Start a room</button>
+    <p class="muted">Opening a room…</p>
     <p class="error" id="setup-error"></p>
   </section>
 
@@ -307,7 +262,6 @@
     </div>
     <div class="lobby-foot">
       <span id="lobby-hint"></span>
-      <button id="start-btn" disabled>Start (Enter)</button>
     </div>
   </section>
 
@@ -403,8 +357,7 @@
     <div class="podium" id="f-podium"></div>
     <div class="rest" id="f-rest"></div>
     <div class="lobby-foot" style="margin-top:3vh">
-      <span class="muted">The VIP can start a rematch from their phone.</span>
-      <button id="again-btn">Play again (Enter)</button>
+      <span class="muted">The VIP can pick the next game from their phone.</span>
     </div>
   </section>
 
@@ -416,11 +369,11 @@
   <canvas id="confetti"></canvas>
 
   <div class="corner">
+    <span class="sound-hint hidden" id="sound-hint">🔈 Click this screen once to turn on sound</span>
     <button class="secondary hidden" id="sound-btn">🔈 Tap for sound</button>
     <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
     <button class="secondary" id="voice-btn" title="V">🗣 Voice</button>
     <button class="secondary" id="fs-btn" title="F">⛶ Fullscreen</button>
-    <button class="secondary hidden" id="skip-btn" title="Space">Skip ⏭</button>
   </div>
 
   <script src="/common.js"></script>

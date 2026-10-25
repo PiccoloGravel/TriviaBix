@@ -1,10 +1,9 @@
-// The TV screen. After "Start a room" it needs no mouse: the server moves the
-// game along on timers, and Enter/Space (a remote's OK button) skips ahead.
+// The TV screen. It's display only: it opens a room by itself, the VIP runs the game from
+// their phone, and the server moves things along on timers. Enter/Space still skips ahead.
 
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000, teams: 0, trivia_rounds: 4, per_round: 5 };
 let conn = null;
 let state = null;
 let prev = null;
@@ -279,68 +278,22 @@ function confetti() {
   })();
 }
 
-// ---------- Setup ----------
+// ---------- Room ----------
+// The TV needs no input: it opens a room straight away, and the VIP picks the game on their phone.
 
-function renderSetup() {
-  document.querySelectorAll("[data-mode]").forEach((b) => {
-    b.classList.toggle("secondary", b.dataset.mode !== settings.mode);
-  });
-  document.querySelectorAll("[data-rounds]").forEach((b) => {
-    b.classList.toggle("secondary", Number(b.dataset.rounds) !== settings.rounds);
-  });
-  document.querySelectorAll("[data-rating]").forEach((b) => {
-    b.classList.toggle("secondary", b.dataset.rating !== settings.max_rating);
-  });
-  document.querySelectorAll("[data-teams]").forEach((b) => {
-    b.classList.toggle("secondary", Number(b.dataset.teams) !== settings.teams);
-  });
-  document.querySelectorAll("[data-clip]").forEach((b) => {
-    b.classList.toggle("secondary", Number(b.dataset.clip) !== settings.clip_ms);
-  });
-  document.querySelectorAll("[data-trivia-rounds]").forEach((b) => {
-    b.classList.toggle("secondary", Number(b.dataset.triviaRounds) !== settings.trivia_rounds);
-  });
-  document.querySelectorAll("[data-per-round]").forEach((b) => {
-    b.classList.toggle("secondary", Number(b.dataset.perRound) !== settings.per_round);
-  });
-  $("#clip-opts").classList.toggle("hidden", settings.mode !== "songs");
-  // Trivia is played in rounds of questions; the other games count puzzles or songs.
-  $("#trivia-opts").classList.toggle("hidden", settings.mode !== "trivia");
-  $("#rounds-opts").classList.toggle("hidden", settings.mode === "trivia");
-  $("#rounds-label").textContent = { songs: "Songs", hangman: "Puzzles" }[settings.mode] || "Questions";
-}
-
-document.querySelectorAll("[data-rounds]").forEach((b) =>
-  b.addEventListener("click", () => { settings.rounds = Number(b.dataset.rounds); renderSetup(); }));
-document.querySelectorAll("[data-trivia-rounds]").forEach((b) =>
-  b.addEventListener("click", () => { settings.trivia_rounds = Number(b.dataset.triviaRounds); renderSetup(); }));
-document.querySelectorAll("[data-per-round]").forEach((b) =>
-  b.addEventListener("click", () => { settings.per_round = Number(b.dataset.perRound); renderSetup(); }));
-document.querySelectorAll("[data-mode]").forEach((b) =>
-  b.addEventListener("click", () => { settings.mode = b.dataset.mode; renderSetup(); }));
-document.querySelectorAll("[data-rating]").forEach((b) =>
-  b.addEventListener("click", () => { settings.max_rating = b.dataset.rating; renderSetup(); }));
-document.querySelectorAll("[data-teams]").forEach((b) =>
-  b.addEventListener("click", () => { settings.teams = Number(b.dataset.teams); renderSetup(); }));
-document.querySelectorAll("[data-clip]").forEach((b) =>
-  b.addEventListener("click", () => { settings.clip_ms = Number(b.dataset.clip); renderSetup(); }));
-
-$("#create").addEventListener("click", async () => {
-  $("#setup-error").textContent = "";
+async function createRoom() {
   try {
-    const res = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(settings),
-    });
+    const res = await fetch("/api/rooms", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || "Couldn't create a room.");
     TBX.save(HOST_KEY, { code: body.code, token: body.host_token });
     join(body.code, body.host_token);
   } catch (e) {
-    $("#setup-error").textContent = e.message;
+    show("setup");
+    $("#setup-error").textContent = `${e.message} Trying again…`;
+    setTimeout(createRoom, 5000);
   }
-});
+}
 
 // ---------- Connection ----------
 
@@ -353,9 +306,10 @@ function join(code, token) {
       if (msg.type === "error") toast(msg.message);
     },
     onFatal(message) {
+      // The room is gone (closed from the admin panel, or the server restarted): open a fresh one.
       TBX.save(HOST_KEY, null);
-      show("setup");
-      $("#setup-error").textContent = message + " Start a new room.";
+      toast(`${message} Opening a new room…`);
+      createRoom();
     },
     onStatus(ok) { $("#offline").classList.toggle("hidden", ok); },
   });
@@ -378,7 +332,6 @@ function render(s) {
   prev = state;
   state = s;
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
-  $("#skip-btn").classList.toggle("hidden", !["intro", "round_intro", "question", "reveal", "scoreboard", "recap"].includes(s.phase));
   if (phaseChanged) {
     Cutscenes.stop();
     $("#callouts").replaceChildren();
@@ -459,9 +412,8 @@ function renderLobby(s, changed) {
 
   const vip = s.players.find((p) => p.id === s.vip);
   $("#lobby-hint").textContent = s.players.length === 0
-    ? `Waiting for players (up to ${s.max_players})…`
-    : `${s.players.length}/${s.max_players} in. ${vip ? vip.name + " (VIP) can start from their phone, or" : ""} press`;
-  $("#start-btn").disabled = s.players.length === 0;
+    ? `Scan the code or go to ${url} on your phone. Up to ${s.max_players} players, and the first one in is the VIP.`
+    : `${s.players.length}/${s.max_players} in. ${vip ? vip.name + " is the VIP: pick the game and start it from your phone." : ""}`;
 }
 
 function choiceTile(text, i) {
@@ -793,23 +745,24 @@ function renderFinal(s, changed) {
   if (changed && top[0]) confetti();
 }
 
-// ---------- Controls: mouse optional, keyboard / TV remote friendly ----------
+// ---------- Controls ----------
+// The game is run from the VIP's phone. These are optional extras for a keyboard or remote.
 
 function primaryAction() {
-  if (!state) return $("#setup").classList.contains("hidden") ? null : $("#create").click();
-  if (state.phase === "lobby") {
-    if (state.settings.mode === "songs" && state.players.length) toast("Cueing up the tunes…");
-    send({ type: "start" });
-  }
+  if (!state) return;
+  if (state.phase === "lobby") send({ type: "start" });
   else if (state.phase === "final") send({ type: "play_again" });
   else send({ type: "next" });
 }
 
-$("#start-btn").addEventListener("click", () => primaryAction());
 $("#sound-btn").addEventListener("click", () => tune.unlock());
-document.addEventListener("pointerdown", () => tune.unlock());
-$("#again-btn").addEventListener("click", () => send({ type: "play_again" }));
-$("#skip-btn").addEventListener("click", () => send({ type: "next" }));
+document.addEventListener("pointerdown", () => { tune.unlock(); soundHint(); });
+
+// Browsers keep a page silent until someone clicks it once, so say so until that happens.
+function soundHint() {
+  const active = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  $("#sound-hint").classList.toggle("hidden", active);
+}
 
 function toggleVoice() {
   voice.on = !voice.on;
@@ -837,8 +790,6 @@ $("#fs-btn").addEventListener("click", toggleFullscreen);
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
-  // On the setup screen, let a focused button (e.g. picked with a remote's arrows) click itself.
-  if (!state && e.target.tagName === "BUTTON") return;
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     // If the browser blocked the clip, this press turns sound on instead of skipping.
@@ -851,12 +802,13 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "m" || e.key === "M") toggleVoice();
   else if (e.key === "f" || e.key === "F") toggleFullscreen();
   else if (e.key === "v" || e.key === "V") nextVoice();
+  soundHint();
 });
 
 // ---------- Boot ----------
 
 (async function boot() {
-  renderSetup();
+  soundHint();
   Cutscenes.sound = voice.on;
   await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
   try {
@@ -878,5 +830,5 @@ document.addEventListener("keydown", (e) => {
     if (res && res.ok) return join(saved.code, saved.token);
     TBX.save(HOST_KEY, null);
   }
-  show("setup");
+  createRoom();
 })();

@@ -20,7 +20,9 @@ pub enum ClientMsg {
     Next,
     /// Host or VIP: back to the lobby after the final scores.
     PlayAgain,
-    /// Host only: change settings while in the lobby (late joins can change any time).
+    /// Host or VIP: abandon the game in progress and go back to the lobby to pick another.
+    Lobby,
+    /// Host or VIP: change settings while in the lobby (late joins can change any time).
     Settings {
         rounds: Option<usize>,
         max_rating: Option<Rating>,
@@ -38,7 +40,7 @@ pub enum ClientMsg {
         name: Option<String>,
         character: Option<String>,
     },
-    /// Host only: remove a player from the room.
+    /// Host, or the VIP while in the lobby: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
     Ping,
