@@ -1,0 +1,57 @@
+{
+  "duration": 3400,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#c9b8ff"
+    ],
+    "enter": "fade"
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 34,
+      "y": 58,
+      "size": 20,
+      "at": 100,
+      "in": "left",
+      "loop": "crawl"
+    },
+    {
+      "type": "emoji",
+      "char": "🐌",
+      "x": 16,
+      "y": 70,
+      "size": 12,
+      "at": 300,
+      "in": "left",
+      "loop": "crawl"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "LAST PLACE",
+      "y": 20,
+      "size": 10,
+      "at": 500,
+      "in": "stamp",
+      "color": "#ff4f6d"
+    },
+    {
+      "type": "bix",
+      "mood": "laugh",
+      "x": 82,
+      "y": 64,
+      "size": 30,
+      "at": 800,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "sad_trombone",
+      "at": 600
+    }
+  ]
+}

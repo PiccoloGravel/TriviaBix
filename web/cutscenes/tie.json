@@ -1,0 +1,46 @@
+{
+  "duration": 3200,
+  "backdrop": {
+    "kind": "split",
+    "colors": [
+      "#2f80ed",
+      "#e63973"
+    ]
+  },
+  "layers": [
+    {
+      "type": "text",
+      "text": "IT'S A TIE!",
+      "y": 22,
+      "size": 14,
+      "at": 200,
+      "in": "slam"
+    },
+    {
+      "type": "players",
+      "y": 62,
+      "at": 500,
+      "stagger": 150,
+      "size": 16
+    },
+    {
+      "type": "bix",
+      "mood": "shocked",
+      "x": 86,
+      "y": 80,
+      "size": 24,
+      "at": 400,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 200
+    },
+    {
+      "sound": "boing",
+      "at": 700
+    }
+  ]
+}

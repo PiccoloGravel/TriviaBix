@@ -186,6 +186,9 @@ pub struct HostView<'a> {
     pub id: u64,
     pub text: &'a str,
     pub callouts: &'a [Callout],
+    /// The moment this line is for, so the TV can play a cutscene and pick the host's face: intro,
+    /// round, final_round, winner, finale_tie, or the biggest callout's kind. See web/cutscenes/.
+    pub cue: Option<&'static str>,
 }
 
 /// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.

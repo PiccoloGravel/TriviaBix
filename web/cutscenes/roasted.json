@@ -1,0 +1,54 @@
+{
+  "duration": 2600,
+  "backdrop": {
+    "kind": "dim",
+    "enter": "fade"
+  },
+  "layers": [
+    {
+      "type": "effect",
+      "kind": "rise",
+      "chars": [
+        "🔥"
+      ],
+      "count": 18,
+      "size": 6,
+      "at": 300
+    },
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 38,
+      "y": 60,
+      "size": 22,
+      "at": 100,
+      "in": "pop",
+      "loop": "shake"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "ROASTED",
+      "y": 24,
+      "size": 13,
+      "at": 300,
+      "in": "stamp",
+      "color": "#ff4f6d"
+    },
+    {
+      "type": "bix",
+      "mood": "laugh",
+      "x": 76,
+      "y": 62,
+      "size": 34,
+      "at": 200,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 300
+    }
+  ]
+}

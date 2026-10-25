@@ -231,6 +231,8 @@ async fn eight_players_play_a_full_game() {
         intro["host"]["text"].as_str().unwrap().len() > 10,
         "{intro}"
     );
+    // Each line carries a cue so the TV knows which cutscene to play.
+    assert_eq!(intro["host"]["cue"], "intro");
 
     for round in 1..=3 {
         let q = wait_state(&mut host, |s| {
@@ -238,6 +240,8 @@ async fn eight_players_play_a_full_game() {
         })
         .await;
         assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
+        let cue = if round == 3 { "final_round" } else { "round" };
+        assert_eq!(q["host"]["cue"], cue);
         assert!(
             q["reveal"].is_null(),
             "answer must not leak during the question"
@@ -266,11 +270,13 @@ async fn eight_players_play_a_full_game() {
         assert!(said.contains(answer), "host should say the answer: {said}");
         assert!(!said.contains('{'), "unfilled placeholder: {said}");
         assert!(!reveal["host"]["callouts"].as_array().unwrap().is_empty());
+        assert!(reveal["host"]["cue"].is_string(), "{}", reveal["host"]);
     }
 
     let fin = wait_state(&mut host, |s| s["phase"] == "final").await;
     assert_eq!(fin["round"], 3);
     assert!(!fin["host"]["text"].as_str().unwrap().is_empty());
+    assert!(["winner", "finale_tie"].contains(&fin["host"]["cue"].as_str().unwrap()));
 
     // Players see their own rank in the final state.
     let mine = wait_state(&mut players[3], |s| s["phase"] == "final").await;

@@ -1,0 +1,62 @@
+{
+  "duration": 3000,
+  "backdrop": {
+    "kind": "split",
+    "colors": [
+      "#7b5cff",
+      "#e63973"
+    ]
+  },
+  "layers": [
+    {
+      "type": "text",
+      "text": "NEW LEADER",
+      "y": 16,
+      "size": 12,
+      "at": 200,
+      "in": "slam",
+      "color": "#ffd23f"
+    },
+    {
+      "type": "player",
+      "who": "subject",
+      "y": 60,
+      "size": 30,
+      "at": 300,
+      "in": "drop",
+      "hat": "👑",
+      "hatAt": 800
+    },
+    {
+      "type": "effect",
+      "kind": "burst",
+      "chars": [
+        "✨",
+        "⭐"
+      ],
+      "x": 50,
+      "y": 45,
+      "count": 20,
+      "at": 1100
+    },
+    {
+      "type": "bix",
+      "mood": "excited",
+      "x": 86,
+      "y": 76,
+      "size": 24,
+      "at": 500,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 0
+    },
+    {
+      "sound": "ding",
+      "at": 1100
+    }
+  ]
+}

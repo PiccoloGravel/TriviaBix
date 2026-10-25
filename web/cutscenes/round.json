@@ -1,0 +1,54 @@
+{
+  "duration": 1700,
+  "backdrop": {
+    "kind": "split",
+    "colors": [
+      "#e63973",
+      "#2f80ed"
+    ]
+  },
+  "layers": [
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "{kind} {round} of {total}",
+      "y": 28,
+      "size": 5,
+      "at": 150,
+      "in": "fade"
+    },
+    {
+      "type": "text",
+      "text": "#{round}",
+      "y": 50,
+      "size": 22,
+      "at": 100,
+      "in": "slam"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "{category}",
+      "y": 72,
+      "size": 5,
+      "at": 300,
+      "in": "rise"
+    },
+    {
+      "type": "bix",
+      "mood": "happy",
+      "x": 10,
+      "y": 88,
+      "size": 24,
+      "rotate": 12,
+      "at": 250,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 0
+    }
+  ]
+}

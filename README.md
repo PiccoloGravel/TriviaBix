@@ -19,9 +19,16 @@ voice and **F** toggles fullscreen.
 
 Bix, the host, runs the show from a script: an intro, banter before each question, the answer and a reaction (lone geniuses,
 clean sweeps, roasts of wrong answers, streaks of three or more and broken streaks), score updates with new leaders and last
-place, and a finale. The TV shows each line in a speech bubble, reads it out, and pops matching graphics: a title card before
-each question, stamps and banners for roasts and streaks, scoreboard rows sliding to their new rank, and confetti for the winner.
-Players who get called out see the badge on their phone too.
+place, and a finale. The TV shows each line in a speech bubble, reads it out, and pops matching graphics: stamps and banners for
+roasts and streaks, scoreboard rows sliding to their new rank, and confetti for the winner. Players who get called out see the
+badge on their phone too.
+
+Bix is an animated cartoon microphone ([`web/bix.js`](web/bix.js)) whose face follows the moment (excited, smug, shocked, sad,
+laughing, or in shades for the champion) and whose mouth moves while the voice talks. Big moments get Jackbox-style
+**cutscenes**: curtains for the opening, a card for each question, a fire storm for streaks, a snail for last place, a crown
+for the champion. Each line from the server carries a `cue`, and the scenes are JSON files in
+[`web/cutscenes/`](web/cutscenes/), so adding one means dropping in a file and a line in `index.json`. The guide is
+[`web/cutscenes/README.md`](web/cutscenes/README.md), and `/cutscenes.html` previews every scene.
 
 The script is [`server/host-script.json`](server/host-script.json). Lines are grouped by rating; a room uses every line at or
 below its rating and leans heavily toward the spiciest tier allowed, so PG rooms stay friendly and NC-17 rooms get filthy. Edit
@@ -130,6 +137,7 @@ cargo test                    # unit tests plus full games over WebSockets
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
   - `migrations/` creates the tables and seeds a starter question bank and hangman phrases.
 - `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
+  - `cutscenes.js` plays the scenes in `cutscenes/`; `bix.js` draws the host; `cutscenes.html` previews them.
 - `server/src/admin.rs` is the admin login and API (`/api/admin/*`).
 
 ### WebSocket protocol
@@ -142,4 +150,4 @@ Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clien
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
 The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`
-and `final`; each state carries `host {name, id, text, callouts}`, the current host line and the graphics that go with it.
+and `final`; each state carries `host {name, id, text, callouts, cue}`, the current host line, the graphics that go with it, and the cue that picks its cutscene.

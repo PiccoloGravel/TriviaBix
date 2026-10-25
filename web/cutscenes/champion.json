@@ -1,0 +1,65 @@
+{
+  "duration": 4600,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#ff9f1c",
+      "#ffd23f"
+    ],
+    "enter": "iris"
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "y": 56,
+      "size": 32,
+      "at": 300,
+      "in": "zoom",
+      "hat": "👑",
+      "hatAt": 1000
+    },
+    {
+      "type": "text",
+      "text": "CHAMPION",
+      "y": 15,
+      "size": 15,
+      "at": 1300,
+      "in": "slam"
+    },
+    {
+      "type": "effect",
+      "kind": "burst",
+      "chars": [
+        "🏆",
+        "⭐",
+        "✨",
+        "🎉"
+      ],
+      "x": 50,
+      "y": 52,
+      "count": 36,
+      "at": 1300,
+      "size": 7
+    },
+    {
+      "type": "bix",
+      "mood": "cool",
+      "x": 87,
+      "y": 72,
+      "size": 28,
+      "at": 900,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "drumroll",
+      "at": 0
+    },
+    {
+      "sound": "tada",
+      "at": 1300
+    }
+  ]
+}

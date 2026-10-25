@@ -1,0 +1,54 @@
+{
+  "duration": 3000,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#1fb57a",
+      "#2ee59d"
+    ]
+  },
+  "layers": [
+    {
+      "type": "text",
+      "text": "CLEAN SWEEP!",
+      "y": 24,
+      "size": 13,
+      "at": 200,
+      "in": "slam"
+    },
+    {
+      "type": "players",
+      "y": 62,
+      "at": 500,
+      "stagger": 80
+    },
+    {
+      "type": "effect",
+      "kind": "burst",
+      "chars": [
+        "🎯",
+        "✅",
+        "🎉"
+      ],
+      "x": 50,
+      "y": 55,
+      "count": 30,
+      "at": 700
+    },
+    {
+      "type": "bix",
+      "mood": "laugh",
+      "x": 88,
+      "y": 82,
+      "size": 24,
+      "at": 300,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "tada",
+      "at": 250
+    }
+  ]
+}
