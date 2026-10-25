@@ -1,0 +1,85 @@
+[pack]
+name = "Movies"
+author = "TriviaBix"
+category = "movies"
+
+[[question]]
+type = "type_answer"
+prompt = "Which hobbit did Elijah Wood play in \"The Lord of the Rings\"?"
+answers = ["Frodo", "Frodo Baggins"]
+difficulty = "easy"
+
+[[question]]
+type = "true_false"
+prompt = "Steven Spielberg directed \"Jaws\"."
+answer = true
+difficulty = "easy"
+tags = ["70s"]
+host_quip = "You're gonna need a bigger scoreboard."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which movie gave us the line \"Here's looking at you, kid\"?"
+choices = ["Casablanca", "Gone with the Wind", "Citizen Kane", "The Maltese Falcon"]
+answer = "Casablanca"
+
+[[question]]
+type = "closest_number"
+prompt = "How many Oscars did \"Titanic\" win?"
+answer = 11
+unit = "Oscars"
+difficulty = "hard"
+tags = ["90s"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "In \"The Matrix\", which pill does Neo take?"
+choices = ["Red", "Blue", "Green", "He refuses both"]
+answer = "Red"
+difficulty = "easy"
+tags = ["90s"]
+keep_order = true
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these blockbusters in order of release."
+items = ["Jurassic Park", "The Matrix", "Avatar", "Avengers: Endgame"]
+first_label = "Earliest"
+last_label = "Latest"
+fun_fact = "1993, 1999, 2009, and 2019."
+
+[[question]]
+type = "type_answer"
+prompt = "Which 1984 movie has the line \"I'll be back\"?"
+answers = ["The Terminator", "Terminator"]
+tags = ["80s"]
+host_quip = "Say it in the accent. I'll wait."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who played Captain Jack Sparrow?"
+choices = ["Johnny Depp", "Orlando Bloom", "Geoffrey Rush", "Javier Bardem"]
+answer = "Johnny Depp"
+difficulty = "easy"
+tags = ["2000s"]
+
+[[question]]
+type = "true_false"
+prompt = "\"Toy Story\" was the first feature film made entirely with computer animation."
+answer = true
+tags = ["90s"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "In \"Finding Nemo\", what kind of fish is Dory?"
+choices = ["Blue tang", "Clownfish", "Angelfish", "Pufferfish"]
+answer = "Blue tang"
+tags = ["2000s"]
+host_quip = "Just keep guessing, just keep guessing."
+
+[[question]]
+type = "type_answer"
+prompt = "What is the name of the hidden African nation in \"Black Panther\"?"
+answers = ["Wakanda"]
+difficulty = "easy"
+host_quip = "Wakanda forever, and so are your points."

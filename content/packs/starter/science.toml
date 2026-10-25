@@ -1,0 +1,93 @@
+[pack]
+name = "Science and Nature"
+author = "TriviaBix"
+category = "science"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which planet is known as the Red Planet?"
+choices = ["Mars", "Jupiter", "Venus", "Mercury"]
+answer = "Mars"
+difficulty = "easy"
+tags = ["space"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which element has the chemical symbol Au?"
+answers = ["Gold"]
+fun_fact = "Au comes from the Latin \"aurum\", meaning shining dawn."
+
+[[question]]
+type = "true_false"
+prompt = "Octopuses have three hearts."
+answer = true
+tags = ["animals"]
+fun_fact = "They also have blue blood."
+host_quip = "Three hearts and still nobody calls back."
+
+[[question]]
+type = "closest_number"
+prompt = "How many bones are in the adult human body?"
+answer = 206
+unit = "bones"
+tags = ["human-body"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which gas do plants take in from the air to make food?"
+choices = ["Carbon dioxide", "Oxygen", "Nitrogen", "Helium"]
+answer = "Carbon dioxide"
+difficulty = "easy"
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these planets in order from closest to the Sun to farthest."
+items = ["Mars", "Jupiter", "Saturn", "Neptune"]
+first_label = "Closest"
+last_label = "Farthest"
+difficulty = "easy"
+tags = ["space"]
+
+[[question]]
+type = "true_false"
+prompt = "Lightning never strikes the same place twice."
+answer = false
+difficulty = "easy"
+fun_fact = "The Empire State Building gets hit about 20 times a year."
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the hardest natural substance on Earth?"
+choices = ["Diamond", "Quartz", "Titanium", "Granite"]
+answer = "Diamond"
+difficulty = "easy"
+
+[[question]]
+type = "closest_number"
+prompt = "Roughly how fast does light travel, in kilometers per second?"
+answer = 299792
+unit = "km/s"
+tolerance = 1000
+difficulty = "hard"
+tags = ["space"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the largest animal that has ever lived?"
+choices = ["Blue whale", "Argentinosaurus", "Megalodon", "African elephant"]
+answer = "Blue whale"
+tags = ["animals"]
+
+[[question]]
+type = "true_false"
+prompt = "Botanically speaking, bananas are berries but strawberries are not."
+answer = true
+tags = ["food"]
+host_quip = "Science: ruining fruit salad since forever."
+
+[[question]]
+type = "type_answer"
+prompt = "What is the closest star to Earth?"
+answers = ["The Sun", "Sun", "Sol"]
+tags = ["space"]
+host_quip = "If you said Proxima Centauri, look up. Actually, don't."

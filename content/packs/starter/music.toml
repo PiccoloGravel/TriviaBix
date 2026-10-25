@@ -1,0 +1,95 @@
+[pack]
+name = "Music"
+author = "TriviaBix"
+category = "music"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which band was nicknamed \"the Fab Four\"?"
+choices = ["The Beatles", "The Rolling Stones", "The Beach Boys", "The Who"]
+answer = "The Beatles"
+difficulty = "easy"
+tags = ["60s", "rock"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which singer is known as the \"Queen of Pop\"?"
+answers = ["Madonna"]
+difficulty = "easy"
+tags = ["80s", "pop"]
+
+[[question]]
+type = "closest_number"
+prompt = "How many keys are on a standard piano?"
+answer = 88
+unit = "keys"
+fun_fact = "52 white and 36 black."
+
+[[question]]
+type = "true_false"
+prompt = "Freddie Mercury was born Farrokh Bulsara."
+answer = true
+tags = ["rock"]
+fun_fact = "He was born in Zanzibar in 1946."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who released the 1984 album \"Purple Rain\"?"
+choices = ["Prince", "Michael Jackson", "Lionel Richie", "Stevie Wonder"]
+answer = "Prince"
+difficulty = "easy"
+tags = ["80s"]
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these classic albums in order of release."
+items = ["Abbey Road (The Beatles)", "Rumours (Fleetwood Mac)", "Thriller (Michael Jackson)", "Nevermind (Nirvana)"]
+first_label = "Earliest"
+last_label = "Latest"
+tags = ["rock", "80s", "90s"]
+fun_fact = "1969, 1977, 1982, and 1991."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which country is ABBA from?"
+choices = ["Sweden", "Norway", "Denmark", "Finland"]
+answer = "Sweden"
+difficulty = "easy"
+tags = ["70s", "pop"]
+host_quip = "Mamma mia, here we go again."
+
+[[question]]
+type = "type_answer"
+prompt = "Which rapper was born Marshall Mathers?"
+answers = ["Eminem", "Slim Shady"]
+difficulty = "easy"
+tags = ["hip-hop"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "What instrument did Ringo Starr play in the Beatles?"
+choices = ["Drums", "Bass", "Lead guitar", "Keyboards"]
+answer = "Drums"
+difficulty = "easy"
+tags = ["60s", "rock"]
+
+[[question]]
+type = "true_false"
+prompt = "Beyoncé got her start as a member of Destiny's Child."
+answer = true
+difficulty = "easy"
+tags = ["90s", "pop"]
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did Elvis Presley die?"
+answer = 1977
+tags = ["70s", "rock"]
+host_quip = "Elvis has left the building. Your answer has not."
+
+[[question]]
+type = "type_answer"
+prompt = "Which Queen song includes the lyrics \"Galileo, Galileo\"?"
+answers = ["Bohemian Rhapsody"]
+tags = ["70s", "rock"]
+host_quip = "If you didn't headbang just now, are you even alive?"

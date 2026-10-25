@@ -1,0 +1,86 @@
+[pack]
+name = "Y2K and the 2000s"
+author = "TriviaBix"
+category = "2000s"
+tags = ["2000s"]
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did the first iPhone go on sale?"
+answer = 2007
+tags = ["tech"]
+
+[[question]]
+type = "true_false"
+prompt = "The first video on YouTube, \"Me at the zoo\", was uploaded in 2005."
+answer = true
+tags = ["tech", "pop-culture"]
+fun_fact = "It's 19 seconds of co-founder Jawed Karim talking about elephants."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which reality show made \"You're fired!\" a catchphrase?"
+choices = ["The Apprentice", "Survivor", "Big Brother", "American Idol"]
+answer = "The Apprentice"
+difficulty = "easy"
+tags = ["tv"]
+
+[[question]]
+type = "type_answer"
+prompt = "What social network launched from a Harvard dorm room in 2004?"
+answers = ["Facebook", "TheFacebook"]
+difficulty = "easy"
+tags = ["tech"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Who sang the 2004 hit \"Toxic\"?"
+choices = ["Britney Spears", "Christina Aguilera", "Jessica Simpson", "Mandy Moore"]
+answer = "Britney Spears"
+difficulty = "easy"
+tags = ["music"]
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these animated movies in order of release."
+items = ["Shrek", "Finding Nemo", "The Incredibles", "Up"]
+first_label = "Earliest"
+last_label = "Latest"
+tags = ["movies"]
+fun_fact = "2001, 2003, 2004, and 2009."
+
+[[question]]
+type = "true_false"
+prompt = "\"The Lord of the Rings: The Return of the King\" won 11 Oscars."
+answer = true
+tags = ["movies"]
+fun_fact = "It won every category it was nominated in, including Best Picture."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which handheld console launched in 2004 with two screens?"
+choices = ["Nintendo DS", "PlayStation Portable", "Game Boy Advance", "N-Gage"]
+answer = "Nintendo DS"
+difficulty = "easy"
+tags = ["video-games"]
+
+[[question]]
+type = "type_answer"
+prompt = "Which Killers song begins \"I'm coming out of my cage and I've been doing just fine\"?"
+answers = ["Mr. Brightside", "Mister Brightside", "Mr Brightside"]
+tags = ["music"]
+host_quip = "Every wedding DJ just felt a disturbance in the force."
+
+[[question]]
+type = "closest_number"
+prompt = "How many seasons did the US version of \"The Office\" run?"
+answer = 9
+unit = "seasons"
+tags = ["tv"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "What did people call the slim Motorola flip phone that everyone wanted in 2004?"
+choices = ["Razr", "Blade", "Edge", "Slice"]
+answer = "Razr"
+tags = ["tech"]
