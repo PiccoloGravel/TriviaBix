@@ -45,11 +45,17 @@ async fn create_room(addr: &str, rounds: usize) -> (String, String) {
         .json()
         .await
         .unwrap();
-    (res["code"].as_str().unwrap().into(), res["host_token"].as_str().unwrap().into())
+    (
+        res["code"].as_str().unwrap().into(),
+        res["host_token"].as_str().unwrap().into(),
+    )
 }
 
 async fn open(addr: &str, path_and_query: &str) -> Ws {
-    connect_async(format!("ws://{addr}{path_and_query}")).await.unwrap().0
+    connect_async(format!("ws://{addr}{path_and_query}"))
+        .await
+        .unwrap()
+        .0
 }
 
 async fn recv(ws: &mut Ws) -> Value {
@@ -76,7 +82,9 @@ async fn wait_state(ws: &mut Ws, pred: impl Fn(&Value) -> bool) -> Value {
 }
 
 async fn send(ws: &mut Ws, msg: Value) {
-    ws.send(Message::Text(msg.to_string().into())).await.unwrap();
+    ws.send(Message::Text(msg.to_string().into()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -91,12 +99,19 @@ async fn eight_players_play_a_full_game() {
     // Fill the room to the limit; room codes are case-insensitive.
     let mut players = Vec::new();
     for i in 0..MAX_PLAYERS {
-        let mut ws = open(&addr, &format!("/ws/play?code={}&name=Player{i}", code.to_lowercase())).await;
+        let mut ws = open(
+            &addr,
+            &format!("/ws/play?code={}&name=Player{i}", code.to_lowercase()),
+        )
+        .await;
         let welcome = recv(&mut ws).await;
         assert_eq!(welcome["type"], "welcome", "{welcome}");
         players.push(ws);
     }
-    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == MAX_PLAYERS).await;
+    let lobby = wait_state(&mut host, |s| {
+        s["players"].as_array().unwrap().len() == MAX_PLAYERS
+    })
+    .await;
     assert_eq!(lobby["phase"], "lobby");
     assert_eq!(lobby["vip"], lobby["players"][0]["id"]);
 
@@ -110,13 +125,23 @@ async fn eight_players_play_a_full_game() {
     send(&mut players[0], json!({ "type": "start" })).await;
 
     for round in 1..=3 {
-        let q = wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == round).await;
+        let q = wait_state(&mut host, |s| {
+            s["phase"] == "question" && s["round"] == round
+        })
+        .await;
         assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
-        assert!(q["reveal"].is_null(), "answer must not leak during the question");
+        assert!(
+            q["reveal"].is_null(),
+            "answer must not leak during the question"
+        );
 
         // Everyone except the last player answers 0; the last answers 1.
         for (i, ws) in players.iter_mut().enumerate() {
-            send(ws, json!({ "type": "answer", "choice": if i == MAX_PLAYERS - 1 { 1 } else { 0 } })).await;
+            send(
+                ws,
+                json!({ "type": "answer", "choice": if i == MAX_PLAYERS - 1 { 1 } else { 0 } }),
+            )
+            .await;
         }
         // All answered, so the reveal comes right away instead of after 5s.
         let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
@@ -135,13 +160,24 @@ async fn eight_players_play_a_full_game() {
     assert!(mine["you"]["rank"].as_u64().unwrap() >= 1);
 
     // Results were written to the database.
-    let health: Value = reqwest::get(format!("http://{addr}/healthz")).await.unwrap().json().await.unwrap();
+    let health: Value = reqwest::get(format!("http://{addr}/healthz"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(health["ok"], true);
 
     // Back to the lobby for a rematch with scores reset.
     send(&mut host, json!({ "type": "play_again" })).await;
     let lobby = wait_state(&mut host, |s| s["phase"] == "lobby").await;
-    assert!(lobby["players"].as_array().unwrap().iter().all(|p| p["score"] == 0));
+    assert!(
+        lobby["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["score"] == 0)
+    );
 }
 
 #[tokio::test]
@@ -198,7 +234,9 @@ async fn static_pages_are_served() {
         let res = reqwest::get(format!("http://{addr}{path}")).await.unwrap();
         assert!(res.status().is_success(), "{path}: {}", res.status());
     }
-    let qr = reqwest::get(format!("http://{addr}/api/qr?text=http://x/?code=ABCD")).await.unwrap();
+    let qr = reqwest::get(format!("http://{addr}/api/qr?text=http://x/?code=ABCD"))
+        .await
+        .unwrap();
     assert_eq!(qr.headers()["content-type"], "image/svg+xml");
 }
 
@@ -206,7 +244,9 @@ async fn static_pages_are_served() {
 async fn ratings_filter_questions() {
     use triviabix::db::{Db, Rating};
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
-    let db = Db::connect(&format!("sqlite://{}", path.display())).await.unwrap();
+    let db = Db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .unwrap();
     let total = db.question_count().await.unwrap() as usize;
 
     let pg = db.random_questions(total, Rating::Pg, &[]).await.unwrap();

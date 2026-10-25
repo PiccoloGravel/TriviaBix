@@ -22,7 +22,10 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         fn var<T: std::str::FromStr>(key: &str, default: T) -> T {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         }
         let secs = |key, default| Duration::from_secs(var(key, default));
         Config {

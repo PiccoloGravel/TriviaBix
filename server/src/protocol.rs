@@ -17,7 +17,10 @@ pub enum ClientMsg {
     /// Host or VIP: back to the lobby after the final scores.
     PlayAgain,
     /// Host only: change settings while in the lobby.
-    Settings { rounds: Option<usize>, max_rating: Option<Rating> },
+    Settings {
+        rounds: Option<usize>,
+        max_rating: Option<Rating>,
+    },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
@@ -36,7 +39,10 @@ pub enum ServerMsg<'a> {
     },
     State(StateView<'a>),
     /// `fatal` errors are followed by the server closing the socket.
-    Error { message: &'a str, fatal: bool },
+    Error {
+        message: &'a str,
+        fatal: bool,
+    },
 }
 
 #[derive(Debug, Serialize)]

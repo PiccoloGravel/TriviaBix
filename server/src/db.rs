@@ -2,11 +2,22 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use rand::seq::SliceRandom;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
 /// Movie-style content rating. Ordered from tamest to wildest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Rating {
     #[default]
     #[serde(rename = "PG")]
@@ -118,7 +129,12 @@ impl Db {
         Ok(out)
     }
 
-    pub async fn start_game(&self, room_code: &str, rounds: usize, players: usize) -> anyhow::Result<i64> {
+    pub async fn start_game(
+        &self,
+        room_code: &str,
+        rounds: usize,
+        players: usize,
+    ) -> anyhow::Result<i64> {
         let row = sqlx::query(
             "INSERT INTO games (room_code, rounds, player_count) VALUES (?1, ?2, ?3) RETURNING id",
         )
@@ -137,13 +153,15 @@ impl Db {
             .execute(&mut *tx)
             .await?;
         for s in standings {
-            sqlx::query("INSERT INTO game_players (game_id, name, score, rank) VALUES (?1, ?2, ?3, ?4)")
-                .bind(game_id)
-                .bind(&s.name)
-                .bind(s.score)
-                .bind(s.rank as i64)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO game_players (game_id, name, score, rank) VALUES (?1, ?2, ?3, ?4)",
+            )
+            .bind(game_id)
+            .bind(&s.name)
+            .bind(s.score)
+            .bind(s.rank as i64)
+            .execute(&mut *tx)
+            .await?;
         }
         tx.commit().await?;
         Ok(())

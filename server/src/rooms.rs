@@ -24,7 +24,13 @@ pub struct Rooms {
 
 impl Rooms {
     pub fn new(db: Db, timing: Timing, max_players: usize, max_rooms: usize) -> Self {
-        Self { inner: Default::default(), db, timing, max_players, max_rooms }
+        Self {
+            inner: Default::default(),
+            db,
+            timing,
+            max_players,
+            max_rooms,
+        }
     }
 
     /// Creates a room and returns its code and the secret host token.
@@ -62,7 +68,11 @@ impl Rooms {
     }
 
     pub fn get(&self, code: &str) -> Option<RoomHandle> {
-        self.inner.lock().unwrap().get(&normalize_code(code)).cloned()
+        self.inner
+            .lock()
+            .unwrap()
+            .get(&normalize_code(code))
+            .cloned()
     }
 
     pub fn len(&self) -> usize {

@@ -19,11 +19,11 @@ use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
+use crate::Config;
 use crate::db::{Db, Rating};
 use crate::protocol::{ClientMsg, ServerMsg};
 use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings};
 use crate::rooms::Rooms;
-use crate::Config;
 
 #[derive(Clone)]
 struct AppState {
@@ -35,8 +35,17 @@ struct AppState {
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
     tracing::info!("question bank has {} questions", db.question_count().await?);
-    let rooms = Rooms::new(db.clone(), config.timing.clone(), config.max_players, config.max_rooms);
-    let state = AppState { rooms, db, public_url: config.public_url.clone() };
+    let rooms = Rooms::new(
+        db.clone(),
+        config.timing.clone(),
+        config.max_players,
+        config.max_rooms,
+    );
+    let state = AppState {
+        rooms,
+        db,
+        public_url: config.public_url.clone(),
+    };
 
     let dir = &config.static_dir;
     Ok(Router::new()
@@ -55,8 +64,15 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
 
 async fn health(State(app): State<AppState>) -> Response {
     match app.db.question_count().await {
-        Ok(questions) => Json(json!({ "ok": true, "rooms": app.rooms.len(), "questions": questions })).into_response(),
-        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        Ok(questions) => {
+            Json(json!({ "ok": true, "rooms": app.rooms.len(), "questions": questions }))
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }
 
@@ -102,7 +118,9 @@ async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>
         max_rating: body.max_rating.unwrap_or_default(),
     };
     match app.rooms.create(settings) {
-        Ok((code, host_token)) => Json(json!({ "code": code, "host_token": host_token })).into_response(),
+        Ok((code, host_token)) => {
+            Json(json!({ "code": code, "host_token": host_token })).into_response()
+        }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
     }
 }
@@ -114,7 +132,11 @@ async fn room_info(State(app): State<AppState>, Path(code): Path<String>) -> Res
     };
     match info {
         Some(info) => Json(info).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "No game with that code." }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No game with that code." })),
+        )
+            .into_response(),
     }
 }
 
@@ -131,14 +153,31 @@ struct PlayQuery {
     token: Option<String>,
 }
 
-async fn ws_host(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<HostQuery>) -> Response {
+async fn ws_host(
+    ws: WebSocketUpgrade,
+    State(app): State<AppState>,
+    Query(q): Query<HostQuery>,
+) -> Response {
     let room = app.rooms.get(&q.code);
     ws.on_upgrade(move |socket| run_socket(socket, room, Join::Host { token: q.token }))
 }
 
-async fn ws_play(ws: WebSocketUpgrade, State(app): State<AppState>, Query(q): Query<PlayQuery>) -> Response {
+async fn ws_play(
+    ws: WebSocketUpgrade,
+    State(app): State<AppState>,
+    Query(q): Query<PlayQuery>,
+) -> Response {
     let room = app.rooms.get(&q.code);
-    ws.on_upgrade(move |socket| run_socket(socket, room, Join::Player { name: q.name, token: q.token }))
+    ws.on_upgrade(move |socket| {
+        run_socket(
+            socket,
+            room,
+            Join::Player {
+                name: q.name,
+                token: q.token,
+            },
+        )
+    })
 }
 
 /// Pumps messages between one browser socket and its room until either side goes away.
@@ -151,8 +190,13 @@ async fn run_socket(mut socket: WebSocket, room: Option<RoomHandle>, join: Join)
     let (room, conn_id) = match joined {
         Ok(ok) => ok,
         Err(message) => {
-            let msg = ServerMsg::Error { message: &message, fatal: true };
-            let _ = socket.send(Message::Text(serde_json::to_string(&msg).unwrap().into())).await;
+            let msg = ServerMsg::Error {
+                message: &message,
+                fatal: true,
+            };
+            let _ = socket
+                .send(Message::Text(serde_json::to_string(&msg).unwrap().into()))
+                .await;
             let _ = socket.close().await;
             return;
         }
