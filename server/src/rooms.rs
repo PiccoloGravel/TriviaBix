@@ -65,6 +65,11 @@ impl Rooms {
         self.inner.lock().unwrap().get(&normalize_code(code)).cloned()
     }
 
+    /// Every live room, for the admin panel.
+    pub fn all(&self) -> Vec<RoomHandle> {
+        self.inner.lock().unwrap().values().cloned().collect()
+    }
+
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap().len()
     }

@@ -19,24 +19,29 @@ use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
+use crate::admin::{self, Admin};
 use crate::db::{Db, Rating};
 use crate::protocol::{ClientMsg, ServerMsg};
-use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings};
+use crate::room::{Join, MAX_ROUNDS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings, clamp_teams};
 use crate::rooms::Rooms;
 use crate::Config;
 
 #[derive(Clone)]
-struct AppState {
-    rooms: Rooms,
-    db: Db,
-    public_url: Option<String>,
+pub(crate) struct AppState {
+    pub rooms: Rooms,
+    pub db: Db,
+    pub public_url: Option<String>,
+    pub admin: Admin,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
     tracing::info!("question bank has {} questions", db.question_count().await?);
     let rooms = Rooms::new(db.clone(), config.timing.clone(), config.max_players, config.max_rooms);
-    let state = AppState { rooms, db, public_url: config.public_url.clone() };
+    if config.admin_password.is_none() {
+        tracing::info!("ADMIN_PASSWORD is not set, so the admin panel is off");
+    }
+    let state = AppState { rooms, db, public_url: config.public_url.clone(), admin: Admin::new(config.admin_password.clone()) };
 
     let dir = &config.static_dir;
     Ok(Router::new()
@@ -48,7 +53,9 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route("/api/rooms/{code}", get(room_info))
         .route("/ws/host", get(ws_host))
         .route("/ws/play", get(ws_play))
+        .merge(admin::routes(state.clone()))
         .route_service("/host", ServeFile::new(dir.join("host.html")))
+        .route_service("/admin", ServeFile::new(dir.join("admin.html")))
         .fallback_service(ServeDir::new(dir))
         .layer(TraceLayer::new_for_http())
         .with_state(state))
@@ -91,18 +98,27 @@ async fn qr_svg(Query(q): Query<QrQuery>) -> Response {
 }
 
 #[derive(Deserialize, Default)]
-struct CreateRoom {
+pub(crate) struct CreateRoom {
     rounds: Option<usize>,
     max_rating: Option<Rating>,
+    teams: Option<u8>,
+    late_join: Option<bool>,
+}
+
+impl CreateRoom {
+    pub fn settings(&self) -> Settings {
+        Settings {
+            rounds: self.rounds.unwrap_or(10).clamp(MIN_ROUNDS, MAX_ROUNDS),
+            max_rating: self.max_rating.unwrap_or_default(),
+            teams: clamp_teams(self.teams.unwrap_or(0)),
+            late_join: self.late_join.unwrap_or(true),
+        }
+    }
 }
 
 async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>) -> Response {
     let body = body.map(|b| b.0).unwrap_or_default();
-    let settings = Settings {
-        rounds: body.rounds.unwrap_or(10).clamp(MIN_ROUNDS, MAX_ROUNDS),
-        max_rating: body.max_rating.unwrap_or_default(),
-    };
-    match app.rooms.create(settings) {
+    match app.rooms.create(body.settings()) {
         Ok((code, host_token)) => Json(json!({ "code": code, "host_token": host_token })).into_response(),
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
     }

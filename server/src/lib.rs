@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod characters;
 pub mod db;
 pub mod protocol;
@@ -18,6 +19,8 @@ pub struct Config {
     pub max_players: usize,
     pub max_rooms: usize,
     pub timing: room::Timing,
+    /// Turns on the admin panel at /admin. Without it the panel stays locked.
+    pub admin_password: Option<String>,
 }
 
 impl Config {
@@ -38,6 +41,7 @@ impl Config {
                 scoreboard: secs("SCOREBOARD_SECS", 6),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),
             },
+            admin_password: std::env::var("ADMIN_PASSWORD").ok().filter(|p| !p.is_empty()),
         }
     }
 }
