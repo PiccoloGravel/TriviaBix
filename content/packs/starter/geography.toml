@@ -1,0 +1,77 @@
+[pack]
+name = "Geography"
+author = "TriviaBix"
+category = "geography"
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the capital of Australia?"
+choices = ["Canberra", "Sydney", "Melbourne", "Perth"]
+answer = "Canberra"
+host_quip = "Sydney fans, I'm sorry, but also, you're wrong."
+
+[[question]]
+type = "true_false"
+prompt = "Russia spans 11 time zones."
+answer = true
+difficulty = "hard"
+
+[[question]]
+type = "closest_number"
+prompt = "How many countries are in Africa (counting UN members)?"
+answer = 54
+unit = "countries"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the largest ocean on Earth?"
+choices = ["Pacific", "Atlantic", "Indian", "Arctic"]
+answer = "Pacific"
+difficulty = "easy"
+
+[[question]]
+type = "type_answer"
+prompt = "Which country has the largest population in the world?"
+answers = ["India"]
+fun_fact = "India passed China in 2023."
+
+[[question]]
+type = "put_in_order"
+prompt = "Put these countries in order of population, most people first."
+items = ["India", "China", "United States", "Indonesia"]
+first_label = "Most"
+last_label = "Fewest"
+difficulty = "hard"
+
+[[question]]
+type = "multiple_choice"
+prompt = "Mount Everest sits on the border of Nepal and which other country?"
+choices = ["China", "India", "Bhutan", "Pakistan"]
+answer = "China"
+fun_fact = "The Chinese side is in Tibet."
+
+[[question]]
+type = "true_false"
+prompt = "Venice, Italy is built on more than 100 small islands."
+answer = true
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which US state is the largest by area?"
+choices = ["Alaska", "Texas", "California", "Montana"]
+answer = "Alaska"
+difficulty = "easy"
+host_quip = "Texas is shook."
+
+[[question]]
+type = "type_answer"
+prompt = "Which country is shaped like a boot?"
+answers = ["Italy"]
+difficulty = "easy"
+
+[[question]]
+type = "multiple_choice"
+prompt = "What is the smallest country in the world?"
+choices = ["Vatican City", "Monaco", "San Marino", "Liechtenstein"]
+answer = "Vatican City"

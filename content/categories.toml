@@ -1,0 +1,116 @@
+# Categories shown on the TV when picking a round.
+# Questions point at a category by its slug. Tags (like "80s" on a music question)
+# let a themed round pull from several categories at once.
+
+[[category]]
+slug = "80s"
+name = "Totally Rad 80s"
+emoji = "📼"
+color = "#ff3ea5"
+description = "Neon, arcades, big hair, and bigger synths."
+
+[[category]]
+slug = "90s"
+name = "All That and the 90s"
+emoji = "💾"
+color = "#7b5cff"
+description = "Dial-up, boy bands, and virtual pets."
+
+[[category]]
+slug = "2000s"
+name = "Y2K and the 2000s"
+emoji = "📱"
+color = "#00c2d1"
+description = "Flip phones, reality TV, and frosted tips."
+
+[[category]]
+slug = "pop-culture"
+name = "Pop Culture"
+emoji = "⭐"
+color = "#ffb000"
+description = "Celebs, memes, and everything everyone is talking about."
+
+[[category]]
+slug = "music"
+name = "Music"
+emoji = "🎵"
+color = "#ff5a36"
+description = "Hits, legends, and one-hit wonders."
+
+[[category]]
+slug = "movies"
+name = "Movies"
+emoji = "🎬"
+color = "#e63946"
+description = "Blockbusters, classics, and famous lines."
+
+[[category]]
+slug = "tv"
+name = "TV"
+emoji = "📺"
+color = "#2a9d8f"
+description = "Sitcoms, dramas, and binge-worthy streaming."
+
+[[category]]
+slug = "video-games"
+name = "Video Games"
+emoji = "🎮"
+color = "#43aa8b"
+description = "From arcade cabinets to open worlds."
+
+[[category]]
+slug = "science"
+name = "Science and Nature"
+emoji = "🔬"
+color = "#4cc9f0"
+description = "Space, bodies, critters, and chemistry."
+
+[[category]]
+slug = "geography"
+name = "Geography"
+emoji = "🌍"
+color = "#3a86ff"
+description = "Capitals, countries, and where on Earth."
+
+[[category]]
+slug = "history"
+name = "History"
+emoji = "🏛️"
+color = "#b5838d"
+description = "Empires, inventions, and turning points."
+
+[[category]]
+slug = "sports"
+name = "Sports"
+emoji = "🏆"
+color = "#f77f00"
+description = "Champions, rules, and record breakers."
+
+[[category]]
+slug = "food-drink"
+name = "Food and Drink"
+emoji = "🍕"
+color = "#f4a261"
+description = "Snacks, cocktails, and kitchen facts."
+
+[[category]]
+slug = "general"
+name = "General Knowledge"
+emoji = "🧠"
+color = "#8d99ae"
+description = "A bit of everything."
+
+[[category]]
+slug = "current-events"
+name = "Recent Headlines"
+emoji = "📰"
+color = "#06d6a0"
+description = "Big news from the last few years. Refresh it with new packs as the news moves."
+
+[[category]]
+slug = "after-dark"
+name = "After Dark"
+emoji = "🌶️"
+color = "#9d0208"
+description = "Cheeky, boozy, and saucy. Every question here is at least PG-13, so family rooms never see it."
+rating = "PG-13"
