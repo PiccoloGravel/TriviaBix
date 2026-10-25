@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use rand::Rng;
 
 use crate::db::Db;
+use crate::host::Script;
 use crate::music::Itunes;
 use crate::room::{Room, RoomHandle, Settings, Timing};
 
@@ -18,6 +19,7 @@ const CODE_LEN: usize = 4;
 pub struct Rooms {
     inner: Arc<Mutex<HashMap<String, RoomHandle>>>,
     db: Db,
+    script: Arc<Script>,
     itunes: Itunes,
     timing: Timing,
     max_players: usize,
@@ -27,6 +29,7 @@ pub struct Rooms {
 impl Rooms {
     pub fn new(
         db: Db,
+        script: Script,
         itunes: Itunes,
         timing: Timing,
         max_players: usize,
@@ -35,6 +38,7 @@ impl Rooms {
         Self {
             inner: Default::default(),
             db,
+            script: Arc::new(script),
             itunes,
             timing,
             max_players,
@@ -67,6 +71,7 @@ impl Rooms {
             self.timing.clone(),
             self.max_players,
             self.db.clone(),
+            self.script.clone(),
             self.itunes.clone(),
             move || {
                 registry.lock().unwrap().remove(&closing);

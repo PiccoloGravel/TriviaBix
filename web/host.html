@@ -10,7 +10,7 @@
   <style>
     /* Sized in viewport units so it reads from the couch on any TV. */
     body { overflow: hidden; height: 100vh; font-size: 2.2vh; }
-    .screen { position: absolute; inset: 0; padding: 4vh 5vw 8vh; display: flex; flex-direction: column; }
+    .screen { position: absolute; inset: 0; padding: 4vh 5vw 15vh; display: flex; flex-direction: column; }
 
     #setup { align-items: center; justify-content: center; gap: 3vh; text-align: center; }
     #setup h1 { font-size: 13vh; margin: 0; color: var(--accent); text-shadow: 0 1vh 0 rgba(0,0,0,.35); }
@@ -82,10 +82,122 @@
     .song-card .credit { font-size: 2vh; margin-top: 1vh; }
     .choice .song { display: flex; flex-direction: column; line-height: 1.15; }
     .choice .song small { font-size: .65em; opacity: .85; }
+    /* Speed hangman */
+    .secs.danger { color: var(--bad); animation: pulse .5s ease-in-out infinite alternate; }
+    @keyframes pulse { to { transform: scale(1.25); } }
+    .hm-main { flex: 1; display: grid; grid-template-columns: 24vw 1fr; gap: 3vw; align-items: center; min-height: 0; }
+    #h-gallows { width: 100%; max-height: 46vh; }
+    #h-gallows line, #h-gallows circle, #h-gallows path { stroke: var(--text); stroke-width: 4; stroke-linecap: round; fill: none; }
+    #h-gallows .frame { stroke: var(--muted); }
+    #h-gallows .part { opacity: 0; transition: opacity .2s; }
+    #h-gallows .part.on { opacity: 1; }
+    #h-gallows.dead .part { stroke: var(--bad); }
+    .shake { animation: shake .4s; }
+    @keyframes shake { 20%, 60% { transform: translateX(-1.5vw); } 40%, 80% { transform: translateX(1.5vw); } }
+    .hm-right { display: flex; flex-direction: column; align-items: center; gap: 3vh; }
+    .hm-board { --tile: 9vh; display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--tile) * .25) calc(var(--tile) * .6); }
+    .hm-board.long { --tile: 7vh; }
+    .hm-word { display: flex; gap: calc(var(--tile) * .12); }
+    .tile { width: calc(var(--tile) * .8); height: var(--tile); display: flex; align-items: center; justify-content: center; font-family: "Bungee", sans-serif; font-size: calc(var(--tile) * .62); background: var(--text); color: var(--bg); border-radius: 1vh; }
+    .tile.blank { background: var(--panel); border-bottom: .6vh solid var(--accent); }
+    .tile.punct { background: none; color: var(--text); width: auto; }
+    .tile.missed { background: var(--bad); color: var(--text); }
+    .tile.solved { background: var(--good); }
+    .hm-banner { font-family: "Bungee", sans-serif; font-size: 6vh; min-height: 7vh; text-align: center; }
+    .hm-banner.solved { color: var(--good); }
+    .hm-banner.hanged, .hm-banner.time { color: var(--bad); }
+    .hm-letters { display: flex; justify-content: center; gap: .4vw; margin-top: 2vh; }
+    .hm-letters span { flex: 1; max-width: 3.2vw; text-align: center; font-family: "Bungee", sans-serif; font-size: 3.2vh; padding: .4vh 0; border-radius: .8vh; background: var(--panel); }
+    .hm-letters .hit { background: var(--good); color: var(--bg); }
+    .hm-letters .miss { background: var(--bad); text-decoration: line-through; }
+    .hm-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; height: 18vh; }
+    .hm-feed { display: flex; flex-direction: column; gap: .6vh; overflow: hidden; font-size: 2.6vh; }
+    .hm-feed div { display: flex; align-items: center; gap: .8vw; }
+    .hm-feed .good { color: var(--good); }
+    .hm-feed .bad { color: var(--bad); }
+    .hm-feed .win { color: var(--accent); }
+    .hm-scores { display: flex; flex-wrap: wrap; gap: 1vh 1.5vw; align-content: flex-start; justify-content: flex-end; font-size: 2.6vh; }
+    .hm-scores div { display: flex; align-items: center; gap: .5vw; background: var(--panel); padding: .4vh 1vw .4vh .4vw; border-radius: 999px; }
 
     .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
+    /* ---------- Game show graphics ---------- */
+
+    /* The host: a mic avatar and a speech bubble along the bottom of every screen. */
+    .host-bar { position: fixed; left: 2vw; bottom: 2vh; right: 22vw; display: flex; align-items: flex-end; gap: 1.2vw; z-index: 6; pointer-events: none; transition: opacity .4s, transform .4s; }
+    .host-bar.quiet { opacity: 0; transform: translateY(4vh); }
+    .host-face { flex: 0 0 auto; width: 10vh; height: 10vh; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b0, var(--accent) 45%, #e08a00); display: flex; align-items: center; justify-content: center; font-size: 5.5vh; box-shadow: 0 .8vh 0 rgba(0,0,0,.35); position: relative; }
+    .host-face::after { content: attr(data-name); position: absolute; bottom: -1.4vh; left: 50%; transform: translateX(-50%); font-family: "Bungee", sans-serif; font-size: 1.8vh; background: var(--c0); color: #fff; padding: .1vh .8vw; border-radius: 999px; white-space: nowrap; }
+    .host-bar.talking .host-face { animation: bob .35s ease-in-out infinite alternate; }
+    .host-bubble { background: #fff8f0; color: #1a0b3d; font-size: 3vh; line-height: 1.3; padding: 1.4vh 1.6vw; border-radius: 2.5vh 2.5vh 2.5vh .5vh; max-height: 12vh; overflow: hidden; box-shadow: 0 .8vh 0 rgba(0,0,0,.35); }
+    .host-bubble.fresh { animation: pop-in .35s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-.8vh) rotate(4deg); } }
+    @keyframes pop-in { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* Callouts: stamps and banners that pop with the host's reactions. */
+    .callouts { position: fixed; bottom: 9vh; right: 3vw; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 2vh; z-index: 7; pointer-events: none; }
+    .callouts.top { bottom: auto; top: 14vh; flex-direction: column; }
+    .callout { display: flex; align-items: center; gap: 1vw; padding: 1.2vh 2vw; border-radius: 2vh; font-family: "Bungee", sans-serif; font-size: 4.4vh; color: #fff; box-shadow: 0 1vh 0 rgba(0,0,0,.35); animation: slam .5s cubic-bezier(.2,1.6,.4,1) both, fade-out .5s ease-in forwards; animation-delay: var(--in, 0s), var(--out, 3s); }
+    .callout .who { font-family: "Nunito", sans-serif; font-weight: 900; font-size: 2.6vh; display: block; opacity: .9; }
+    .callout .icon { font-size: 6vh; }
+    .callout.roast { background: var(--bad); transform: rotate(-6deg); border: .5vh dashed #fff; animation-name: stamp, fade-out; }
+    .callout.streak { background: linear-gradient(90deg, #ff3d00, #ffb400); }
+    .callout.streak .icon { animation: flicker .3s infinite alternate; }
+    .callout.streak_broken, .callout.asleep, .callout.last_place, .callout.nobody { background: #4b3a7a; }
+    .callout.fastest, .callout.only_one { background: var(--c1); }
+    .callout.everyone { background: var(--good); color: #1a0b3d; }
+    .callout.new_leader, .callout.leader, .callout.winner, .callout.tie { background: var(--accent); color: #1a0b3d; }
+    @keyframes slam { from { transform: translateX(60vw) skewX(-20deg); } 70% { transform: translateX(-2vw) skewX(5deg); } to { transform: none; } }
+    @keyframes stamp { from { transform: scale(3) rotate(-20deg); opacity: 0; } 60% { transform: scale(.9) rotate(-6deg); opacity: 1; } to { transform: scale(1) rotate(-6deg); } }
+    @keyframes fade-out { to { opacity: 0; transform: translateY(-3vh); } }
+    @keyframes flicker { from { transform: scale(1) rotate(-5deg); } to { transform: scale(1.15) rotate(5deg); } }
+
+    /* Full-screen title card that sweeps in before each question. */
+    .card-sweep { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; z-index: 8; pointer-events: none; background: linear-gradient(115deg, var(--c0) 0 50%, var(--c1) 50% 100%); animation: sweep 1.6s cubic-bezier(.7,0,.3,1) forwards; }
+    .card-sweep .big { font-family: "Bungee", sans-serif; font-size: 16vh; line-height: 1; text-shadow: 0 1.2vh 0 rgba(0,0,0,.3); }
+    .card-sweep .small { font-size: 5vh; letter-spacing: .25em; text-transform: uppercase; }
+    .card-sweep.final-q { background: linear-gradient(115deg, #ff3d00 0 50%, #1a0b3d 50% 100%); }
+    @keyframes sweep { 0% { clip-path: polygon(0 0, 0 0, -20% 100%, -20% 100%); } 25%, 75% { clip-path: polygon(0 0, 120% 0, 100% 100%, -20% 100%); } 100% { clip-path: polygon(120% 0, 120% 0, 100% 100%, 100% 100%); } }
+
+    /* Question and reveal motion. */
+    .enter .prompt { animation: rise .6s .9s cubic-bezier(.2,1.2,.4,1) both; }
+    .enter .choice { animation: pop-in .4s cubic-bezier(.2,1.6,.4,1) both; animation-delay: calc(1.2s + var(--i) * 120ms); }
+    @keyframes rise { from { transform: translateY(6vh); opacity: 0; } to { transform: none; opacity: 1; } }
+    .hurry .secs { color: var(--bad); animation: throb .5s ease-in-out infinite alternate; }
+    .hurry .timer-fill { background: var(--bad); }
+    @keyframes throb { to { transform: scale(1.35); } }
+    #reveal.enter .choice.dim { animation: shake .45s ease-in-out both; }
+    #reveal.enter .choice.right { animation: glow 1.2s ease-in-out .2s 2 alternate; }
+    @keyframes shake { 0%, 100% { transform: none; } 25% { transform: translateX(-1.2vw); } 75% { transform: translateX(1.2vw); } }
+    @keyframes glow { from { box-shadow: 0 0 0 rgba(46,229,157,0); } to { box-shadow: 0 0 6vh rgba(46,229,157,.9); transform: scale(1.06); } }
+    .float-pts { position: absolute; top: -3vh; right: 1vw; font-family: "Bungee", sans-serif; color: var(--good); font-size: 3.5vh; animation: float-up 1.8s ease-out .6s both; }
+    @keyframes float-up { from { transform: translateY(2vh); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-5vh); opacity: 0; } }
+
+    /* Intro: logo slam, spotlights, contestants fly in. */
+    #intro { align-items: center; justify-content: center; gap: 5vh; overflow: hidden; }
+    #intro .logo { font-family: "Bungee", sans-serif; font-size: 18vh; color: var(--accent); text-shadow: 0 1.5vh 0 rgba(0,0,0,.35); animation: logo-slam .9s cubic-bezier(.2,1.6,.4,1) both; z-index: 1; }
+    #intro .tagline { font-size: 3.4vh; color: var(--muted); letter-spacing: .3em; text-transform: uppercase; animation: rise .6s .7s both; z-index: 1; }
+    #intro .lineup { display: flex; gap: 2vw; flex-wrap: wrap; justify-content: center; max-width: 85vw; z-index: 1; }
+    #intro .lineup > div { display: flex; flex-direction: column; align-items: center; gap: 1vh; font-size: 2.8vh; animation: fly-in .6s cubic-bezier(.2,1.4,.4,1) both; animation-delay: calc(1s + var(--i) * 150ms); }
+    .spot { position: absolute; top: -20vh; width: 30vw; height: 140vh; background: linear-gradient(rgba(255,255,255,.18), transparent 80%); clip-path: polygon(45% 0, 55% 0, 100% 100%, 0 100%); transform-origin: top center; animation: swing 4s ease-in-out infinite alternate; }
+    .spot.l { left: 5vw; } .spot.r { right: 5vw; animation-delay: -2s; }
+    @keyframes logo-slam { from { transform: scale(4) rotate(-10deg); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes fly-in { from { transform: translateY(40vh) scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes swing { from { transform: rotate(-25deg); } to { transform: rotate(25deg); } }
+
+    /* Scoreboard rows slide from their old place to their new one. */
+    .board .row { transition: transform .9s cubic-bezier(.2,1,.3,1); }
+    .row.up { box-shadow: 0 0 0 .4vh var(--good); }
+    .row.down { opacity: .85; }
+    .crown { position: absolute; top: -6vh; left: 50%; transform: translateX(-50%); font-size: 7vh; animation: logo-slam .8s 1s both; }
+    .step { position: relative; }
+    #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 9; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
+    }
+
     .toast { position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 1.2vh 2vw; border-radius: 2vh; font-size: 2.6vh; z-index: 10; }
   </style>
 </head>
@@ -99,6 +211,7 @@
     <div class="opts">
       <span>Game</span>
       <button class="secondary" data-mode="trivia">Trivia</button>
+      <button class="secondary" data-mode="hangman">Speed Hangman</button>
       <button class="secondary" data-mode="songs">🎵 Name That Tune</button>
     </div>
     <div class="opts" id="clip-opts">
@@ -108,7 +221,7 @@
       <button class="secondary" data-clip="3000">3 seconds</button>
     </div>
     <div class="opts">
-      <span id="rounds-label">Questions</span>
+      <span id="rounds-label">Rounds</span>
       <button class="secondary" data-rounds="5">5</button>
       <button class="secondary" data-rounds="10">10</button>
       <button class="secondary" data-rounds="15">15</button>
@@ -142,6 +255,13 @@
     </div>
   </section>
 
+  <section id="intro" class="screen hidden" data-screen>
+    <div class="spot l"></div><div class="spot r"></div>
+    <div class="logo">TriviaBix</div>
+    <div class="tagline" id="i-tagline"></div>
+    <div class="lineup" id="i-lineup"></div>
+  </section>
+
   <section id="question" class="screen hidden" data-screen>
     <div class="topbar"><span id="q-round"></span><span class="secs" id="q-secs"></span><span class="code-chip" id="q-code"></span></div>
     <div class="cat" id="q-cat"></div>
@@ -169,6 +289,32 @@
     <div class="timer"><div class="timer-track"><div class="timer-fill" id="r-timer"></div></div></div>
   </section>
 
+  <section id="hangman" class="screen hidden" data-screen>
+    <div class="topbar"><span id="h-round"></span><span class="secs" id="h-secs"></span><span class="code-chip" id="h-code"></span></div>
+    <div class="cat" id="h-cat"></div>
+    <div class="hm-main">
+      <svg id="h-gallows" viewBox="0 0 120 160" aria-label="Strikes">
+        <path class="frame" d="M10 152 H80 M30 152 V8 H84 V24 M30 34 L52 8"/>
+        <circle class="part" cx="84" cy="36" r="12"/>
+        <line class="part" x1="84" y1="48" x2="84" y2="94"/>
+        <line class="part" x1="84" y1="58" x2="66" y2="78"/>
+        <line class="part" x1="84" y1="58" x2="102" y2="78"/>
+        <line class="part" x1="84" y1="94" x2="70" y2="124"/>
+        <line class="part" x1="84" y1="94" x2="98" y2="124"/>
+      </svg>
+      <div class="hm-right">
+        <div class="hm-board" id="h-board"></div>
+        <div class="hm-banner" id="h-banner"></div>
+      </div>
+    </div>
+    <div class="hm-letters" id="h-letters"></div>
+    <div class="timer"><div class="timer-track"><div class="timer-fill" id="h-timer"></div></div></div>
+    <div class="hm-bottom">
+      <div class="hm-feed" id="h-feed"></div>
+      <div class="hm-scores" id="h-scores"></div>
+    </div>
+  </section>
+
   <section id="scoreboard" class="screen hidden" data-screen>
     <div class="topbar"><span id="s-round"></span><span></span><span class="code-chip" id="s-code"></span></div>
     <h2>Scores</h2>
@@ -185,9 +331,17 @@
     </div>
   </section>
 
+  <div class="host-bar quiet" id="host-bar">
+    <div class="host-face" id="host-face" data-name="Bix">🎤</div>
+    <div class="host-bubble" id="host-bubble"></div>
+  </div>
+  <div class="callouts" id="callouts"></div>
+  <canvas id="confetti"></canvas>
+
   <div class="corner">
     <button class="secondary hidden" id="sound-btn">🔈 Tap for sound</button>
     <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
+    <button class="secondary" id="voice-btn" title="V">🗣 Voice</button>
     <button class="secondary" id="fs-btn" title="F">⛶ Fullscreen</button>
     <button class="secondary hidden" id="skip-btn" title="Space">Skip ⏭</button>
   </div>

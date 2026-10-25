@@ -1,4 +1,7 @@
+pub mod characters;
 pub mod db;
+pub mod hangman;
+pub mod host;
 pub mod music;
 pub mod protocol;
 pub mod room;
@@ -24,6 +27,8 @@ pub struct Config {
     /// Look up every song in the background at startup so the first music game starts fast.
     pub music_warmup: bool,
     pub timing: room::Timing,
+    /// A host script to use instead of the built-in one.
+    pub host_script: Option<PathBuf>,
 }
 
 impl Config {
@@ -46,11 +51,18 @@ impl Config {
             music_warmup: var("MUSIC_WARMUP", true),
             timing: room::Timing {
                 question: secs("QUESTION_SECS", 20),
+                hangman: secs("HANGMAN_SECS", 45),
                 song_question: secs("SONG_SECS", 15),
                 reveal: secs("REVEAL_SECS", 7),
                 scoreboard: secs("SCOREBOARD_SECS", 6),
+                intro: secs("INTRO_SECS", 6),
+                talk_cps: var("HOST_TALK_CPS", 13.0),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),
             },
+            host_script: std::env::var("HOST_SCRIPT")
+                .ok()
+                .filter(|p| !p.is_empty())
+                .map(PathBuf::from),
         }
     }
 }

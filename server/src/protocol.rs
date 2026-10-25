@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::db::Rating;
-use crate::room::Mode;
 
 /// Messages sent by the TV host screen or by a phone.
 #[derive(Debug, Deserialize)]
@@ -13,6 +12,10 @@ pub enum ClientMsg {
     Start,
     /// Player: lock in an answer for the current question.
     Answer { choice: usize },
+    /// Player, speed hangman: guess one letter.
+    Guess { letter: char },
+    /// Player, speed hangman: try to solve the whole phrase.
+    Solve { text: String },
     /// Host or VIP: skip the rest of the current timer.
     Next,
     /// Host or VIP: back to the lobby after the final scores.
@@ -21,13 +24,31 @@ pub enum ClientMsg {
     Settings {
         rounds: Option<usize>,
         max_rating: Option<Rating>,
-        mode: Option<Mode>,
+        mode: Option<GameMode>,
         clip_ms: Option<u64>,
+    },
+    /// Player, in the lobby: change your name and/or character.
+    Profile {
+        name: Option<String>,
+        character: Option<String>,
     },
     /// Host only: remove a player from the room.
     Kick { player_id: u32 },
     /// Keep-alive from the browser; ignored.
     Ping,
+}
+
+/// Which game a room plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameMode {
+    /// Multiple choice questions.
+    #[default]
+    Trivia,
+    /// One shared phrase per round; everyone guesses letters against the clock.
+    Hangman,
+    /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
+    Songs,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,7 +61,7 @@ pub enum ServerMsg<'a> {
         player_id: Option<u32>,
         token: &'a str,
     },
-    State(StateView<'a>),
+    State(Box<StateView<'a>>),
     /// `fatal` errors are followed by the server closing the socket.
     Error {
         message: &'a str,
@@ -66,6 +87,10 @@ pub struct StateView<'a> {
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
+    /// Only in speed hangman rounds.
+    pub hangman: Option<HangmanView<'a>>,
+    /// What the host is saying right now, with graphics for the TV to show alongside it.
+    pub host: Option<HostView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
 }
@@ -76,6 +101,7 @@ pub struct PlayerView<'a> {
     pub name: &'a str,
     pub score: i64,
     pub color: &'static str,
+    pub character: &'a str,
     pub connected: bool,
     pub answered: bool,
 }
@@ -84,7 +110,7 @@ pub struct PlayerView<'a> {
 pub struct SettingsView {
     pub rounds: usize,
     pub max_rating: Rating,
-    pub mode: Mode,
+    pub mode: GameMode,
     pub clip_ms: u64,
 }
 
@@ -131,9 +157,67 @@ pub struct ResultView {
 }
 
 #[derive(Debug, Serialize)]
+pub struct HostView<'a> {
+    pub name: &'a str,
+    /// Changes with every new line, so the TV speaks each one once.
+    pub id: u64,
+    pub text: &'a str,
+    pub callouts: &'a [Callout],
+}
+
+/// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
+#[derive(Debug, Serialize, Clone)]
+pub struct Callout {
+    /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
+    /// leader, tie, last_place, winner.
+    pub kind: &'static str,
+    pub player_id: Option<u32>,
+    /// Short overlay text, like "3 IN A ROW".
+    pub label: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct YouView {
     pub player_id: u32,
     pub answer: Option<usize>,
     pub is_vip: bool,
     pub rank: usize,
+    pub hangman: Option<HangmanYouView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanView<'a> {
+    pub category: &'a str,
+    /// The phrase with unfound letters as `_`. The whole phrase once the round is over.
+    pub board: &'a str,
+    pub hits: &'a str,
+    pub misses: &'a str,
+    pub strikes: usize,
+    pub max_strikes: usize,
+    /// The latest guesses, oldest first.
+    pub feed: &'a [GuessView],
+    /// Points each player has won or lost this round so far.
+    pub results: Vec<ResultView>,
+    /// `solved`, `hanged` or `time`, once the round is over.
+    pub outcome: Option<&'static str>,
+    pub solved_by: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct GuessView {
+    pub player_id: u32,
+    /// The letter guessed, or the attempted answer for a solve.
+    pub guess: String,
+    pub solve: bool,
+    pub hit: bool,
+    /// How many times a guessed letter appears.
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HangmanYouView {
+    /// A wrong solve locks a player out of solving for the rest of the round.
+    pub solve_locked: bool,
+    /// Milliseconds before this player may guess another letter.
+    pub cooldown_ms: u64,
 }

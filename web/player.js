@@ -7,12 +7,18 @@ let conn = null;
 let state = null;
 let me = null; // { code, name, token, id }
 let wakeLock = null;
+let picked = TBX.load("tbx:character"); // character id chosen on the join screen
 
 function joinGame(code, name, token) {
   conn && conn.close();
   me = { code, name, token, id: null };
   $("#join-error").textContent = "";
-  conn = TBX.connect("/ws/play", () => (me.token ? { code, name, token: me.token } : { code, name }), {
+  conn = TBX.connect("/ws/play", () => {
+    const p = { code, name };
+    if (picked) p.character = picked;
+    if (me.token) p.token = me.token;
+    return p;
+  }, {
     onMessage(msg) {
       if (msg.type === "welcome") {
         me.token = msg.token;
@@ -30,6 +36,7 @@ function joinGame(code, name, token) {
       TBX.save(PLAYER_KEY, null);
       state = null;
       show("join");
+      refreshJoinChars();
       $("#join-error").textContent = message;
     },
     onStatus(ok) { $("#offline").classList.toggle("hidden", ok); },
@@ -39,7 +46,7 @@ function joinGame(code, name, token) {
 function send(msg) { conn && conn.send(msg); }
 
 function flash(text) {
-  const target = state && state.phase === "question" ? $("#q-status") : $("#join-error");
+  const target = !state ? $("#join-error") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
   target.textContent = text;
 }
 
@@ -69,15 +76,29 @@ function render(s) {
     el("span", { class: "score" }, player.score.toLocaleString())));
   document.querySelectorAll("[data-vip-next]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
 
-  show(s.phase);
   const fresh = !prev || prev.phase !== s.phase || prev.round !== s.round;
+  if (s.hangman && s.phase === "question") {
+    show("hangman");
+    return renderHangman(s, fresh);
+  }
+  show(s.phase);
 
   if (s.phase === "lobby") {
     $("#lobby-count").textContent = `${s.players.length} of ${s.max_players} players · room ${s.code}`;
     $("#vip-box").classList.toggle("hidden", !you.is_vip);
     $("#lobby-wait").classList.toggle("hidden", you.is_vip);
+    $("#lobby-error").textContent = "";
+    const taken = s.players.map((p) => p.character);
+    TBX.characterGrid($("#lobby-chars"), player.character, taken, (id) => {
+      picked = id;
+      TBX.save("tbx:character", id);
+      send({ type: "profile", character: id });
+    });
+    $("#rename-input").placeholder = player.name;
   } else if (s.phase === "question") {
     renderQuestion(s, fresh);
+  } else if (s.phase === "reveal" && s.hangman) {
+    renderHangmanReveal(s, fresh);
   } else if (s.phase === "reveal") {
     const result = s.reveal.results.find((r) => r.player_id === you.player_id) || {};
     const right = result.points > 0;
@@ -88,6 +109,13 @@ function render(s) {
     const song = s.reveal.song;
     $("#r-link").classList.toggle("hidden", !(song && song.store_url));
     if (song && song.store_url) $("#r-link").href = song.store_url;
+    // If the host called you out on the TV, you get the badge too.
+    const mine = s.host && s.host.callouts.find((c) => c.player_id === you.player_id);
+    $("#r-badge").classList.toggle("hidden", !mine);
+    if (mine) {
+      $("#r-badge").textContent = mine.label;
+      $("#r-badge").classList.toggle("good", !["roast", "asleep", "streak_broken", "last_place"].includes(mine.kind));
+    }
     if (fresh && navigator.vibrate) navigator.vibrate(right ? 80 : [60, 60, 60]);
   } else if (s.phase === "scoreboard") {
     $("#s-rank").textContent = ordinal(you.rank) + " place";
@@ -131,6 +159,76 @@ function answer(i) {
   if (navigator.vibrate) navigator.vibrate(30);
 }
 
+// ---------- Speed hangman ----------
+
+const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+let coolUntil = 0;
+
+function renderHangman(s, fresh) {
+  const h = s.hangman;
+  const mine = s.you.hangman || { solve_locked: false, cooldown_ms: 0 };
+  $("#h-cat").textContent = h.category;
+  $("#h-board").textContent = h.board;
+  $("#h-strikes").textContent = "💀".repeat(h.strikes) + "⬜".repeat(Math.max(0, h.max_strikes - h.strikes));
+  if (fresh) {
+    TBX.runTimer($("#h-timer"), s.ms_left, s.phase_ms);
+    $("#h-status").textContent = "";
+    $("#solve-input").value = "";
+    coolUntil = 0;
+    $("#h-keys").replaceChildren(...KEY_ROWS.map((row) => el("div", { class: "krow" },
+      ...row.split("").map((c) => el("button", { type: "button", "data-key": c, onclick: () => guess(c) }, c)))));
+  }
+  for (const b of $("#h-keys").querySelectorAll("button")) {
+    const c = b.dataset.key;
+    const hit = h.hits.includes(c), miss = h.misses.includes(c);
+    b.classList.toggle("hit", hit);
+    b.classList.toggle("miss", miss);
+    b.disabled = hit || miss;
+  }
+  // Trust the server's cooldown too, e.g. after a refresh.
+  if (mine.cooldown_ms > 0) coolDown(mine.cooldown_ms);
+  $("#solve-input").disabled = mine.solve_locked;
+  $("#solve-form button").disabled = mine.solve_locked;
+  $("#solve-input").placeholder = mine.solve_locked ? "You blew your solve 😬" : "Know it? Solve it";
+}
+
+function coolDown(ms) {
+  coolUntil = Math.max(coolUntil, Date.now() + ms);
+  $("#h-keys").classList.add("cooling");
+  clearTimeout(coolDown.timer);
+  coolDown.timer = setTimeout(() => $("#h-keys").classList.remove("cooling"), coolUntil - Date.now());
+}
+
+function guess(c) {
+  if (!state || !state.hangman || state.phase !== "question" || Date.now() < coolUntil) return;
+  send({ type: "guess", letter: c });
+  coolDown(1000);
+  if (navigator.vibrate) navigator.vibrate(20);
+}
+
+$("#solve-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("#solve-input").value.trim();
+  if (!text || !state || !state.hangman || state.phase !== "question") return;
+  send({ type: "solve", text });
+  $("#solve-input").value = "";
+  $("#solve-input").blur();
+});
+
+function renderHangmanReveal(s, fresh) {
+  const h = s.hangman;
+  const result = h.results.find((r) => r.player_id === s.you.player_id) || { points: 0 };
+  const solvedIt = h.solved_by === s.you.player_id;
+  const solver = s.players.find((p) => p.id === h.solved_by);
+  $("#r-verdict").textContent = solvedIt ? "🏆" : h.outcome === "hanged" ? "💀" : h.outcome === "time" ? "⏰" : result.points > 0 ? "👍" : "😬";
+  $("#r-text").textContent = solvedIt ? "You solved it!"
+    : h.outcome === "solved" ? `${solver ? solver.name : "Someone"} solved it`
+    : h.outcome === "hanged" ? "Hanged!" : "Time's up!";
+  $("#r-points").textContent = result.points ? `${result.points > 0 ? "+" : ""}${result.points}` : "";
+  $("#r-answer").textContent = `Answer: ${h.board}`;
+  if (fresh && navigator.vibrate) navigator.vibrate(solvedIt ? [80, 40, 80] : 60);
+}
+
 function ordinal(n) {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -151,6 +249,43 @@ $("#join-form").addEventListener("submit", async (e) => {
 
 $("#code-input").addEventListener("input", (e) => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, "");
+  if (e.target.value.length === 4) refreshJoinChars();
+});
+
+// Grey out characters already taken in the room being joined.
+let joinTaken = [];
+async function refreshJoinChars() {
+  const code = $("#code-input").value;
+  joinTaken = [];
+  if (code.length === 4) {
+    try {
+      const res = await fetch(`/api/rooms/${code}`);
+      if (res.ok) joinTaken = (await res.json()).taken_characters || [];
+    } catch { /* offline; the server still checks */ }
+  }
+  if (picked && joinTaken.includes(picked)) picked = null;
+  renderJoinChars();
+}
+function renderJoinChars() {
+  TBX.characterGrid($("#join-chars"), picked, joinTaken, (id) => {
+    picked = id;
+    TBX.save("tbx:character", id);
+    renderJoinChars();
+  });
+  const ch = TBX.characters[picked];
+  $("#join-char-label").textContent = ch ? ch.name : "Tap one, or we'll pick for you";
+}
+
+$("#rename-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("#rename-input").value.trim();
+  if (!name) return;
+  send({ type: "profile", name });
+  if (me) me.name = name;
+  TBX.save("tbx:name", name);
+  const saved = TBX.load(PLAYER_KEY);
+  if (saved) TBX.save(PLAYER_KEY, { ...saved, name });
+  $("#rename-input").value = "";
 });
 
 $("#start-btn").addEventListener("click", () => send({ type: "start" }));
@@ -162,11 +297,13 @@ $("#leave-btn").addEventListener("click", () => {
   TBX.save(PLAYER_KEY, null);
   state = null;
   show("join");
+  refreshJoinChars();
 });
 
 // ---------- Boot ----------
 
-(function boot() {
+(async function boot() {
+  await TBX.loadCharacters();
   const params = new URLSearchParams(location.search);
   const saved = TBX.load(PLAYER_KEY);
   const code = (params.get("code") || "").toUpperCase();
@@ -175,5 +312,6 @@ $("#leave-btn").addEventListener("click", () => {
   // Refreshed mid-game: slide straight back in.
   if (saved && (!code || code === saved.code)) return joinGame(saved.code, saved.name, saved.token);
   show("join");
+  refreshJoinChars();
   (code ? $("#name-input") : $("#code-input")).focus();
 })();

@@ -1,0 +1,64 @@
+# Big news from recent years. Prompts name the year so they don't go stale.
+# Add a new pack here as the news moves, or import fresh questions.
+[pack]
+name = "Recent Headlines"
+author = "TriviaBix"
+category = "current-events"
+tags = ["2020s"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which city hosted the 2024 Summer Olympics?"
+choices = ["Paris", "Los Angeles", "Tokyo", "Brisbane"]
+answer = "Paris"
+difficulty = "easy"
+tags = ["sports"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which film won Best Picture at the Oscars in March 2024?"
+choices = ["Oppenheimer", "Barbie", "Poor Things", "Killers of the Flower Moon"]
+answer = "Oppenheimer"
+tags = ["movies"]
+
+[[question]]
+type = "type_answer"
+prompt = "Twitter was renamed to what single letter in 2023?"
+answers = ["X"]
+difficulty = "easy"
+tags = ["tech"]
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which country won the 2022 FIFA World Cup in Qatar?"
+choices = ["Argentina", "France", "Croatia", "Morocco"]
+answer = "Argentina"
+tags = ["sports"]
+fun_fact = "Argentina beat France on penalties after a 3-3 final."
+
+[[question]]
+type = "multiple_choice"
+prompt = "Which company released ChatGPT in November 2022?"
+choices = ["OpenAI", "Google", "Meta", "Microsoft"]
+answer = "OpenAI"
+difficulty = "easy"
+tags = ["tech"]
+
+[[question]]
+type = "true_false"
+prompt = "The Philadelphia Eagles won Super Bowl LIX in February 2025."
+answer = true
+tags = ["sports"]
+fun_fact = "They beat the Kansas City Chiefs 40-22."
+
+[[question]]
+type = "type_answer"
+prompt = "What papal name did Robert Prevost, the first American pope, choose in May 2025?"
+answers = ["Leo XIV", "Leo the Fourteenth", "Leo 14", "Pope Leo XIV", "Leo"]
+difficulty = "hard"
+
+[[question]]
+type = "closest_number"
+prompt = "In what year did the World Health Organization declare COVID-19 a pandemic?"
+answer = 2020
+difficulty = "easy"

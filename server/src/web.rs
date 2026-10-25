@@ -22,9 +22,9 @@ use tower_http::trace::TraceLayer;
 use crate::Config;
 use crate::db::{Db, Rating};
 use crate::music::{self, Itunes};
-use crate::protocol::{ClientMsg, ServerMsg};
+use crate::protocol::{ClientMsg, GameMode, ServerMsg};
 use crate::room::{
-    Join, MAX_CLIP_MS, MAX_ROUNDS, MIN_CLIP_MS, MIN_ROUNDS, Mode, RoomCmd, RoomHandle, Settings,
+    Join, MAX_CLIP_MS, MAX_ROUNDS, MIN_CLIP_MS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings,
 };
 use crate::rooms::Rooms;
 
@@ -38,12 +38,17 @@ struct AppState {
 pub async fn router(config: Config) -> anyhow::Result<Router> {
     let db = Db::connect(&config.database_url).await?;
     tracing::info!("question bank has {} questions", db.question_count().await?);
+    let script = match &config.host_script {
+        Some(path) => crate::host::Script::load(path)?,
+        None => crate::host::Script::builtin(),
+    };
     let itunes = Itunes::new(&config.itunes_url, &config.music_country);
     if config.music_warmup {
         tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
     }
     let rooms = Rooms::new(
         db.clone(),
+        script,
         itunes,
         config.timing.clone(),
         config.max_players,
@@ -60,6 +65,10 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route("/healthz", get(health))
         .route("/api/config", get(client_config))
         .route("/api/qr", get(qr_svg))
+        .route(
+            "/api/characters",
+            get(|| async { Json(crate::characters::CHARACTERS) }),
+        )
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{code}", get(room_info))
         .route("/ws/host", get(ws_host))
@@ -117,7 +126,7 @@ async fn qr_svg(Query(q): Query<QrQuery>) -> Response {
 struct CreateRoom {
     rounds: Option<usize>,
     max_rating: Option<Rating>,
-    mode: Option<Mode>,
+    mode: Option<GameMode>,
     clip_ms: Option<u64>,
 }
 
@@ -166,6 +175,7 @@ struct PlayQuery {
     code: String,
     name: Option<String>,
     token: Option<String>,
+    character: Option<String>,
 }
 
 async fn ws_host(
@@ -190,6 +200,7 @@ async fn ws_play(
             Join::Player {
                 name: q.name,
                 token: q.token,
+                character: q.character,
             },
         )
     })
