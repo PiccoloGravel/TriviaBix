@@ -206,7 +206,7 @@ async fn unanswered_question_times_out() {
 #[tokio::test]
 async fn static_pages_are_served() {
     let addr = start_server().await;
-    for path in ["/", "/host", "/style.css", "/player.js", "/host.js"] {
+    for path in ["/", "/host", "/admin", "/style.css", "/player.js", "/host.js", "/admin.js"] {
         let res = reqwest::get(format!("http://{addr}{path}")).await.unwrap();
         assert!(res.status().is_success(), "{path}: {}", res.status());
     }

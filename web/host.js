@@ -4,7 +4,7 @@
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG" };
+let settings = { rounds: 10, max_rating: "PG", teams: 0 };
 let conn = null;
 let state = null;
 let prev = null;
@@ -27,6 +27,12 @@ const voice = {
 
 const pick = (lines) => lines[Math.floor(Math.random() * lines.length)];
 const LINES = {
+  late: [
+    "{n} is sneaking in late. You're in from the next question.",
+    "Look who finally showed up. Welcome, {n}.",
+    "{n} has arrived fashionably late.",
+  ],
+  teamWin: ["The {n} wins! Group hug, everyone.", "Victory for the {n}! Teamwork makes the dream work."],
   join: [
     "{n} has entered the building.",
     "Welcome, {n}. Lower your expectations.",
@@ -63,12 +69,17 @@ function renderSetup() {
   document.querySelectorAll("[data-rating]").forEach((b) => {
     b.classList.toggle("secondary", b.dataset.rating !== settings.max_rating);
   });
+  document.querySelectorAll("[data-teams]").forEach((b) => {
+    b.classList.toggle("secondary", Number(b.dataset.teams) !== settings.teams);
+  });
 }
 
 document.querySelectorAll("[data-rounds]").forEach((b) =>
   b.addEventListener("click", () => { settings.rounds = Number(b.dataset.rounds); renderSetup(); }));
 document.querySelectorAll("[data-rating]").forEach((b) =>
   b.addEventListener("click", () => { settings.max_rating = b.dataset.rating; renderSetup(); }));
+document.querySelectorAll("[data-teams]").forEach((b) =>
+  b.addEventListener("click", () => { settings.teams = Number(b.dataset.teams); renderSetup(); }));
 
 $("#create").addEventListener("click", async () => {
   $("#setup-error").textContent = "";
@@ -109,9 +120,10 @@ function join(code, token) {
 
 function send(msg) { conn && conn.send(msg); }
 
-function toast(text) {
+function toast(text, kind) {
   const t = $("#toast");
   t.textContent = text;
+  t.classList.toggle("info", kind === "info");
   t.classList.remove("hidden");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => t.classList.add("hidden"), 3000);
@@ -125,8 +137,24 @@ function render(s) {
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
   $("#skip-btn").classList.toggle("hidden", !["question", "reveal", "scoreboard"].includes(s.phase));
   show(s.phase);
+  announceLateJoiners(s);
   ({ lobby: renderLobby, question: renderQuestion, reveal: renderReveal, scoreboard: renderScores, final: renderFinal })[s.phase](s, phaseChanged);
 }
+
+// Players who join mid-game wait for the next question; give them a shout-out.
+function announceLateJoiners(s) {
+  if (!prev || s.phase === "lobby") return;
+  for (const p of s.players) {
+    if (p.waiting && !prev.players.some((q) => q.id === p.id)) {
+      toast(`${p.name} joins at the next question`, "info");
+      voice.say(line("late", p.name));
+    }
+  }
+}
+
+// Players who are in the current game (not waiting for the next question).
+const playing = (s) => s.players.filter((p) => !p.waiting);
+const teamOf = (s, p) => s.teams.find((t) => t.id === p.team);
 
 function renderLobby(s, changed) {
   const url = joinBase.replace(/^https?:\/\//, "");
@@ -138,15 +166,18 @@ function renderLobby(s, changed) {
     qr.dataset.link = link;
     qr.src = "/api/qr?text=" + encodeURIComponent(link);
   }
-  $("#lobby-settings").textContent = `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
+  $("#lobby-settings").textContent = `${s.settings.rounds} questions · rated ${s.settings.max_rating}` +
+    (s.settings.teams ? ` · ${s.settings.teams} teams` : "");
 
   const slots = $("#slots");
   slots.replaceChildren();
   for (const p of s.players) {
-    const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away") },
+    const team = teamOf(s, p);
+    const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away"), style: team ? `box-shadow: inset 0 -1vh 0 ${team.color}` : "" },
       TBX.avatar(p, "10vh"),
       el("div", { class: "name" }, p.name),
-      p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null);
+      p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null,
+      team ? el("span", { class: "team-tag", style: `color:${team.color}` }, team.name) : null);
     slots.append(slot);
   }
   const shown = Math.max(8, s.players.length + (s.players.length < s.max_players ? 1 : 0));
@@ -186,12 +217,13 @@ function renderQuestion(s, changed) {
     if (s.round === 1) voice.say(line("start"));
     voice.say(s.question.prompt);
   }
-  $("#q-answered").replaceChildren(...s.players.map((p) => {
+  const late = s.players.length - playing(s).length;
+  $("#q-answered").replaceChildren(...playing(s).map((p) => {
     const a = TBX.avatar(p, "6vh");
     if (!p.answered) a.classList.add("waiting");
     a.title = p.name;
     return a;
-  }));
+  }), late ? el("span", { class: "muted" }, `+${late} joining next question`) : null);
 }
 
 function startSecs(ms) {
@@ -230,20 +262,26 @@ function renderReveal(s, changed) {
     const winners = s.reveal.results.filter((r) => r.points > 0).sort((a, b) => b.points - a.points);
     let quip;
     if (winners.length === 0) quip = line("nobody");
-    else if (winners.length === s.players.length && s.players.length > 1) quip = line("everyone");
+    else if (winners.length === playing(s).length && playing(s).length > 1) quip = line("everyone");
     else quip = line(s.settings.max_rating !== "PG" && Math.random() < 0.5 ? "spicyFastest" : "fastest", byId[winners[0].player_id].name);
     voice.say(`It's ${answer}! ${quip}`);
   }
 }
 
-function sortedPlayers(s) { return [...s.players].sort((a, b) => b.score - a.score); }
+function sortedPlayers(s) { return playing(s).sort((a, b) => b.score - a.score); }
+
+function teamStrip(s) {
+  return s.teams.map((t, i) => el("div", { class: "team-pill pop", style: `background:${t.color};animation-delay:${i * 80}ms` },
+    el("span", {}, `${i + 1}. ${t.name}`), el("b", {}, t.score.toLocaleString())));
+}
 
 function renderScores(s) {
   $("#s-round").textContent = roundLabel(s);
   $("#s-code").textContent = s.code;
   const gains = Object.fromEntries((s.reveal ? s.reveal.results : []).map((r) => [r.player_id, r.points]));
   let rank = 0, last = null;
-  const n = s.players.length;
+  const n = playing(s).length;
+  $("#s-teams").replaceChildren(...teamStrip(s));
   $("#s-board").style.setProperty("--rows", n > 8 ? Math.ceil(n / 2) : Math.max(n, 1));
   $("#s-board").replaceChildren(...sortedPlayers(s).map((p, i) => {
     if (p.score !== last) { rank = i + 1; last = p.score; }
@@ -264,7 +302,10 @@ function renderFinal(s, changed) {
   const medal = ["🥇", "🥈", "🥉"];
   // Arrange 2nd, 1st, 3rd like a real podium.
   const order = [1, 0, 2].filter((i) => top[i]);
-  $("#f-title").textContent = top[0] ? `${top[0].name} wins!` : "Game over";
+  const topTeam = s.teams[0];
+  const teamTie = s.teams.length > 1 && s.teams[1].score === topTeam.score;
+  $("#f-title").textContent = topTeam && !teamTie ? `${topTeam.name} wins!` : top[0] ? `${top[0].name} wins!` : "Game over";
+  $("#f-teams").replaceChildren(...teamStrip(s));
   $("#f-podium").replaceChildren(...order.map((i) => el("div", { class: "step pop" },
     TBX.avatar(top[i], "10vh"),
     el("div", {}, top[i].name),
@@ -273,7 +314,7 @@ function renderFinal(s, changed) {
   $("#f-rest").textContent = ranked.slice(3).map((p, i) => `#${i + 4} ${p.name} (${p.score.toLocaleString()})`).join("   ·   ");
   if (changed && top[0]) {
     voice.hush();
-    voice.say(line("win", top[0].name));
+    voice.say(topTeam && !teamTie ? line("teamWin", topTeam.name) : line("win", top[0].name));
   }
 }
 
@@ -325,6 +366,13 @@ document.addEventListener("keydown", (e) => {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
   } catch { /* fall back to this page's address */ }
+
+  // Opened from the admin panel with a room's link: take over that room.
+  const params = new URLSearchParams(location.search);
+  if (params.get("code") && params.get("token")) {
+    TBX.save(HOST_KEY, { code: params.get("code").toUpperCase(), token: params.get("token") });
+    history.replaceState(null, "", location.pathname);
+  }
 
   // Coming back after a refresh: rejoin the same room if it's still alive.
   const saved = TBX.load(HOST_KEY);

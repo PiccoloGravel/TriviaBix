@@ -243,7 +243,7 @@ impl Room {
             last_points: HashMap::new(),
             game_id: None,
             empty_since: Some(Instant::now()),
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
             closing: false,
         };
         tokio::spawn(async move {
@@ -653,11 +653,11 @@ impl Room {
         if let Some(r) = max_rating {
             self.settings.max_rating = r;
         }
-        if let Some(t) = teams.map(clamp_teams) {
-            if t != self.settings.teams {
-                self.settings.teams = t;
-                self.deal_teams();
-            }
+        if let Some(t) = teams.map(clamp_teams)
+            && t != self.settings.teams
+        {
+            self.settings.teams = t;
+            self.deal_teams();
         }
         if let Some(l) = late_join {
             self.settings.late_join = l;

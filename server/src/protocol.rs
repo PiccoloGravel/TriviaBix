@@ -162,6 +162,7 @@ pub struct AdminRoomView {
     pub code: String,
     /// Lets the operator open (or cast) this room's TV page.
     pub host_token: String,
+    /// Unix time in milliseconds.
     pub created_at: u64,
     pub phase: &'static str,
     pub round: usize,

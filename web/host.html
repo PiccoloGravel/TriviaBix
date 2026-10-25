@@ -32,6 +32,10 @@
     .slot.empty { border: .4vh dashed rgba(255,255,255,.2); background: none; color: rgba(255,255,255,.3); }
     .slot.away { opacity: .45; }
     .slot .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .team-tag { font-size: 1.8vh; }
+    .team-strip { display: flex; justify-content: center; gap: 2vw; margin-bottom: 2.5vh; }
+    .team-pill { display: flex; gap: 1.5vw; align-items: center; color: #1a0b3d; border-radius: 999px; padding: .8vh 2vw; font-size: 3.4vh; }
+    .team-pill b { font-family: "Bungee", sans-serif; font-weight: 400; }
     .vip-tag { font-size: 1.8vh; background: var(--accent); color: #1a0b3d; padding: .2vh .8vw; border-radius: 999px; }
     .lobby-foot { text-align: center; font-size: 3.4vh; display: flex; justify-content: center; gap: 2vw; align-items: center; }
     .lobby-foot button { font-size: 3.4vh; }
@@ -69,6 +73,7 @@
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
     .toast { position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 1.2vh 2vw; border-radius: 2vh; font-size: 2.6vh; z-index: 10; }
+    .toast.info { background: var(--accent); color: #1a0b3d; }
   </style>
 </head>
 <body>
@@ -90,6 +95,13 @@
       <button class="secondary" data-rating="PG-13">PG-13</button>
       <button class="secondary" data-rating="MA">MA</button>
       <button class="secondary" data-rating="NC-17">NC-17</button>
+    </div>
+    <div class="opts">
+      <span>Teams</span>
+      <button class="secondary" data-teams="0">Off</button>
+      <button class="secondary" data-teams="2">2</button>
+      <button class="secondary" data-teams="3">3</button>
+      <button class="secondary" data-teams="4">4</button>
     </div>
     <button id="create" autofocus>Start a room</button>
     <p class="error" id="setup-error"></p>
@@ -133,11 +145,13 @@
   <section id="scoreboard" class="screen hidden" data-screen>
     <div class="topbar"><span id="s-round"></span><span></span><span class="code-chip" id="s-code"></span></div>
     <h2>Scores</h2>
+    <div class="team-strip" id="s-teams"></div>
     <div class="board" id="s-board"></div>
   </section>
 
   <section id="final" class="screen hidden" data-screen>
     <h2 id="f-title">Winner!</h2>
+    <div class="team-strip" id="f-teams"></div>
     <div class="podium" id="f-podium"></div>
     <div class="rest" id="f-rest"></div>
     <div class="lobby-foot" style="margin-top:3vh">

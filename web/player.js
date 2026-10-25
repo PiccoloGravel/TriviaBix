@@ -70,11 +70,24 @@ function render(s) {
   const player = s.players.find((p) => p.id === you.player_id);
   if (!player) return;
 
-  document.querySelectorAll("[data-me]").forEach((box) => box.replaceChildren(
-    TBX.avatar(player, "40px"),
-    el("span", { class: "name" }, player.name, you.is_vip ? " 👑" : ""),
-    el("span", { class: "score" }, player.score.toLocaleString())));
+  const team = s.teams.find((t) => t.id === you.team);
+  document.querySelectorAll("[data-me]").forEach((box) => {
+    box.replaceChildren(
+      TBX.avatar(player, "40px"),
+      el("span", { class: "name" }, player.name, you.is_vip ? " 👑" : ""),
+      team ? el("span", { class: "team-chip", style: `background:${team.color}` }, team.name) : null,
+      el("span", { class: "score" }, player.score.toLocaleString()));
+  });
   document.querySelectorAll("[data-vip-next]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
+
+  // Joined mid-game: sit tight until the next question (or the next game).
+  if (you.waiting) {
+    show("waiting");
+    $("#w-text").textContent = s.phase === "final"
+      ? "This game just ended. You're in for the next one!"
+      : "You'll jump in at the next question. Watch the TV!";
+    return;
+  }
 
   show(s.phase);
   const fresh = !prev || prev.phase !== s.phase || prev.round !== s.round;
@@ -91,6 +104,13 @@ function render(s) {
       send({ type: "profile", character: id });
     });
     $("#rename-input").placeholder = player.name;
+    const byId = [...s.teams].sort((a, b) => a.id - b.id);
+    $("#team-box").classList.toggle("hidden", !byId.length);
+    $("#team-buttons").replaceChildren(...byId.map((t) => el("button", {
+      class: t.id === you.team ? "picked" : "secondary",
+      style: `--team:${t.color}`,
+      onclick: () => send({ type: "team", team: t.id }),
+    }, t.name, el("small", {}, ` (${t.members.length})`))));
   } else if (s.phase === "question") {
     renderQuestion(s, fresh);
   } else if (s.phase === "reveal") {

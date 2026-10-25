@@ -32,11 +32,16 @@ pub struct Admin {
 
 impl Admin {
     pub fn new(password: Option<String>) -> Self {
-        Self { password: password.map(Into::into), sessions: Default::default() }
+        Self {
+            password: password.map(Into::into),
+            sessions: Default::default(),
+        }
     }
 
     fn check_password(&self, attempt: &str) -> bool {
-        self.password.as_deref().is_some_and(|p| constant_time_eq(p.as_bytes(), attempt.as_bytes()))
+        self.password
+            .as_deref()
+            .is_some_and(|p| constant_time_eq(p.as_bytes(), attempt.as_bytes()))
     }
 
     fn new_session(&self) -> String {
@@ -49,8 +54,14 @@ impl Admin {
     }
 
     fn is_logged_in(&self, headers: &HeaderMap) -> bool {
-        let Some(token) = session_cookie(headers) else { return false };
-        self.sessions.lock().unwrap().get(token).is_some_and(|expires| *expires > Instant::now())
+        let Some(token) = session_cookie(headers) else {
+            return false;
+        };
+        self.sessions
+            .lock()
+            .unwrap()
+            .get(token)
+            .is_some_and(|expires| *expires > Instant::now())
     }
 
     fn end_session(&self, headers: &HeaderMap) {
@@ -76,7 +87,11 @@ async fn require_login(State(app): State<AppState>, req: Request, next: Next) ->
     if app.admin.is_logged_in(req.headers()) {
         next.run(req).await
     } else {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Log in first." }))).into_response()
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Log in first." })),
+        )
+            .into_response()
     }
 }
 
@@ -95,18 +110,30 @@ struct Login {
 async fn login(State(app): State<AppState>, Json(body): Json<Login>) -> Response {
     if app.admin.password.is_none() {
         let error = "The admin panel is off. Set ADMIN_PASSWORD on the server to turn it on.";
-        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": error }))).into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": error })),
+        )
+            .into_response();
     }
     if !app.admin.check_password(&body.password) {
         // Slows down password guessing.
         tokio::time::sleep(Duration::from_millis(750)).await;
         tracing::warn!("failed admin login");
-        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Wrong password." }))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Wrong password." })),
+        )
+            .into_response();
     }
     let token = app.admin.new_session();
-    let cookie = format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}", SESSION_TTL.as_secs());
+    let cookie = format!(
+        "{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
+        SESSION_TTL.as_secs()
+    );
     let mut res = Json(json!({ "ok": true })).into_response();
-    res.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    res.headers_mut()
+        .insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
     res
 }
 
@@ -114,26 +141,45 @@ async fn logout(State(app): State<AppState>, headers: HeaderMap) -> Response {
     app.admin.end_session(&headers);
     let mut res = Json(json!({ "ok": true })).into_response();
     let cookie = format!("{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
-    res.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    res.headers_mut()
+        .insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
     res
 }
 
 async fn list_rooms(State(app): State<AppState>) -> Json<serde_json::Value> {
-    let mut rooms: Vec<_> = join_all(app.rooms.all().iter().map(|r| r.snapshot())).await.into_iter().flatten().collect();
-    rooms.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.code.cmp(&b.code)));
+    let mut rooms: Vec<_> = join_all(app.rooms.all().iter().map(|r| r.snapshot()))
+        .await
+        .into_iter()
+        .flatten()
+        .collect();
+    rooms.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then_with(|| a.code.cmp(&b.code))
+    });
     Json(json!({ "rooms": rooms }))
 }
 
 async fn create_room(State(app): State<AppState>, Json(body): Json<CreateRoom>) -> Response {
     match app.rooms.create(body.settings()) {
-        Ok((code, host_token)) => Json(json!({ "code": code, "host_token": host_token })).into_response(),
+        Ok((code, host_token)) => {
+            Json(json!({ "code": code, "host_token": host_token })).into_response()
+        }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
     }
 }
 
-async fn room_action(State(app): State<AppState>, Path(code): Path<String>, Json(cmd): Json<AdminCmd>) -> Response {
+async fn room_action(
+    State(app): State<AppState>,
+    Path(code): Path<String>,
+    Json(cmd): Json<AdminCmd>,
+) -> Response {
     let Some(room) = app.rooms.get(&code) else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": "No game with that code." }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No game with that code." })),
+        )
+            .into_response();
     };
     tracing::info!(%code, ?cmd, "admin action");
     match room.admin(cmd).await {
@@ -175,7 +221,10 @@ mod tests {
     #[test]
     fn finds_the_session_cookie() {
         let mut h = HeaderMap::new();
-        h.insert(header::COOKIE, HeaderValue::from_static("a=1; tbx_admin=abc; b=2"));
+        h.insert(
+            header::COOKIE,
+            HeaderValue::from_static("a=1; tbx_admin=abc; b=2"),
+        );
         assert_eq!(session_cookie(&h), Some("abc"));
         h.insert(header::COOKIE, HeaderValue::from_static("tbx_admin_x=zzz"));
         assert_eq!(session_cookie(&h), None);
