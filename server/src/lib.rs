@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod characters;
+pub mod content;
 pub mod db;
 pub mod hangman;
 pub mod host;
@@ -28,6 +29,9 @@ pub struct Config {
     /// Look up every song in the background at startup so the first music game starts fast.
     pub music_warmup: bool,
     pub timing: room::Timing,
+    /// The question bank folder (categories.toml, packs/, scripts/), loaded into the database at
+    /// startup. Skipped if it doesn't exist.
+    pub content_dir: PathBuf,
     /// A host script to use instead of the built-in one.
     pub host_script: Option<PathBuf>,
     /// Turns on the admin panel at /admin. Without it the panel stays locked.
@@ -62,6 +66,7 @@ impl Config {
                 talk_cps: var("HOST_TALK_CPS", 13.0),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),
             },
+            content_dir: var("CONTENT_DIR", PathBuf::from("content")),
             host_script: std::env::var("HOST_SCRIPT")
                 .ok()
                 .filter(|p| !p.is_empty())

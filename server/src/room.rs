@@ -1251,7 +1251,12 @@ impl Room {
                 ("category", &category),
             ],
         );
-        self.speak(vec![line], Vec::new());
+        let mut parts = vec![line];
+        if self.settings.mode == GameMode::Trivia {
+            let own = &self.questions[self.round].lines.lead_in;
+            parts.extend(self.host.say_own(own, self.settings.max_rating));
+        }
+        self.speak(parts, Vec::new());
         // The clock starts now, but players get extra time while the host does the intro banter.
         let base = match self.settings.mode {
             GameMode::Trivia => self.timing.question,
@@ -1347,6 +1352,14 @@ impl Room {
         let answer = q.choices[q.answer].clone();
         let n = self.players.len();
         let mut parts = vec![self.line("reveal_answer", &[("answer", &answer)])];
+        // The question's own joke or fun fact comes right after the answer. It takes the place of
+        // the generic roast, so the host doesn't ramble.
+        let own = self.host.say_own(
+            &self.questions[self.round].lines.reveal,
+            self.settings.max_rating,
+        );
+        let has_own = own.is_some();
+        parts.extend(own);
         let mut callouts = Vec::new();
         let mut call = |kind, player_id, label: &str| {
             callouts.push(Callout {
@@ -1386,6 +1399,7 @@ impl Room {
                 &[("name", &self.name_of(id)), ("streak", &streak)],
             ));
             call("streak_broken", Some(id), "STREAK OVER");
+        } else if has_own {
         } else if !wrong.is_empty() {
             let (id, choice) = &wrong[rand::random_range(0..wrong.len())];
             parts.push(self.line("roast", &[("name", &self.name_of(*id)), ("wrong", choice)]));

@@ -169,6 +169,7 @@ pub fn parse_opentdb(json: &str) -> Result<Vec<Question>, ImportError> {
             kind,
             fun_fact: None,
             host_quip: None,
+            script: vec![],
             source: Some(source(OPENTDB_SOURCE)),
         });
     }
@@ -317,6 +318,7 @@ pub fn parse_trivia_api(json: &str) -> Result<Vec<Question>, ImportError> {
                 },
                 fun_fact: None,
                 host_quip: None,
+                script: vec![],
                 source: Some(source(TRIVIA_API_SOURCE)),
             }
         })

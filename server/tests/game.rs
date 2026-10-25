@@ -45,6 +45,7 @@ async fn start_server_with_db() -> (String, String) {
         },
         admin_password: Some(ADMIN_PASSWORD.into()),
         host_script: None,
+        content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -345,12 +346,81 @@ async fn unanswered_question_times_out() {
 }
 
 #[tokio::test]
+async fn host_reads_each_questions_own_lines_within_the_room_rating() {
+    use triviabix::content::{AdminLine, QuestionSearch};
+    use triviabix::db::Db;
+    let (addr, url) = start_server_with_db().await;
+    let db = Db::connect(&url).await.unwrap();
+    let line = |rating: &str, text: &str| AdminLine {
+        slot: String::new(),
+        rating: rating.into(),
+        text: text.into(),
+        origin: String::new(),
+    };
+    // Give every question a PG lead-in, and a reveal line only an MA room may hear.
+    let mut offset = 0;
+    loop {
+        let page = db
+            .admin_questions(&QuestionSearch {
+                offset,
+                limit: Some(200),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        for q in &page.questions {
+            db.set_edited_lines(q.id, "lead_in", &[line("PG", "Here's one about {host}.")])
+                .await
+                .unwrap();
+            db.set_edited_lines(q.id, "reveal", &[line("MA", "SPICY REVEAL")])
+                .await
+                .unwrap();
+        }
+        offset += 200;
+        if offset >= page.total {
+            break;
+        }
+    }
+
+    let (code, host_token) = create_room(&addr, 1).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Ann")).await;
+    recv(&mut phone).await;
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    let said = q["host"]["text"].as_str().unwrap();
+    assert!(said.contains("Here's one about Bix."), "{said}");
+    send(&mut host, json!({ "type": "skip" })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let said = reveal["host"]["text"].as_str().unwrap();
+    assert!(
+        !said.contains("SPICY"),
+        "a PG room heard an MA line: {said}"
+    );
+
+    // An MA room hears it, in place of the generic roast.
+    let (code, host_token) =
+        create_room_with(&addr, json!({ "rounds": 1, "max_rating": "MA" })).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Bo")).await;
+    recv(&mut phone).await;
+    send(&mut host, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+    send(&mut host, json!({ "type": "skip" })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let said = reveal["host"]["text"].as_str().unwrap();
+    assert!(said.contains("SPICY REVEAL"), "{said}");
+}
+
+#[tokio::test]
 async fn static_pages_are_served() {
     let addr = start_server().await;
     for path in [
         "/",
         "/host",
         "/admin",
+        "/admin/questions",
+        "/admin-questions.js",
         "/style.css",
         "/player.js",
         "/host.js",

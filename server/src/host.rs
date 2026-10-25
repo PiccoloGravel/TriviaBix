@@ -143,21 +143,8 @@ impl Host {
     /// (1, 3, 9, 27), so an NC-17 room mostly hears NC-17 lines with tamer ones mixed in.
     pub fn say(&mut self, event: &'static str, rating: Rating, vars: &[(&str, &str)]) -> String {
         let lines = &self.script.lines[event];
-        let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
-        let mut pool: Vec<usize> = (0..lines.len()).filter(|&i| lines[i].0 <= rating).collect();
-        if pool.len() > 1 {
-            pool.retain(|&i| self.last.get(event) != Some(&i));
-        }
-        let total: u32 = pool.iter().map(|&i| weight(i)).sum();
-        let mut roll = rand::rng().random_range(0..total);
-        let mut pick = pool[0];
-        for &i in &pool {
-            if roll < weight(i) {
-                pick = i;
-                break;
-            }
-            roll -= weight(i);
-        }
+        let pick = pick_line(lines, rating, self.last.get(event).copied())
+            .expect("every event has a PG line");
         self.last.insert(event, pick);
 
         let mut text = lines[pick].1.replace("{host}", &self.script.host_name);
@@ -166,6 +153,37 @@ impl Host {
         }
         text
     }
+}
+
+impl Host {
+    /// One of a question's own lines for a room rated `rating`, or `None` if it has none, in
+    /// which case the host sticks to his generic material.
+    pub fn say_own(&self, lines: &[(Rating, String)], rating: Rating) -> Option<String> {
+        let pick = pick_line(lines, rating, None)?;
+        Some(lines[pick].1.replace("{host}", &self.script.host_name))
+    }
+}
+
+/// Picks a line rated at most `rating`, avoiding `last` when there's a choice. Spicier tiers
+/// are weighted heavier (1, 3, 9, 27).
+fn pick_line(lines: &[(Rating, String)], rating: Rating, last: Option<usize>) -> Option<usize> {
+    let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
+    let mut pool: Vec<usize> = (0..lines.len()).filter(|&i| lines[i].0 <= rating).collect();
+    if pool.len() > 1 {
+        pool.retain(|&i| last != Some(i));
+    }
+    let total: u32 = pool.iter().map(|&i| weight(i)).sum();
+    if total == 0 {
+        return None;
+    }
+    let mut roll = rand::rng().random_range(0..total);
+    for &i in &pool {
+        if roll < weight(i) {
+            return Some(i);
+        }
+        roll -= weight(i);
+    }
+    pool.last().copied()
 }
 
 /// "Ann", "Ann and Bo", "Ann, Bo and Cy", or "Ann, Bo, Cy and 4 others" for big groups.
@@ -225,6 +243,27 @@ mod tests {
             spicy > 100,
             "spicy tiers should dominate an NC-17 room, got {spicy}/200"
         );
+    }
+
+    #[test]
+    fn question_lines_respect_the_room() {
+        let host = Host::new(std::sync::Arc::new(Script::builtin()));
+        let lines = vec![
+            (Rating::Pg, "Tame, says {host}.".to_string()),
+            (Rating::Ma, "Spicy.".to_string()),
+        ];
+        assert_eq!(host.say_own(&[], Rating::Nc17), None);
+        for _ in 0..30 {
+            assert_eq!(
+                host.say_own(&lines, Rating::Pg13).as_deref(),
+                Some("Tame, says Bix.")
+            );
+        }
+        assert_eq!(host.say_own(&lines[1..], Rating::Pg), None);
+        let spicy = (0..200)
+            .filter(|_| host.say_own(&lines, Rating::Ma).as_deref() == Some("Spicy."))
+            .count();
+        assert!(spicy > 100, "{spicy}/200");
     }
 
     #[test]

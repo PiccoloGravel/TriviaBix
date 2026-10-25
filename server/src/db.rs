@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -34,6 +35,30 @@ impl Rating {
     pub fn level(self) -> i64 {
         self as i64
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Rating::Pg => "PG",
+            Rating::Pg13 => "PG-13",
+            Rating::Ma => "MA",
+            Rating::Nc17 => "NC-17",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Rating> {
+        [Rating::Pg, Rating::Pg13, Rating::Ma, Rating::Nc17]
+            .into_iter()
+            .find(|r| r.as_str() == s)
+    }
+}
+
+/// SQL that is true for questions the game can play: still in a pack, and a type the phones
+/// support (multiple choice with up to four choices, or true/false).
+macro_rules! playable {
+    () => {
+        "active = 1 AND kind IN ('multiple_choice', 'true_false')
+         AND json_array_length(wrong) BETWEEN 1 AND 3"
+    };
 }
 
 /// A question ready to be played, with its choices already shuffled.
@@ -46,6 +71,16 @@ pub struct Question {
     pub answer: usize,
     /// Set for Name That Tune rounds.
     pub song: Option<SongClip>,
+    /// What the host can say about this question, already limited to the room's rating.
+    pub lines: QuestionLines,
+}
+
+/// A question's own host lines, by when they're said. Empty means the host sticks to his
+/// generic lines.
+#[derive(Debug, Clone, Default)]
+pub struct QuestionLines {
+    pub lead_in: Vec<(Rating, String)>,
+    pub reveal: Vec<(Rating, String)>,
 }
 
 /// The clip the TV plays for a Name That Tune round.
@@ -89,7 +124,7 @@ pub struct Standing {
 
 #[derive(Clone)]
 pub struct Db {
-    pool: SqlitePool,
+    pub(crate) pool: SqlitePool,
 }
 
 impl Db {
@@ -111,9 +146,12 @@ impl Db {
     }
 
     pub async fn question_count(&self) -> anyhow::Result<i64> {
-        let row = sqlx::query("SELECT COUNT(*) AS n FROM questions")
-            .fetch_one(&self.pool)
-            .await?;
+        let row = sqlx::query(concat!(
+            "SELECT COUNT(*) AS n FROM questions WHERE ",
+            playable!()
+        ))
+        .fetch_one(&self.pool)
+        .await?;
         Ok(row.get("n"))
     }
 
@@ -125,17 +163,18 @@ impl Db {
         max_rating: Rating,
         exclude: &[i64],
     ) -> anyhow::Result<Vec<Question>> {
-        let rows = sqlx::query(
-            "SELECT id, category, prompt, correct, wrong FROM questions
+        let rows = sqlx::query(concat!(
+            "SELECT id, category, prompt, correct, wrong, choices, keep_order FROM questions
              WHERE CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1
-             ORDER BY RANDOM() LIMIT ?2",
-        )
+               AND ",
+            playable!(),
+            " ORDER BY RANDOM() LIMIT ?2"
+        ))
         .bind(max_rating.level())
         .bind((n + exclude.len()) as i64)
         .fetch_all(&self.pool)
         .await?;
 
-        let mut rng = rand::rng();
         let mut out = Vec::with_capacity(n);
         for row in rows {
             let id: i64 = row.get("id");
@@ -145,10 +184,22 @@ impl Db {
             let correct: String = row.get("correct");
             let wrong: Vec<String> = serde_json::from_str(row.get::<&str, _>("wrong"))
                 .with_context(|| format!("question {id} has bad `wrong` JSON"))?;
-            let mut choices = wrong;
-            choices.push(correct.clone());
-            choices.shuffle(&mut rng);
-            let answer = choices.iter().position(|c| *c == correct).unwrap();
+            let authored: Option<Vec<String>> = row
+                .get::<Option<&str>, _>("choices")
+                .and_then(|c| serde_json::from_str(c).ok());
+            let choices = match authored {
+                Some(choices) if row.get::<i64, _>("keep_order") != 0 => choices,
+                _ => {
+                    let mut choices = wrong;
+                    choices.push(correct.clone());
+                    choices.shuffle(&mut rand::rng());
+                    choices
+                }
+            };
+            let Some(answer) = choices.iter().position(|c| *c == correct) else {
+                tracing::warn!("question {id} has no correct choice; skipping it");
+                continue;
+            };
             out.push(Question {
                 id,
                 category: row.get("category"),
@@ -156,9 +207,66 @@ impl Db {
                 choices,
                 answer,
                 song: None,
+                lines: QuestionLines::default(),
             });
             if out.len() == n {
                 break;
+            }
+        }
+        let ids: Vec<i64> = out.iter().map(|q| q.id).collect();
+        let mut lines = self.question_lines(&ids, max_rating).await?;
+        for q in &mut out {
+            q.lines = lines.remove(&q.id).unwrap_or_default();
+        }
+        Ok(out)
+    }
+
+    /// The host lines a room rated `max_rating` may hear for each question. Lines edited in the
+    /// admin panel replace the content lines for their slot, unless none of them suit the room.
+    /// An edited line with empty text silences the slot.
+    pub async fn question_lines(
+        &self,
+        ids: &[i64],
+        max_rating: Rating,
+    ) -> anyhow::Result<HashMap<i64, QuestionLines>> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT question_id, slot, rating, text, origin FROM question_lines
+             WHERE question_id IN (SELECT value FROM json_each(?1)) ORDER BY id",
+        )
+        .bind(serde_json::to_string(ids)?)
+        .fetch_all(&self.pool)
+        .await?;
+        // (question, slot) -> (edited lines, content lines)
+        type Found = (Vec<(Rating, String)>, Vec<(Rating, String)>);
+        let mut found: HashMap<(i64, String), Found> = HashMap::new();
+        for row in rows {
+            let Some(rating) = Rating::parse(row.get("rating")) else {
+                continue;
+            };
+            if rating > max_rating {
+                continue;
+            }
+            let entry = found
+                .entry((row.get("question_id"), row.get("slot")))
+                .or_default();
+            let line = (rating, row.get("text"));
+            match row.get::<&str, _>("origin") {
+                "edited" => entry.0.push(line),
+                _ => entry.1.push(line),
+            }
+        }
+        let mut out: HashMap<i64, QuestionLines> = HashMap::new();
+        for ((id, slot), (edited, content)) in found {
+            // An edited line with no text mutes the slot.
+            let mut chosen = if edited.is_empty() { content } else { edited };
+            chosen.retain(|(_, text)| !text.trim().is_empty());
+            let q = out.entry(id).or_default();
+            match slot.as_str() {
+                "lead_in" => q.lead_in = chosen,
+                _ => q.reveal = chosen,
             }
         }
         Ok(out)
