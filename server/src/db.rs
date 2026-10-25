@@ -31,7 +31,7 @@ pub enum Rating {
 }
 
 impl Rating {
-    fn level(self) -> i64 {
+    pub fn level(self) -> i64 {
         self as i64
     }
 }
@@ -44,6 +44,32 @@ pub struct Question {
     pub prompt: String,
     pub choices: Vec<String>,
     pub answer: usize,
+    /// Set for Name That Tune rounds.
+    pub song: Option<SongClip>,
+}
+
+/// The clip the TV plays for a Name That Tune round.
+#[derive(Debug, Clone)]
+pub struct SongClip {
+    pub title: String,
+    pub artist: String,
+    pub year: i64,
+    pub preview_url: String,
+    /// Where in the 30-second preview the clip starts.
+    pub start_ms: u64,
+    pub artwork_url: Option<String>,
+    pub store_url: Option<String>,
+}
+
+/// A row from the `songs` table.
+#[derive(Debug, Clone)]
+pub struct Song {
+    pub id: i64,
+    pub title: String,
+    pub artist: String,
+    pub year: i64,
+    pub itunes_id: Option<i64>,
+    pub explicit: bool,
 }
 
 /// One player's final standing, written to the database when a game ends.
@@ -121,12 +147,61 @@ impl Db {
                 prompt: row.get("prompt"),
                 choices,
                 answer,
+                song: None,
             });
             if out.len() == n {
                 break;
             }
         }
         Ok(out)
+    }
+
+    /// Every playable song rated at most `max_rating`.
+    pub async fn songs(&self, max_rating: Rating) -> anyhow::Result<Vec<Song>> {
+        let rows = sqlx::query(
+            "SELECT id, title, artist, year, itunes_id, explicit FROM songs
+             WHERE unplayable = 0
+               AND CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1",
+        )
+        .bind(max_rating.level())
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| Song {
+                id: row.get("id"),
+                title: row.get("title"),
+                artist: row.get("artist"),
+                year: row.get("year"),
+                itunes_id: row.get("itunes_id"),
+                explicit: row.get::<i64, _>("explicit") != 0,
+            })
+            .collect())
+    }
+
+    /// Remembers which store track a song is, so later games need one lookup instead of a search.
+    pub async fn save_track(
+        &self,
+        song_id: i64,
+        track: &crate::music::Track,
+    ) -> anyhow::Result<()> {
+        sqlx::query("UPDATE songs SET itunes_id = ?2, explicit = ?3, artwork_url = ?4, store_url = ?5 WHERE id = ?1")
+            .bind(song_id)
+            .bind(track.itunes_id)
+            .bind(track.explicit as i64)
+            .bind(&track.artwork_url)
+            .bind(&track.store_url)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn mark_unplayable(&self, song_id: i64) -> anyhow::Result<()> {
+        sqlx::query("UPDATE songs SET unplayable = 1 WHERE id = ?1")
+            .bind(song_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn start_game(

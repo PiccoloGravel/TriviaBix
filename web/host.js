@@ -4,7 +4,7 @@
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG" };
+let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000 };
 let conn = null;
 let state = null;
 let prev = null;
@@ -21,9 +21,75 @@ const voice = {
     u.rate = 1.05;
     u.pitch = 1.1;
     speechSynthesis.speak(u);
+    return u;
   },
   hush() { if ("speechSynthesis" in window) speechSynthesis.cancel(); },
 };
+
+// ---------- Name That Tune audio ----------
+// The TV streams Apple's 30-second preview and plays only a slice of it. Browsers block sound
+// until someone has pressed something on the page, so after a refresh we ask for one press.
+
+const tune = {
+  audio: new Audio(),
+  next: new Audio(),
+  stopTimer: null,
+  blocked: false,
+  last: null,
+
+  prefetch(url) {
+    if (!url || this.next.src === url || this.audio.src === url) return;
+    this.next.preload = "auto";
+    this.next.src = url;
+  },
+
+  /** Plays `ms` of `url` from `startMs`, then calls `onEnd`. A null `ms` plays to the end. */
+  play(url, startMs, ms, { volume = 1, onEnd } = {}) {
+    this.stop();
+    this.last = [url, startMs, ms, { volume, onEnd }];
+    if (this.next.src === url) [this.audio, this.next] = [this.next, this.audio];
+    const a = this.audio;
+    if (a.src !== url) a.src = url;
+    a.volume = volume;
+    const seekAndPlay = () => {
+      a.currentTime = startMs / 1000;
+      a.play().then(() => {
+        this.setBlocked(false);
+      }).catch(() => this.setBlocked(true));
+    };
+    // Count the clip from when sound actually starts, so slow loading doesn't eat it.
+    a.onplaying = () => {
+      a.onplaying = null; // a stall and resume shouldn't restart the clock
+      $("#q-eq").classList.add("playing");
+      if (ms != null) this.stopTimer = setTimeout(() => { this.stop(); onEnd && onEnd(); }, ms);
+    };
+    if (a.readyState >= 1) seekAndPlay();
+    else a.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+  },
+
+  replay() { if (this.last) this.play(...this.last); },
+
+  stop() {
+    clearTimeout(this.stopTimer);
+    this.audio.onplaying = null;
+    this.audio.pause();
+    $("#q-eq").classList.remove("playing");
+  },
+
+  setBlocked(on) {
+    this.blocked = on;
+    $("#sound-btn").classList.toggle("hidden", !on);
+  },
+
+  /** Called on any press: a blocked clip gets another go now that the browser allows sound. */
+  unlock() {
+    if (!this.blocked) return false;
+    this.setBlocked(false);
+    this.replay();
+    return true;
+  },
+};
+let replayTimer = null;
 
 const pick = (lines) => lines[Math.floor(Math.random() * lines.length)];
 const LINES = {
@@ -59,12 +125,24 @@ function renderSetup() {
   document.querySelectorAll("[data-rating]").forEach((b) => {
     b.classList.toggle("secondary", b.dataset.rating !== settings.max_rating);
   });
+  document.querySelectorAll("[data-mode]").forEach((b) => {
+    b.classList.toggle("secondary", b.dataset.mode !== settings.mode);
+  });
+  document.querySelectorAll("[data-clip]").forEach((b) => {
+    b.classList.toggle("secondary", Number(b.dataset.clip) !== settings.clip_ms);
+  });
+  $("#clip-opts").classList.toggle("hidden", settings.mode !== "songs");
+  $("#rounds-label").textContent = settings.mode === "songs" ? "Songs" : "Questions";
 }
 
 document.querySelectorAll("[data-rounds]").forEach((b) =>
   b.addEventListener("click", () => { settings.rounds = Number(b.dataset.rounds); renderSetup(); }));
 document.querySelectorAll("[data-rating]").forEach((b) =>
   b.addEventListener("click", () => { settings.max_rating = b.dataset.rating; renderSetup(); }));
+document.querySelectorAll("[data-mode]").forEach((b) =>
+  b.addEventListener("click", () => { settings.mode = b.dataset.mode; renderSetup(); }));
+document.querySelectorAll("[data-clip]").forEach((b) =>
+  b.addEventListener("click", () => { settings.clip_ms = Number(b.dataset.clip); renderSetup(); }));
 
 $("#create").addEventListener("click", async () => {
   $("#setup-error").textContent = "";
@@ -120,6 +198,11 @@ function render(s) {
   state = s;
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
   $("#skip-btn").classList.toggle("hidden", !["question", "reveal", "scoreboard"].includes(s.phase));
+  if (phaseChanged) {
+    tune.stop();
+    clearTimeout(replayTimer);
+  }
+  tune.prefetch(s.next_clip);
   show(s.phase);
   ({ lobby: renderLobby, question: renderQuestion, reveal: renderReveal, scoreboard: renderScores, final: renderFinal })[s.phase](s, phaseChanged);
 }
@@ -134,7 +217,9 @@ function renderLobby(s, changed) {
     qr.dataset.link = link;
     qr.src = "/api/qr?text=" + encodeURIComponent(link);
   }
-  $("#lobby-settings").textContent = `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
+  $("#lobby-settings").textContent = s.settings.mode === "songs"
+    ? `🎵 Name That Tune · ${s.settings.rounds} songs · ${s.settings.clip_ms / 1000}-second clips · rated ${s.settings.max_rating}`
+    : `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
 
   const slots = $("#slots");
   slots.replaceChildren();
@@ -164,23 +249,51 @@ function renderLobby(s, changed) {
 }
 
 function choiceTile(text, i) {
-  return el("div", { class: `choice choice-${i}` }, el("span", { class: "shape" }, TBX.SHAPES[i]), el("span", {}, text));
+  // Song answers are "Title — Artist"; show the artist smaller under the title.
+  const [title, artist] = state && state.question && state.question.kind === "song" ? text.split(" — ") : [text];
+  return el("div", { class: `choice choice-${i}` }, el("span", { class: "shape" }, TBX.SHAPES[i]),
+    artist ? el("span", { class: "song" }, el("span", {}, title), el("small", {}, artist)) : el("span", {}, text));
 }
 
-function roundLabel(s) { return `Question ${s.round} of ${s.total_rounds}`; }
+function roundLabel(s) {
+  return `${s.question && s.question.kind === "song" ? "Song" : "Question"} ${s.round} of ${s.total_rounds}`;
+}
+
+/** Plays the clip, then once more halfway through the timer for anyone who blinked. */
+function playClip(s) {
+  const clip = s.question.clip;
+  if (!clip) return;
+  const listen = $("#q-listen");
+  listen.textContent = "Listen…";
+  tune.play(clip.preview_url, clip.start_ms, clip.clip_ms, { onEnd: () => { listen.textContent = ""; } });
+  clearTimeout(replayTimer);
+  replayTimer = setTimeout(() => {
+    if (!state || state.phase !== "question") return;
+    listen.textContent = "One more time…";
+    tune.play(clip.preview_url, clip.start_ms, clip.clip_ms, { onEnd: () => { listen.textContent = "That's all you get!"; } });
+  }, (s.ms_left || 0) / 2);
+}
 
 function renderQuestion(s, changed) {
   $("#q-round").textContent = roundLabel(s);
   $("#q-code").textContent = s.code;
   $("#q-cat").textContent = s.question.category;
   $("#q-prompt").textContent = s.question.prompt;
+  const song = s.question.kind === "song";
+  $("#question").classList.toggle("song", song);
+  $("#q-eq").classList.toggle("hidden", !song);
+  $("#q-listen").classList.toggle("hidden", !song);
   if (changed) {
     $("#q-choices").replaceChildren(...s.question.choices.map(choiceTile));
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
     startSecs(s.ms_left);
     voice.hush();
-    if (s.round === 1) voice.say(line("start"));
-    voice.say(s.question.prompt);
+    // The host keeps quiet during a song round so it doesn't talk over the clip.
+    if (song) playClip(s);
+    else {
+      if (s.round === 1) voice.say(line("start"));
+      voice.say(s.question.prompt);
+    }
   }
   $("#q-answered").replaceChildren(...s.players.map((p) => {
     const a = TBX.avatar(p, "6vh");
@@ -208,6 +321,16 @@ function renderReveal(s, changed) {
   $("#r-code").textContent = s.code;
   $("#r-cat").textContent = s.question.category;
   $("#r-prompt").textContent = s.question.prompt;
+  const song = s.reveal.song;
+  $("#reveal").classList.toggle("song", !!song);
+  $("#r-prompt").classList.toggle("hidden", !!song);
+  $("#r-song").classList.toggle("hidden", !song);
+  if (song) {
+    $("#r-art").src = song.artwork_url || "";
+    $("#r-art").classList.toggle("hidden", !song.artwork_url);
+    $("#r-title").textContent = song.title;
+    $("#r-artist").textContent = `${song.artist} · ${song.year}`;
+  }
   const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
   $("#r-choices").replaceChildren(...s.question.choices.map((text, i) => {
     const tile = choiceTile(text, i);
@@ -222,13 +345,27 @@ function renderReveal(s, changed) {
   if (changed) {
     TBX.runTimer($("#r-timer"), s.ms_left, s.phase_ms);
     voice.hush();
-    const answer = s.question.choices[s.reveal.correct];
+    const answer = song ? `${song.title}, by ${song.artist}` : s.question.choices[s.reveal.correct];
     const winners = s.reveal.results.filter((r) => r.points > 0).sort((a, b) => b.points - a.points);
     let quip;
     if (winners.length === 0) quip = line("nobody");
     else if (winners.length === s.players.length && s.players.length > 1) quip = line("everyone");
     else quip = line(s.settings.max_rating !== "PG" && Math.random() < 0.5 ? "spicyFastest" : "fastest", byId[winners[0].player_id].name);
-    voice.say(`It's ${answer}! ${quip}`);
+    const said = voice.say(`It's ${answer}! ${quip}`);
+    // Let the song play out under the reveal once the host has said the answer.
+    const clip = s.question.clip;
+    if (clip) {
+      let started = false;
+      const playSong = () => {
+        if (started || !state || state.phase !== "reveal" || state.round !== s.round) return;
+        started = true;
+        tune.play(clip.preview_url, clip.start_ms, null, { volume: 0.8 });
+      };
+      if (said) {
+        said.onend = playSong;
+        setTimeout(playSong, 4000); // some TV browsers never fire onend
+      } else playSong();
+    }
   }
 }
 
@@ -277,12 +414,17 @@ function renderFinal(s, changed) {
 
 function primaryAction() {
   if (!state) return $("#setup").classList.contains("hidden") ? null : $("#create").click();
-  if (state.phase === "lobby") send({ type: "start" });
+  if (state.phase === "lobby") {
+    if (state.settings.mode === "songs" && state.players.length) toast("Cueing up the tunes…");
+    send({ type: "start" });
+  }
   else if (state.phase === "final") send({ type: "play_again" });
   else send({ type: "next" });
 }
 
-$("#start-btn").addEventListener("click", () => send({ type: "start" }));
+$("#start-btn").addEventListener("click", () => primaryAction());
+$("#sound-btn").addEventListener("click", () => tune.unlock());
+document.addEventListener("pointerdown", () => tune.unlock());
 $("#again-btn").addEventListener("click", () => send({ type: "play_again" }));
 $("#skip-btn").addEventListener("click", () => send({ type: "next" }));
 
@@ -307,7 +449,11 @@ document.addEventListener("keydown", (e) => {
   if (!state && e.target.tagName === "BUTTON") return;
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
+    // If the browser blocked the clip, this press turns sound on instead of skipping.
+    if (tune.unlock()) return;
     primaryAction();
+  } else if ((e.key === "r" || e.key === "R") && state && state.phase === "question") {
+    tune.replay();
   } else if (e.key === "m" || e.key === "M") toggleVoice();
   else if (e.key === "f" || e.key === "F") toggleFullscreen();
 });

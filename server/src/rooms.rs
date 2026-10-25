@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use rand::Rng;
 
 use crate::db::Db;
+use crate::music::Itunes;
 use crate::room::{Room, RoomHandle, Settings, Timing};
 
 /// No vowels, so random codes can't spell anything rude, and no letters that
@@ -17,16 +18,24 @@ const CODE_LEN: usize = 4;
 pub struct Rooms {
     inner: Arc<Mutex<HashMap<String, RoomHandle>>>,
     db: Db,
+    itunes: Itunes,
     timing: Timing,
     max_players: usize,
     max_rooms: usize,
 }
 
 impl Rooms {
-    pub fn new(db: Db, timing: Timing, max_players: usize, max_rooms: usize) -> Self {
+    pub fn new(
+        db: Db,
+        itunes: Itunes,
+        timing: Timing,
+        max_players: usize,
+        max_rooms: usize,
+    ) -> Self {
         Self {
             inner: Default::default(),
             db,
+            itunes,
             timing,
             max_players,
             max_rooms,
@@ -58,6 +67,7 @@ impl Rooms {
             self.timing.clone(),
             self.max_players,
             self.db.clone(),
+            self.itunes.clone(),
             move || {
                 registry.lock().unwrap().remove(&closing);
             },

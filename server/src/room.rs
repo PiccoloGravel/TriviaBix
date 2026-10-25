@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
 
 use crate::db::{Db, Question, Rating, Standing};
+use crate::music::{self, Itunes};
 use crate::protocol::*;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
@@ -18,12 +19,16 @@ const COLORS: [&str; 16] = [
 ];
 
 pub const MIN_ROUNDS: usize = 3;
+pub const MIN_CLIP_MS: u64 = 500;
+pub const MAX_CLIP_MS: u64 = 5_000;
 pub const MAX_ROUNDS: usize = 30;
 const MAX_NAME_CHARS: usize = 16;
 
 #[derive(Debug, Clone)]
 pub struct Timing {
     pub question: Duration,
+    /// Answer time for a Name That Tune round.
+    pub song_question: Duration,
     pub reveal: Duration,
     pub scoreboard: Duration,
     /// A room with no connections is closed after this long.
@@ -34,6 +39,19 @@ pub struct Timing {
 pub struct Settings {
     pub rounds: usize,
     pub max_rating: Rating,
+    pub mode: Mode,
+    /// How much of the song the TV plays in Name That Tune.
+    pub clip_ms: u64,
+}
+
+/// Which game the room plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    #[default]
+    Trivia,
+    /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
+    Songs,
 }
 
 pub enum Join {
@@ -153,6 +171,7 @@ pub struct Room {
     timing: Timing,
     max_players: usize,
     db: Db,
+    itunes: Itunes,
 
     players: Vec<Player>,
     next_player_id: u32,
@@ -164,6 +183,7 @@ pub struct Room {
     phase_len: Option<Duration>,
     questions: Vec<Question>,
     used_question_ids: Vec<i64>,
+    used_song_ids: Vec<i64>,
     round: usize,
     question_started: Instant,
     answers: HashMap<u32, Answer>,
@@ -174,6 +194,7 @@ pub struct Room {
 
 impl Room {
     /// Spawns the room task. `on_close` runs once the room shuts down.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         code: String,
         host_token: String,
@@ -181,6 +202,7 @@ impl Room {
         timing: Timing,
         max_players: usize,
         db: Db,
+        itunes: Itunes,
         on_close: impl FnOnce() + Send + 'static,
     ) -> RoomHandle {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -191,6 +213,7 @@ impl Room {
             timing,
             max_players,
             db,
+            itunes,
             players: Vec::new(),
             next_player_id: 1,
             conns: HashMap::new(),
@@ -200,6 +223,7 @@ impl Room {
             phase_len: None,
             questions: Vec::new(),
             used_question_ids: Vec::new(),
+            used_song_ids: Vec::new(),
             round: 0,
             question_started: Instant::now(),
             answers: HashMap::new(),
@@ -434,7 +458,12 @@ impl Room {
                 self.set_phase(Phase::Lobby, None);
                 self.broadcast();
             }
-            ClientMsg::Settings { rounds, max_rating } => {
+            ClientMsg::Settings {
+                rounds,
+                max_rating,
+                mode,
+                clip_ms,
+            } => {
                 if !is_host {
                     return Err("Only the host can change settings.".into());
                 }
@@ -446,6 +475,12 @@ impl Room {
                 }
                 if let Some(r) = max_rating {
                     self.settings.max_rating = r;
+                }
+                if let Some(m) = mode {
+                    self.settings.mode = m;
+                }
+                if let Some(ms) = clip_ms {
+                    self.settings.clip_ms = ms.clamp(MIN_CLIP_MS, MAX_CLIP_MS);
                 }
                 self.broadcast();
             }
@@ -493,6 +528,34 @@ impl Room {
         if self.players.is_empty() {
             return Err("Need at least one player to start.".into());
         }
+        let questions = match self.settings.mode {
+            Mode::Trivia => self.load_trivia().await?,
+            Mode::Songs => self.load_songs().await?,
+        };
+        if questions.is_empty() {
+            return Err("The question bank is empty.".into());
+        }
+        self.questions = questions;
+        for p in &mut self.players {
+            p.score = 0;
+        }
+        self.game_id = match self
+            .db
+            .start_game(&self.code, self.questions.len(), self.players.len())
+            .await
+        {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::warn!("recording game start: {e:#}");
+                None
+            }
+        };
+        self.round = 0;
+        self.begin_question();
+        Ok(())
+    }
+
+    async fn load_trivia(&mut self) -> Result<Vec<Question>, String> {
         if self.used_question_ids.len() > 200 {
             self.used_question_ids.clear();
         }
@@ -517,36 +580,48 @@ impl Room {
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        if questions.is_empty() {
-            return Err("The question bank is empty.".into());
-        }
         self.used_question_ids
             .extend(questions.iter().map(|q| q.id));
-        self.questions = questions;
-        for p in &mut self.players {
-            p.score = 0;
+        Ok(questions)
+    }
+
+    async fn load_songs(&mut self) -> Result<Vec<Question>, String> {
+        let questions = music::build_round(
+            &self.db,
+            &self.itunes,
+            self.settings.rounds,
+            self.settings.max_rating,
+            &self.used_song_ids,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("loading songs: {e:#}");
+            "Couldn't reach Apple Music for song clips. Check the server's internet and try again."
+                .to_string()
+        })?;
+        if questions.is_empty() {
+            return Err(
+                "Couldn't find any playable songs right now. Try again in a minute.".into(),
+            );
         }
-        self.game_id = match self
-            .db
-            .start_game(&self.code, self.questions.len(), self.players.len())
-            .await
-        {
-            Ok(id) => Some(id),
-            Err(e) => {
-                tracing::warn!("recording game start: {e:#}");
-                None
-            }
-        };
-        self.round = 0;
-        self.begin_question();
-        Ok(())
+        // build_round falls back to repeats on its own once the list is used up.
+        if questions.iter().any(|q| self.used_song_ids.contains(&q.id)) {
+            self.used_song_ids.clear();
+        }
+        self.used_song_ids.extend(questions.iter().map(|q| q.id));
+        Ok(questions)
     }
 
     fn begin_question(&mut self) {
         self.answers.clear();
         self.last_points.clear();
         self.question_started = Instant::now();
-        self.set_phase(Phase::Question, Some(self.timing.question));
+        let limit = if self.questions[self.round].song.is_some() {
+            self.timing.song_question
+        } else {
+            self.timing.question
+        };
+        self.set_phase(Phase::Question, Some(limit));
         self.broadcast();
     }
 
@@ -575,7 +650,11 @@ impl Room {
     /// Correct answers earn 500 points plus up to 500 more for speed.
     fn score_question(&mut self) {
         let q = &self.questions[self.round];
-        let limit = self.timing.question.as_secs_f64().max(0.001);
+        let limit = self
+            .phase_len
+            .unwrap_or(self.timing.question)
+            .as_secs_f64()
+            .max(0.001);
         for p in &mut self.players {
             let points = match self.answers.get(&p.id) {
                 Some(a) if a.choice == q.answer => {
@@ -662,8 +741,15 @@ impl Room {
         let ms_left = self
             .deadline
             .map(|d| d.saturating_duration_since(Instant::now()).as_millis() as u64);
+        let next_clip = self
+            .questions
+            .get(self.round + 1)
+            .filter(|_| in_round)
+            .and_then(|q| q.song.as_ref())
+            .map(|s| s.preview_url.as_str());
 
         for conn in self.conns.values() {
+            let is_host = matches!(conn.role, Role::Host);
             let you = match conn.role {
                 Role::Host => None,
                 Role::Player(id) => Some(YouView {
@@ -693,6 +779,8 @@ impl Room {
                 settings: SettingsView {
                     rounds: self.settings.rounds,
                     max_rating: self.settings.max_rating,
+                    mode: self.settings.mode,
+                    clip_ms: self.settings.clip_ms,
                 },
                 round: if in_round || self.phase == Phase::Final {
                     self.round + 1
@@ -705,9 +793,15 @@ impl Room {
                     self.questions.len()
                 },
                 question: question.map(|q| QuestionView {
+                    kind: if q.song.is_some() { "song" } else { "trivia" },
                     category: &q.category,
                     prompt: &q.prompt,
                     choices: &q.choices,
+                    clip: q.song.as_ref().filter(|_| is_host).map(|s| ClipView {
+                        preview_url: &s.preview_url,
+                        start_ms: s.start_ms,
+                        clip_ms: self.settings.clip_ms,
+                    }),
                 }),
                 ms_left,
                 phase_ms: self.phase_len.map(|d| d.as_millis() as u64),
@@ -725,7 +819,15 @@ impl Room {
                                 points: self.last_points.get(&p.id).copied().unwrap_or(0),
                             })
                             .collect(),
+                        song: q.song.as_ref().map(|s| SongView {
+                            title: &s.title,
+                            artist: &s.artist,
+                            year: s.year,
+                            artwork_url: s.artwork_url.as_deref(),
+                            store_url: s.store_url.as_deref(),
+                        }),
                     }),
+                next_clip: next_clip.filter(|_| is_host),
                 you,
             };
             let _ = conn

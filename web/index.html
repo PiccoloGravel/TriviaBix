@@ -24,6 +24,8 @@
     .answers { flex: 1; display: grid; grid-template-rows: repeat(4, 1fr); gap: 12px; }
     .answers button { color: #fff; font-size: 20px; display: flex; align-items: center; gap: 14px; text-align: left; padding: 14px 18px; min-height: 64px; }
     .answers button .shape { font-size: 28px; }
+    .answers button .song { display: flex; flex-direction: column; line-height: 1.2; }
+    .answers button .song small { font-size: 15px; opacity: .85; }
     .answers button.picked { outline: 5px solid #fff; }
     .answers.locked button:not(.picked) { opacity: .3; }
     .verdict { font-size: 72px; }
@@ -80,6 +82,7 @@
       <div class="status" id="r-text"></div>
       <div class="points" id="r-points"></div>
       <div class="muted" id="r-answer"></div>
+      <a class="muted hidden" id="r-link" target="_blank" rel="noopener" style="font-size:14px">Hear the full song on Apple Music ↗</a>
     </div>
     <button class="secondary hidden" data-vip-next>Next ⏭</button>
   </section>
