@@ -1,0 +1,61 @@
+[[script]]
+question = "history-c791d23a"
+prompt = "In what year did humans first walk on the Moon?"
+lead_in = "Space history. When did we first land on the Moon?"
+
+[[script]]
+question = "history-c30037e4"
+prompt = "Who was the first President of the United States?"
+lead_in = "President question. Number one."
+
+[script.reveal]
+PG = "He never lived in Washington, D.C. The White House wasn't finished until after he died."
+PG-13 = "And no, his teeth weren't wooden. They were made of ivory, metal, and other people's teeth. Sleep well."
+
+[[script]]
+question = "history-f01b5838"
+prompt = "Cleopatra lived closer in time to the Moon landing than to the building of the Great Pyramid of Giza."
+lead_in = "True or false. This one will mess with your sense of time."
+
+[[script]]
+question = "history-b7962179"
+prompt = "Put these events in order."
+lead_in = "History in order, please. No time travel."
+
+[[script]]
+question = "history-031b311e"
+prompt = "Which ocean liner sank in 1912 after hitting an iceberg?"
+lead_in = "Ocean history. One very famous iceberg."
+reveal = "It was called practically unsinkable. History's most famous jinx."
+
+[[script]]
+question = "history-2c1a68e8"
+prompt = "Which is the only one of the Seven Wonders of the Ancient World still standing?"
+lead_in = "Seven wonders, one survivor. Which is still standing?"
+reveal = "It was the tallest human-made structure in the world for nearly four thousand years. Long reign."
+
+[[script]]
+question = "history-e8462bc3"
+prompt = "Which civilization built Machu Picchu?"
+lead_in = "Who built the city in the clouds?"
+reveal = "It was built around 1450 and stayed hidden from the outside world until 1911."
+
+[[script]]
+question = "history-9cb673ae"
+prompt = "Napoleon Bonaparte was unusually short for his time."
+lead_in = "True or false. Napoleon edition."
+
+[[script]]
+question = "history-7ac7e995"
+prompt = "In what year did World War II end?"
+lead_in = "History question. When did the Second World War end?"
+reveal = "It ended in Europe in May and in the Pacific in September. Same year, two endings."
+
+[[script]]
+question = "history-b2bddc4c"
+prompt = 'Who co-wrote "The Communist Manifesto" with Karl Marx?'
+lead_in = "Political history. Who helped write the big red book?"
+
+[script.reveal]
+PG = "Fun twist: Engels' family owned a textile mill, and his money helped support Marx for years."
+PG-13 = "The co-author of the Communist Manifesto had a rich factory-owning dad. The irony writes itself."

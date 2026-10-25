@@ -1,0 +1,56 @@
+[[script]]
+question = "video-games-708b7d28"
+prompt = "Which princess does Mario usually rescue?"
+lead_in = "Mushroom Kingdom question. Who needs rescuing?"
+
+[[script]]
+question = "video-games-6c72eb20"
+prompt = "Which block-building game features exploding green Creepers?"
+lead_in = "Gaming question. Where do Creepers live?"
+
+[script.reveal]
+PG = "The Creeper came from a coding mistake. It was supposed to be a pig."
+PG-13 = "Creepers were a botched pig. Now they blow up your house. That's a career change."
+
+[[script]]
+question = "video-games-96462cb6"
+prompt = "Sonic the Hedgehog was created by Nintendo."
+lead_in = "True or false. Who made the blue hedgehog?"
+
+[[script]]
+question = "video-games-39b8e6a5"
+prompt = "In what year was Tetris created?"
+lead_in = "Gaming history. When were the falling blocks born?"
+
+[[script]]
+question = "video-games-270eaa22"
+prompt = "Which of these is NOT one of the ghosts in Pac-Man?"
+lead_in = "Waka waka. Which one isn't a ghost?"
+
+[[script]]
+question = "video-games-401c628b"
+prompt = "Put these games in order of release."
+lead_in = "Gaming history. Put them in order."
+
+[[script]]
+question = "video-games-bf71e4c4"
+prompt = "What color is Link's classic tunic in The Legend of Zelda?"
+lead_in = "Zelda question. What color is the hero's tunic?"
+reveal = "And in most of the classic games, he's left-handed."
+
+[[script]]
+question = "video-games-4d96a1c3"
+prompt = "Which company makes the PlayStation?"
+lead_in = "Console question. Who makes the PlayStation?"
+reveal = "It started as a CD add-on for the Super Nintendo before that deal fell apart. Oops, Nintendo."
+
+[[script]]
+question = "video-games-5dcd5b79"
+prompt = "Who is the main villain of The Legend of Zelda series?"
+lead_in = "Zelda question. Who's the bad guy?"
+
+[[script]]
+question = "video-games-ed263454"
+prompt = "What is the best-selling video game of all time?"
+lead_in = "Big question. What's the best-selling game ever?"
+reveal = "It's sold over three hundred million copies. Tetris is the only real rival, and it's been on every device ever made."

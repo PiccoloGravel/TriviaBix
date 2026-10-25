@@ -1,0 +1,63 @@
+[[script]]
+question = "movies-3cab7625"
+prompt = 'Which hobbit did Elijah Wood play in "The Lord of the Rings"?'
+lead_in = "Movie question. Which hobbit did Elijah Wood play?"
+reveal = "He got the role by sending in an audition tape he shot in the woods, in a homemade hobbit costume. Commitment."
+
+[[script]]
+question = "movies-35d1637c"
+prompt = 'Steven Spielberg directed "Jaws".'
+lead_in = "True or false. A shark, a beach, and a director."
+
+[[script]]
+question = "movies-007ce718"
+prompt = """Which movie gave us the line "Here's looking at you, kid"?"""
+lead_in = "Classic movie quote time. Here's looking at you."
+reveal = "It came out in 1942 and people still say it on dates while trying way too hard."
+
+[[script]]
+question = "movies-b3d30558"
+prompt = 'How many Oscars did "Titanic" win?'
+lead_in = "Oscar count. How many for the big boat?"
+reveal = "Eleven, tied for the record with Ben-Hur and The Return of the King."
+
+[[script]]
+question = "movies-670e4ca4"
+prompt = 'In "The Matrix", which pill does Neo take?'
+lead_in = "Choose wisely. Which pill did Neo take?"
+
+[script.reveal]
+PG = "Blue pill, the story ends. Red pill, you stay in Wonderland. He chose the fun one."
+PG-13 = "One pill makes you see the truth. The other lets you go back to bed. Honestly, tough call."
+
+[[script]]
+question = "movies-0b3ba3af"
+prompt = "Put these blockbusters in order of release."
+lead_in = "Blockbuster time. Put them in order."
+
+[[script]]
+question = "movies-aaa1f028"
+prompt = """Which 1984 movie has the line "I'll be back"?"""
+lead_in = "Movie quote time. Which robot said it first?"
+
+[[script]]
+question = "movies-bec5fc59"
+prompt = "Who played Captain Jack Sparrow?"
+lead_in = "Pirate question. Savvy?"
+reveal = "He based the character partly on Keith Richards, who later showed up as Jack's dad."
+
+[[script]]
+question = "movies-a7c62090"
+prompt = '"Toy Story" was the first feature film made entirely with computer animation.'
+lead_in = "True or false. Animation history."
+reveal = "It came out in 1995. Early versions of Woody were such a jerk that the studio nearly shut the movie down."
+
+[[script]]
+question = "movies-7394a241"
+prompt = 'In "Finding Nemo", what kind of fish is Dory?'
+lead_in = "Under the sea question. What kind of fish is Dory?"
+
+[[script]]
+question = "movies-0c3a0c1e"
+prompt = 'What is the name of the hidden African nation in "Black Panther"?'
+lead_in = "Superhero question. Where is the hidden kingdom?"

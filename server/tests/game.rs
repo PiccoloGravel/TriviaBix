@@ -238,7 +238,9 @@ async fn eight_players_play_a_full_game() {
             s["phase"] == "question" && s["round"] == round
         })
         .await;
-        assert_eq!(q["question"]["choices"].as_array().unwrap().len(), 4);
+        // Multiple choice has four choices, true/false two.
+        let choices = q["question"]["choices"].as_array().unwrap().len();
+        assert!(choices == 4 || choices == 2, "{q}");
         assert!(
             q["reveal"].is_null(),
             "answer must not leak during the question"
@@ -1158,4 +1160,69 @@ async fn admin_sees_and_runs_every_room() {
         .unwrap();
     let (status, _) = admin(&addr, &cookie, "rooms", None).await;
     assert_eq!(status, 401);
+}
+
+#[tokio::test]
+async fn admin_edits_a_questions_lines() {
+    let addr = start_server().await;
+    let cookie = admin_login(&addr).await;
+    let (status, page) = admin(&addr, &cookie, "questions?q=Canberra", None).await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(page["total"], 1);
+    let q = &page["questions"][0];
+    assert_eq!(q["answer"], "Canberra");
+    let has = |q: &Value, origin: &str| {
+        q["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["slot"] == "lead_in" && l["origin"] == origin)
+    };
+    assert!(has(q, "content"), "shipped questions have lines: {q}");
+
+    let put = |lines: Value| {
+        let url = format!(
+            "http://{addr}/api/admin/questions/{}/lines/lead_in",
+            q["id"]
+        );
+        let cookie = cookie.clone();
+        async move {
+            reqwest::Client::new()
+                .put(url)
+                .header("cookie", cookie)
+                .json(&json!({ "lines": lines }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        }
+    };
+    assert_eq!(
+        put(json!([{ "rating": "PG", "text": "Mine now." }])).await,
+        200
+    );
+    assert_eq!(
+        put(json!([{ "rating": "R", "text": "Bad rating." }])).await,
+        400
+    );
+    assert_eq!(
+        put(json!([{ "rating": "PG", "text": "Hi {name}" }])).await,
+        400
+    );
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 1);
+    assert!(has(&page["questions"][0], "edited"));
+
+    // Reloading the packs keeps the edit.
+    let (status, report) = admin(&addr, &cookie, "content/reload", Some(json!({}))).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["added"], 0);
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 1);
+
+    // Going back to the pack's lines.
+    assert_eq!(put(json!([])).await, 200);
+    let (_, page) = admin(&addr, &cookie, "questions?q=Mine%20now", None).await;
+    assert_eq!(page["total"], 0);
 }

@@ -1,0 +1,64 @@
+[[script]]
+question = "pop-culture-1547ae8b"
+prompt = 'The original "Bennifer" was Ben Affleck and which star?'
+lead_in = "Celebrity couple question. The original Bennifer."
+
+[[script]]
+question = "pop-culture-245a56f0"
+prompt = "Taylor Swift's Eras Tour became the highest-grossing concert tour of all time."
+lead_in = "True or false. Swifties, this is your moment."
+
+[[script]]
+question = "pop-culture-761498fb"
+prompt = "What is the name of Barbie's longtime boyfriend?"
+lead_in = "Toy aisle romance. Who's Barbie's guy?"
+
+[[script]]
+question = "pop-culture-7eb3d3c9"
+prompt = 'Which movie opened the same weekend as "Barbie" in July 2023, creating "Barbenheimer"?'
+lead_in = "Summer 2023 movie question. Pink and explosive."
+
+[script.reveal]
+PG = "Barbie was the biggest movie of the year. Oppenheimer won Best Picture. Everybody won."
+PG-13 = "People really watched a pink comedy and a three-hour atomic bomb drama on the same day. Emotional whiplash."
+
+[[script]]
+question = "pop-culture-2c1ca2fe"
+prompt = "Put these apps in order of launch."
+lead_in = "App question. Put them in order of launch."
+
+[[script]]
+question = "pop-culture-486e9c33"
+prompt = 'In internet slang, what does "GOAT" stand for?'
+lead_in = "Internet slang. Who's the GOAT?"
+reveal = "In sports, being called the goat used to mean you blew the big game. Now it's the highest praise. Language is wild."
+
+[[script]]
+question = "pop-culture-14013282"
+prompt = """The "Face with Tears of Joy" emoji 😂 was once named Oxford Dictionaries' Word of the Year."""
+lead_in = "True or false. An emoji got a big award."
+
+[[script]]
+question = "pop-culture-6db635ab"
+prompt = "Which royal married Meghan Markle in 2018?"
+lead_in = "Royal wedding question. Who married Meghan?"
+
+[script.reveal]
+PG = "Tens of millions of people around the world watched the wedding on TV."
+PG-13 = "Royal wedding, Netflix deal, a memoir called Spare. The in-laws were thrilled. Probably."
+
+[[script]]
+question = "pop-culture-69302226"
+prompt = 'What breed of dog is the star of the "Doge" meme?'
+lead_in = "Much meme. Very question."
+
+[[script]]
+question = "pop-culture-710c8910"
+prompt = 'Which singer calls their fans "Little Monsters"?'
+lead_in = "Pop question. Whose fans are the Little Monsters?"
+reveal = "She calls herself Mother Monster. Her real name is Stefani Germanotta."
+
+[[script]]
+question = "pop-culture-a77ad1be"
+prompt = 'In what year did the first "Star Wars" movie come out?'
+lead_in = "A long time ago, in a movie theater far, far away..."

@@ -1,0 +1,117 @@
+[[script]]
+question = "after-dark-08b6101f"
+prompt = 'The word "avocado" comes from the Aztec word for testicle.'
+lead_in = "Let's talk about your favorite green dip."
+
+[[script]]
+question = "after-dark-ad97d668"
+prompt = "Legend says Casanova ate 50 of which food for breakfast to boost his stamina?"
+lead_in = "History's most famous lover had a very specific breakfast routine."
+
+[script.reveal]
+PG-13 = "He also claimed to have bedded over a hundred women. He was a great writer, so take that with a grain of salt."
+MA = "He wrote twelve volumes of memoirs about his conquests. Talk about kiss and tell."
+
+[[script]]
+question = "after-dark-36d4ed62"
+prompt = "Which Greek goddess of love was born from sea foam?"
+lead_in = "A little Greek mythology. It gets steamy, I promise."
+
+[script.reveal]
+PG-13 = "The Romans called her Venus. Same goddess, different marketing department."
+MA = "Her birth story involves a castrated Titan and the sea. Greek myths are basically soap operas with less clothing."
+
+[[script]]
+question = "after-dark-17f51232"
+prompt = "Besides vodka, which liqueur goes in a Sex on the Beach?"
+lead_in = "Bartender question. Hold my drink."
+
+[[script]]
+question = "after-dark-1cb97ea8"
+prompt = 'In "Dirty Dancing", where does nobody put Baby?'
+lead_in = "Movie quote time. Grab your watermelon."
+
+[script.reveal]
+PG-13 = "Patrick Swayze reportedly thought the line was cheesy. It's now on about a million T-shirts."
+MA = "The most famous line in the movie, and Swayze thought it was corny. He wasn't wrong. He also wasn't wearing much."
+
+[[script]]
+question = "after-dark-e4e3fc45"
+prompt = """Salt-N-Pepa sang "Let's talk about" what?"""
+lead_in = "Push it! Real good. Here's an easy one for the grown-ups."
+
+[[script]]
+question = "after-dark-ca99b50b"
+prompt = "Lady Godiva supposedly rode naked through which English city?"
+lead_in = "History question. Somebody's taking a ride with no clothes on."
+
+[script.reveal]
+PG-13 = "Legend says she did it to get her husband to lower taxes. Bold protest strategy."
+MA = "The one guy who peeked became 'Peeping Tom'. History's original creep."
+
+[[script]]
+question = "after-dark-6e302072"
+prompt = "Which 1999 comedy has an unforgettable scene involving a warm dessert?"
+lead_in = "Movie question. Never look at a dessert the same way again."
+
+[[script]]
+question = "after-dark-63a1680c"
+prompt = "Who was the Greek god of wine, parties, and general debauchery?"
+lead_in = "Who's ready to party with the gods?"
+
+[script.reveal]
+PG-13 = "The Romans called him Bacchus, which is why a wild party is still called a bacchanal."
+MA = "His festivals involved wine, dancing, and so much chaos that Rome eventually banned them. Respect."
+
+[[script]]
+question = "after-dark-c3bb8124"
+prompt = "Most of the Kama Sutra is about sex positions."
+lead_in = "Book club question. Very specific book club."
+
+[[script]]
+question = "after-dark-d27bee4a"
+prompt = "Put these cocktails in order of how much booze they usually pack, weakest first."
+lead_in = "Put these in order of how fast they'll ruin your night."
+
+[[script]]
+question = "after-dark-d7480581"
+prompt = "Viagra was first tested as a treatment for what?"
+lead_in = "Medical history time. This one had a surprising side effect."
+
+[[script]]
+question = "after-dark-b1281953"
+prompt = 'In "Sex and the City", which friend is the most sexually adventurous?'
+lead_in = "Four friends, one city, lots of Cosmopolitans. Who's the wild one?"
+
+[script.reveal]
+MA = "Samantha had more partners across six seasons than most of us have had hot dinners."
+NC-17 = "Samantha Jones would have answered this question, finished her drink, and left with the host."
+
+[[script]]
+question = "after-dark-38ab4531"
+prompt = "Which bird is famous for a corkscrew-shaped penis that can be as long as its body?"
+lead_in = "Nature documentary time. Viewer discretion advised."
+
+[[script]]
+question = "after-dark-7f673ad3"
+prompt = "The G-spot is named after which German gynecologist?"
+lead_in = "Anatomy quiz. Let's see who's done their research."
+
+[script.reveal]
+MA = "He described it in 1950. The name 'G-spot' didn't catch on until 1981. Things take time to find."
+NC-17 = "Named after a man, which explains why so many men still can't find it."
+
+[[script]]
+question = "after-dark-2a4406aa"
+prompt = "Which number is also the name of a famous mutual sex position?"
+lead_in = "Math question. Sort of."
+
+[[script]]
+question = "after-dark-1db76f43"
+prompt = "In BDSM, what do the D and S stand for?"
+lead_in = "Okay, safe word time. Here's a question about the letters."
+
+[[script]]
+question = "after-dark-ec7b3abb"
+prompt = "Roughly how many nerve endings does the clitoris have?"
+lead_in = "Biology question. Pay attention, some of you clearly need this."

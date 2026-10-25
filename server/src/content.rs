@@ -221,6 +221,7 @@ pub struct AdminQuestion {
 
 #[derive(Debug, Serialize, serde::Deserialize, Clone, PartialEq)]
 pub struct AdminLine {
+    #[serde(default)]
     pub slot: String,
     pub rating: String,
     pub text: String,

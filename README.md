@@ -28,6 +28,12 @@ below its rating and leans heavily toward the spiciest tier allowed, so PG rooms
 it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the script on startup (known events, a PG line for
 each, and only placeholders that event fills in). Reveals and scoreboards stretch so the host can finish talking.
 
+Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
+line (a joke, anecdote, or fun fact) right after the answer, in place of his generic roast. They're rated too, so a PG room
+hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
+script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
+them in the admin panel.
+
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
 
@@ -78,6 +84,11 @@ scores, phase, and the current question and answer. From there you can:
 - kick players, move them between teams, and change a room's settings,
 - turn late joins on or off, and close a room.
 
+**Bix's lines** (`/admin/questions`) lists every question in the database with what Bix says about it. Search, filter to
+questions missing a lead-in or reveal, and edit, add, or mute lines per rating. Edits are saved in the database, override
+the pack's lines for that question, and survive restarts; "Use pack lines" undoes them. **Reload packs** loads the content
+folder again without a restart, e.g. after an import.
+
 Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
 your home network can reach the server.
 
@@ -113,6 +124,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
 | `HOST_TALK_CPS` | `13` | Voice speed estimate in characters per second, for pacing; `0` stops waiting for the host |
 | `HOST_SCRIPT` | | Path to a host script to use instead of the built-in one |
+| `CONTENT_DIR` | `content` | Question packs and host scripts, loaded into the database at startup |
 | `HANGMAN_SECS` | `45` | Time to crack one Speed Hangman phrase |
 | `SONG_SECS` | `15` | Answer time in Name That Tune |
 | `MUSIC_COUNTRY` | `US` | Store country for song previews |
@@ -128,7 +140,10 @@ cargo test                    # unit tests plus full games over WebSockets
     `src/music.rs` the song lookups for Name That Tune.
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
-  - `migrations/` creates the tables and seeds a starter question bank and hangman phrases.
+  - `migrations/` creates the tables and seeds hangman phrases and songs.
+  - `src/content.rs` loads the question packs into the database at startup.
+- `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
+  [content/README.md](content/README.md). `crates/question-bank` reads it and has the command line tool.
 - `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
 - `server/src/admin.rs` is the admin login and API (`/api/admin/*`).
 
