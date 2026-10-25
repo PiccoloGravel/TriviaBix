@@ -1,0 +1,84 @@
+:root {
+  --bg: #1a0b3d;
+  --bg2: #2d1166;
+  --panel: rgba(255, 255, 255, 0.08);
+  --text: #fff8f0;
+  --muted: #c9b8ff;
+  --accent: #ffd23f;
+  --good: #2ee59d;
+  --bad: #ff4f6d;
+  --c0: #e63973;
+  --c1: #2f80ed;
+  --c2: #f2a900;
+  --c3: #27ae60;
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at 20% 10%, var(--bg2), var(--bg) 70%) fixed;
+  color: var(--text);
+  font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 700;
+}
+
+h1, h2, .display { font-family: "Bungee", "Nunito", system-ui, sans-serif; font-weight: 400; letter-spacing: 0.02em; }
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: #1a0b3d;
+  background: var(--accent);
+  padding: 0.6em 1.2em;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+button:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.secondary { background: var(--panel); color: var(--text); box-shadow: none; }
+
+input {
+  font: inherit;
+  width: 100%;
+  padding: 0.7em 0.9em;
+  border-radius: var(--radius);
+  border: 3px solid transparent;
+  background: #fff;
+  color: #1a0b3d;
+}
+input:focus { outline: none; border-color: var(--accent); }
+
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); min-height: 1.4em; }
+
+.choice-0 { background: var(--c0); }
+.choice-1 { background: var(--c1); }
+.choice-2 { background: var(--c2); }
+.choice-3 { background: var(--c3); }
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #1a0b3d;
+  font-weight: 900;
+  flex: none;
+}
+
+.timer-track { height: 100%; background: var(--panel); border-radius: 999px; overflow: hidden; }
+.timer-fill { height: 100%; width: 100%; background: var(--accent); transform-origin: left; }
+
+@keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+.pop { animation: pop 0.35s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pop { animation: none; }
+  .timer-fill { transition: none !important; }
+}

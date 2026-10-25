@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a0b3d">
+  <title>TriviaBix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { font-size: 18px; -webkit-tap-highlight-color: transparent; }
+    .screen { min-height: 100vh; min-height: 100dvh; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; max-width: 520px; margin: 0 auto; }
+    .center { justify-content: center; text-align: center; align-items: center; }
+    h1 { font-size: 44px; margin: 0; color: var(--accent); text-align: center; }
+    label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .1em; }
+    #code-input { font-family: "Bungee", sans-serif; font-size: 32px; text-transform: uppercase; letter-spacing: .3em; text-align: center; }
+    .big { font-size: 22px; width: 100%; padding: 16px; }
+    .me { display: flex; align-items: center; gap: 12px; background: var(--panel); border-radius: var(--radius); padding: 10px 14px; }
+    .me .name { flex: 1; font-size: 20px; }
+    .me .score { font-family: "Bungee", sans-serif; }
+    .status { font-size: 26px; }
+    .prompt { font-size: 20px; text-align: center; }
+    .answers { flex: 1; display: grid; grid-template-rows: repeat(4, 1fr); gap: 12px; }
+    .answers button { color: #fff; font-size: 20px; display: flex; align-items: center; gap: 14px; text-align: left; padding: 14px 18px; min-height: 64px; }
+    .answers button .shape { font-size: 28px; }
+    .answers button.picked { outline: 5px solid #fff; }
+    .answers.locked button:not(.picked) { opacity: .3; }
+    .verdict { font-size: 72px; }
+    .points { font-family: "Bungee", sans-serif; font-size: 40px; color: var(--accent); }
+    .vip { background: var(--panel); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div id="offline" class="banner hidden">Reconnecting…</div>
+
+  <section id="join" class="screen center hidden" data-screen>
+    <h1>TriviaBix</h1>
+    <form id="join-form" style="width:100%;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <label for="code-input">Room code</label>
+        <input id="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" required>
+      </div>
+      <div>
+        <label for="name-input">Your name</label>
+        <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="Name" required>
+      </div>
+      <button class="big" type="submit">Play</button>
+    </form>
+    <p class="error" id="join-error"></p>
+    <a class="muted" href="/host" style="font-size:14px">Hosting? Open this on the TV instead →</a>
+  </section>
+
+  <section id="lobby" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="center" style="flex:1;display:flex;flex-direction:column;gap:16px">
+      <div class="status">You're in! 🎉</div>
+      <div class="muted" id="lobby-count"></div>
+      <div class="vip hidden" id="vip-box">
+        <div>You're the <b>VIP</b>. Start when everyone's in.</div>
+        <button class="big" id="start-btn">Everybody's in!</button>
+      </div>
+      <div class="muted" id="lobby-wait">Watch the TV. The VIP starts the game.</div>
+    </div>
+  </section>
+
+  <section id="question" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="timer" style="height:10px"><div class="timer-track"><div class="timer-fill" id="q-timer"></div></div></div>
+    <div class="prompt" id="q-prompt"></div>
+    <div class="answers" id="answers"></div>
+    <div class="muted" id="q-status" style="text-align:center;min-height:1.4em"></div>
+  </section>
+
+  <section id="reveal" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="center" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div class="verdict" id="r-verdict"></div>
+      <div class="status" id="r-text"></div>
+      <div class="points" id="r-points"></div>
+      <div class="muted" id="r-answer"></div>
+    </div>
+    <button class="secondary hidden" data-vip-next>Next ⏭</button>
+  </section>
+
+  <section id="scoreboard" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="center" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div class="muted">You're in</div>
+      <div class="points" id="s-rank"></div>
+      <div class="muted">Eyes on the TV!</div>
+    </div>
+    <button class="secondary hidden" data-vip-next>Next ⏭</button>
+  </section>
+
+  <section id="final" class="screen hidden" data-screen>
+    <div class="me" data-me></div>
+    <div class="center" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div class="verdict" id="f-emoji"></div>
+      <div class="status" id="f-text"></div>
+      <div class="points" id="f-score"></div>
+    </div>
+    <button class="big hidden" id="again-btn">Play again</button>
+    <button class="secondary" id="leave-btn">Leave game</button>
+  </section>
+
+  <script src="/common.js"></script>
+  <script src="/player.js"></script>
+</body>
+</html>
