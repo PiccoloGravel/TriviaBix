@@ -14,6 +14,7 @@ use triviabix::{Config, room::Timing};
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const MAX_PLAYERS: usize = 10;
+const ADMIN_PASSWORD: &str = "letmein";
 
 async fn start_server() -> String {
     start_server_with_db().await.0
@@ -42,6 +43,7 @@ async fn start_server_with_db() -> (String, String) {
             talk_cps: 0.0,
             idle_timeout: Duration::from_secs(60),
         },
+        admin_password: Some(ADMIN_PASSWORD.into()),
         host_script: None,
     };
     let app = triviabix::router(config).await.unwrap();
@@ -165,6 +167,16 @@ async fn wait_state(ws: &mut Ws, pred: impl Fn(&Value) -> bool) -> Value {
     loop {
         let msg = recv(ws).await;
         if msg["type"] == "state" && pred(&msg) {
+            return msg;
+        }
+    }
+}
+
+/// Skips state updates until an error arrives.
+async fn next_error(ws: &mut Ws) -> Value {
+    loop {
+        let msg = recv(ws).await;
+        if msg["type"] == "error" {
             return msg;
         }
     }
@@ -335,7 +347,15 @@ async fn unanswered_question_times_out() {
 #[tokio::test]
 async fn static_pages_are_served() {
     let addr = start_server().await;
-    for path in ["/", "/host", "/style.css", "/player.js", "/host.js"] {
+    for path in [
+        "/",
+        "/host",
+        "/admin",
+        "/style.css",
+        "/player.js",
+        "/host.js",
+        "/admin.js",
+    ] {
         let res = reqwest::get(format!("http://{addr}{path}")).await.unwrap();
         assert!(res.status().is_success(), "{path}: {}", res.status());
     }
@@ -583,15 +603,6 @@ async fn hangman_room(n: usize) -> (Ws, Vec<Ws>) {
     (host, players)
 }
 
-async fn next_error(ws: &mut Ws) -> Value {
-    loop {
-        let msg = recv(ws).await;
-        if msg["type"] == "error" {
-            return msg;
-        }
-    }
-}
-
 #[tokio::test]
 async fn speed_hangman_letters_strikes_and_solve() {
     let (mut host, mut players) = hangman_room(2).await;
@@ -764,4 +775,317 @@ async fn players_pick_unique_characters_and_names() {
         }
     };
     assert!(err["message"].as_str().unwrap().contains("already called"));
+}
+
+#[tokio::test]
+async fn late_joiners_play_from_the_next_question() {
+    let addr = start_server().await;
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut alice = open(&addr, &format!("/ws/play?code={code}&name=Alice")).await;
+    recv(&mut alice).await;
+
+    send(&mut host, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == 1).await;
+
+    // Bob turns up mid-question and is let in, but sits this question out.
+    let mut bob = open(&addr, &format!("/ws/play?code={code}&name=Bob")).await;
+    assert_eq!(recv(&mut bob).await["type"], "welcome");
+    let s = wait_state(&mut bob, |s| s["you"]["waiting"] == true).await;
+    assert_eq!(s["phase"], "question");
+    send(&mut bob, json!({ "type": "answer", "choice": 0 })).await;
+    assert_eq!(next_error(&mut bob).await["fatal"], false);
+
+    // Alice answering is enough to close the question; Bob isn't waited on or scored.
+    send(&mut alice, json!({ "type": "answer", "choice": 0 })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert_eq!(reveal["reveal"]["results"].as_array().unwrap().len(), 1);
+
+    // From the next question Bob is a full player.
+    let q2 = wait_state(&mut host, |s| s["phase"] == "question" && s["round"] == 2).await;
+    assert!(
+        q2["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["waiting"] == false)
+    );
+    send(&mut alice, json!({ "type": "answer", "choice": 0 })).await;
+    send(&mut bob, json!({ "type": "answer", "choice": 1 })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal" && s["round"] == 2).await;
+    assert_eq!(reveal["reveal"]["results"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn late_joins_can_be_turned_off() {
+    let addr = start_server().await;
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut alice = open(&addr, &format!("/ws/play?code={code}&name=Alice")).await;
+    recv(&mut alice).await;
+    send(&mut host, json!({ "type": "settings", "late_join": false })).await;
+    send(&mut host, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+
+    let mut bob = open(&addr, &format!("/ws/play?code={code}&name=Bob")).await;
+    assert_eq!(recv(&mut bob).await["fatal"], true);
+}
+
+#[tokio::test]
+async fn teams_are_balanced_and_scored_by_average() {
+    let addr = start_server().await;
+    let res: Value = reqwest::Client::new()
+        .post(format!("http://{addr}/api/rooms"))
+        .json(&json!({ "rounds": 3, "teams": 2 }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let (code, host_token) = (
+        res["code"].as_str().unwrap(),
+        res["host_token"].as_str().unwrap(),
+    );
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+
+    let mut players = Vec::new();
+    for name in ["A", "B", "C"] {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut ws).await;
+        players.push(ws);
+    }
+    let s = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 3).await;
+    let teams: Vec<_> = s["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["team"].as_u64().unwrap())
+        .collect();
+    assert_eq!(teams, [0, 1, 0]);
+
+    // C switches to the blue team from their phone.
+    send(&mut players[2], json!({ "type": "team", "team": 1 })).await;
+    wait_state(&mut host, |s| s["players"][2]["team"] == 1).await;
+    send(&mut players[2], json!({ "type": "team", "team": 7 })).await;
+    assert_eq!(next_error(&mut players[2]).await["fatal"], false);
+
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    assert_eq!(q["teams"].as_array().unwrap().len(), 2);
+    for ws in &mut players {
+        send(ws, json!({ "type": "answer", "choice": 0 })).await;
+    }
+    let s = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    let score = |id: u64| {
+        s["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == id)
+            .unwrap()["score"]
+            .as_i64()
+            .unwrap()
+    };
+    for team in s["teams"].as_array().unwrap() {
+        let members: Vec<i64> = team["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| score(m.as_u64().unwrap()))
+            .collect();
+        assert_eq!(
+            team["score"].as_i64().unwrap(),
+            members.iter().sum::<i64>() / members.len() as i64,
+            "{team}"
+        );
+    }
+}
+
+/// Logs in to the admin API and returns the session cookie.
+async fn admin_login(addr: &str) -> String {
+    let http = reqwest::Client::new();
+    let wrong = http
+        .post(format!("http://{addr}/api/admin/login"))
+        .json(&json!({ "password": "guess" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), 401);
+    let res = http
+        .post(format!("http://{addr}/api/admin/login"))
+        .json(&json!({ "password": ADMIN_PASSWORD }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+    let cookie = res.headers()["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("HttpOnly"));
+    cookie.split(';').next().unwrap().to_string()
+}
+
+async fn admin(addr: &str, cookie: &str, path: &str, body: Option<Value>) -> (u16, Value) {
+    let http = reqwest::Client::new();
+    let url = format!("http://{addr}/api/admin/{path}");
+    let req = match body {
+        Some(b) => http.post(url).json(&b),
+        None => http.get(url),
+    };
+    let res = req.header("cookie", cookie).send().await.unwrap();
+    (res.status().as_u16(), res.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn admin_sees_and_runs_every_room() {
+    let addr = start_server().await;
+
+    // Locked without a login.
+    let res = reqwest::get(format!("http://{addr}/api/admin/rooms"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+    let (status, _) = admin(&addr, "tbx_admin=forged", "rooms", None).await;
+    assert_eq!(status, 401);
+    let cookie = admin_login(&addr).await;
+
+    // Two games side by side: one made by a TV, one from the admin panel.
+    let (code_a, token_a) = create_room(&addr, 5).await;
+    let (status, made) = admin(
+        &addr,
+        &cookie,
+        "rooms",
+        Some(json!({ "rounds": 3, "max_rating": "PG-13" })),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let code_b = made["code"].as_str().unwrap().to_string();
+    let token_b = made["host_token"].as_str().unwrap().to_string();
+
+    let mut host_a = open(&addr, &format!("/ws/host?code={code_a}&token={token_a}")).await;
+    let mut host_b = open(&addr, &format!("/ws/host?code={code_b}&token={token_b}")).await;
+    let mut sam = open(&addr, &format!("/ws/play?code={code_a}&name=Sam")).await;
+    recv(&mut sam).await;
+    let mut kim = open(&addr, &format!("/ws/play?code={code_a}&name=Kim")).await;
+    recv(&mut kim).await;
+    wait_state(&mut host_a, |s| s["players"].as_array().unwrap().len() == 2).await;
+
+    let (_, list) = admin(&addr, &cookie, "rooms", None).await;
+    let rooms = list["rooms"].as_array().unwrap();
+    assert_eq!(rooms.len(), 2);
+    let a = rooms.iter().find(|r| r["code"] == code_a.as_str()).unwrap();
+    assert_eq!(a["players"].as_array().unwrap().len(), 2);
+    assert_eq!(a["host_connected"], true);
+    assert_eq!(a["phase"], "lobby");
+    let sam_id = a["players"][0]["id"].clone();
+
+    // Run room A from the panel: start, skip, kick, end.
+    let act = |code: &str| format!("rooms/{code}");
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "start" })),
+    )
+    .await;
+    assert_eq!(status, 200);
+    wait_state(&mut host_a, |s| s["phase"] == "question").await;
+    let (_, list) = admin(&addr, &cookie, "rooms", None).await;
+    let a = list["rooms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == code_a.as_str())
+        .unwrap()
+        .clone();
+    assert!(
+        a["question"]["answer"].is_string(),
+        "the operator can see the answer"
+    );
+
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "skip" })),
+    )
+    .await;
+    wait_state(&mut host_a, |s| s["phase"] == "reveal").await;
+
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "kick", "player_id": sam_id })),
+    )
+    .await;
+    assert_eq!(next_error(&mut sam).await["fatal"], true);
+
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "end_game" })),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let fin = wait_state(&mut host_a, |s| s["phase"] == "final").await;
+    assert_eq!(fin["players"].as_array().unwrap().len(), 1);
+    let (status, err) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "skip" })),
+    )
+    .await;
+    assert_eq!(status, 409, "{err}");
+
+    // Settings and teams from the panel.
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "lobby" })),
+    )
+    .await;
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "settings", "teams": 3, "late_join": false })),
+    )
+    .await;
+    let s = wait_state(&mut host_a, |s| s["settings"]["teams"] == 3).await;
+    assert_eq!(s["settings"]["late_join"], false);
+    let kim_id = s["players"][0]["id"].clone();
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "set_team", "player_id": kim_id, "team": 2 })),
+    )
+    .await;
+    wait_state(&mut host_a, |s| s["players"][0]["team"] == 2).await;
+
+    // Closing room B sends its TV away and drops it from the list.
+    admin(
+        &addr,
+        &cookie,
+        &act(&code_b),
+        Some(json!({ "action": "close" })),
+    )
+    .await;
+    assert_eq!(next_error(&mut host_b).await["fatal"], true);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let (_, list) = admin(&addr, &cookie, "rooms", None).await;
+    assert_eq!(list["rooms"].as_array().unwrap().len(), 1);
+
+    // Logging out ends the session.
+    let http = reqwest::Client::new();
+    http.post(format!("http://{addr}/api/admin/logout"))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    let (status, _) = admin(&addr, &cookie, "rooms", None).await;
+    assert_eq!(status, 401);
 }

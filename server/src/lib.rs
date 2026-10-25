@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod characters;
 pub mod db;
 pub mod hangman;
@@ -29,6 +30,8 @@ pub struct Config {
     pub timing: room::Timing,
     /// A host script to use instead of the built-in one.
     pub host_script: Option<PathBuf>,
+    /// Turns on the admin panel at /admin. Without it the panel stays locked.
+    pub admin_password: Option<String>,
 }
 
 impl Config {
@@ -63,6 +66,9 @@ impl Config {
                 .ok()
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from),
+            admin_password: std::env::var("ADMIN_PASSWORD")
+                .ok()
+                .filter(|p| !p.is_empty()),
         }
     }
 }

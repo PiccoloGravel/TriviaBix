@@ -4,7 +4,7 @@
 const { $, el, show } = TBX;
 const HOST_KEY = "tbx:host";
 
-let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000 };
+let settings = { rounds: 10, max_rating: "PG", mode: "trivia", clip_ms: 2000, teams: 0 };
 let conn = null;
 let state = null;
 let prev = null;
@@ -255,6 +255,9 @@ function renderSetup() {
   document.querySelectorAll("[data-rating]").forEach((b) => {
     b.classList.toggle("secondary", b.dataset.rating !== settings.max_rating);
   });
+  document.querySelectorAll("[data-teams]").forEach((b) => {
+    b.classList.toggle("secondary", Number(b.dataset.teams) !== settings.teams);
+  });
   document.querySelectorAll("[data-clip]").forEach((b) => {
     b.classList.toggle("secondary", Number(b.dataset.clip) !== settings.clip_ms);
   });
@@ -268,6 +271,8 @@ document.querySelectorAll("[data-mode]").forEach((b) =>
   b.addEventListener("click", () => { settings.mode = b.dataset.mode; renderSetup(); }));
 document.querySelectorAll("[data-rating]").forEach((b) =>
   b.addEventListener("click", () => { settings.max_rating = b.dataset.rating; renderSetup(); }));
+document.querySelectorAll("[data-teams]").forEach((b) =>
+  b.addEventListener("click", () => { settings.teams = Number(b.dataset.teams); renderSetup(); }));
 document.querySelectorAll("[data-clip]").forEach((b) =>
   b.addEventListener("click", () => { settings.clip_ms = Number(b.dataset.clip); renderSetup(); }));
 
@@ -309,9 +314,10 @@ function join(code, token) {
 
 function send(msg) { conn && conn.send(msg); }
 
-function toast(text) {
+function toast(text, kind) {
   const t = $("#toast");
   t.textContent = text;
+  t.classList.toggle("info", kind === "info");
   t.classList.remove("hidden");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => t.classList.add("hidden"), 3000);
@@ -336,11 +342,24 @@ function render(s) {
     return hostSays(s);
   }
   show(s.phase);
+  announceLateJoiners(s);
   ({ lobby: renderLobby, intro: renderIntro, question: renderQuestion, reveal: renderReveal, scoreboard: renderScores, final: renderFinal })[s.phase](s, phaseChanged);
   // The question is read out after the host's banter.
   // In Name That Tune the clip plays instead.
   hostSays(s, s.phase === "question" && s.question.kind !== "song" ? s.question.prompt : null);
 }
+
+// Players who join mid-game wait for the next question; the host greets them, and the TV says when they're in.
+function announceLateJoiners(s) {
+  if (!prev || s.phase === "lobby") return;
+  for (const p of s.players) {
+    if (p.waiting && !prev.players.some((q) => q.id === p.id)) toast(`${p.name} joins at the next question`, "info");
+  }
+}
+
+// Players who are in the current game (not waiting for the next question).
+const playing = (s) => s.players.filter((p) => !p.waiting);
+const teamOf = (s, p) => s.teams.find((t) => t.id === p.team);
 
 function renderIntro(s, changed) {
   if (!changed) return;
@@ -364,14 +383,17 @@ function renderLobby(s, changed) {
     : s.settings.mode === "hangman"
     ? `Speed Hangman · ${s.settings.rounds} puzzles · rated ${s.settings.max_rating}`
     : `${s.settings.rounds} questions · rated ${s.settings.max_rating}`;
+  if (s.settings.teams) $("#lobby-settings").textContent += ` · ${s.settings.teams} teams`;
 
   const slots = $("#slots");
   slots.replaceChildren();
   for (const p of s.players) {
-    const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away") },
+    const team = teamOf(s, p);
+    const slot = el("div", { class: "slot pop" + (p.connected ? "" : " away"), style: team ? `box-shadow: inset 0 -1vh 0 ${team.color}` : "" },
       TBX.avatar(p, "10vh"),
       el("div", { class: "name" }, p.name),
-      p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null);
+      p.id === s.vip ? el("span", { class: "vip-tag" }, "VIP") : null,
+      team ? el("span", { class: "team-tag", style: `color:${team.color}` }, team.name) : null);
     slots.append(slot);
   }
   const shown = Math.max(8, s.players.length + (s.players.length < s.max_players ? 1 : 0));
@@ -435,12 +457,13 @@ function renderQuestion(s, changed) {
     enter($("#question"));
     if (song) playClip(s);
   }
-  $("#q-answered").replaceChildren(...s.players.map((p) => {
+  const late = s.players.length - playing(s).length;
+  $("#q-answered").replaceChildren(...playing(s).map((p) => {
     const a = TBX.avatar(p, "6vh");
     if (!p.answered) a.classList.add("waiting");
     a.title = p.name;
     return a;
-  }));
+  }), late ? el("span", { class: "muted" }, `+${late} joining next question`) : null);
 }
 
 function startSecs(target, ms, dangerAt = 0) {
@@ -579,7 +602,12 @@ function renderHangman(s, changed) {
   }
 }
 
-function sortedPlayers(s) { return [...s.players].sort((a, b) => b.score - a.score); }
+function sortedPlayers(s) { return playing(s).sort((a, b) => b.score - a.score); }
+
+function teamStrip(s) {
+  return s.teams.map((t, i) => el("div", { class: "team-pill pop", style: `background:${t.color};animation-delay:${i * 80}ms` },
+    el("span", {}, `${i + 1}. ${t.name}`), el("b", {}, t.score.toLocaleString())));
+}
 
 function renderScores(s, changed) {
   $("#s-round").textContent = roundLabel(s);
@@ -587,11 +615,12 @@ function renderScores(s, changed) {
   const results = s.reveal ? s.reveal.results : s.hangman ? s.hangman.results : [];
   const gains = Object.fromEntries(results.map((r) => [r.player_id, r.points]));
   let rank = 0, last = null;
-  const n = s.players.length;
+  const n = playing(s).length;
+  $("#s-teams").replaceChildren(...teamStrip(s));
   const board = $("#s-board");
   board.style.setProperty("--rows", n > 8 ? Math.ceil(n / 2) : Math.max(n, 1));
   // Where everyone stood before this question, so rows can slide from old place to new.
-  const before = [...s.players].sort((a, b) => (b.score - (gains[b.id] || 0)) - (a.score - (gains[a.id] || 0))).map((p) => p.id);
+  const before = playing(s).sort((a, b) => (b.score - (gains[b.id] || 0)) - (a.score - (gains[a.id] || 0))).map((p) => p.id);
   const rows = sortedPlayers(s).map((p, i) => {
     if (p.score !== last) { rank = i + 1; last = p.score; }
     const moved = before.indexOf(p.id) - i;
@@ -637,7 +666,10 @@ function renderFinal(s, changed) {
   const medal = ["🥇", "🥈", "🥉"];
   // Arrange 2nd, 1st, 3rd like a real podium.
   const order = [1, 0, 2].filter((i) => top[i]);
-  $("#f-title").textContent = top[0] ? `${top[0].name} wins!` : "Game over";
+  const topTeam = s.teams[0];
+  const teamTie = s.teams.length > 1 && s.teams[1].score === topTeam.score;
+  $("#f-title").textContent = topTeam && !teamTie ? `${topTeam.name} wins!` : top[0] ? `${top[0].name} wins!` : "Game over";
+  $("#f-teams").replaceChildren(...teamStrip(s));
   $("#f-podium").replaceChildren(...order.map((i) => el("div", { class: "step pop" },
     TBX.avatar(top[i], "10vh"),
     el("div", {}, top[i].name),
@@ -714,6 +746,13 @@ document.addEventListener("keydown", (e) => {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
   } catch { /* fall back to this page's address */ }
+
+  // Opened from the admin panel with a room's link: take over that room.
+  const params = new URLSearchParams(location.search);
+  if (params.get("code") && params.get("token")) {
+    TBX.save(HOST_KEY, { code: params.get("code").toUpperCase(), token: params.get("token") });
+    history.replaceState(null, "", location.pathname);
+  }
 
   // Coming back after a refresh: rejoin the same room if it's still alive.
   const saved = TBX.load(HOST_KEY);

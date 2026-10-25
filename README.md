@@ -60,6 +60,27 @@ The server needs internet access for this mode, and it looks every song up once 
 
 Phones that lock or refresh rejoin automatically as the same player. A room closes after 15 minutes with nobody connected.
 
+**Running several games.** Every room is its own game, so several TVs can each run one at the same time.
+
+**Joining late.** Players can join a game that has already started. They wait on a "You're in!" screen and play from the
+next question with a score of 0. Turn this off per room in the admin panel.
+
+**Teams.** Pick 2 to 4 teams on the TV setup screen (or in the admin panel). Players are dealt onto the smallest team and can
+switch from their phone in the lobby. A team's score is the average of its players' scores, so a team of 3 can beat a team of 5.
+
+## Admin panel
+
+Set `ADMIN_PASSWORD` and open `http://<server>:8080/admin`. After logging in you see every live room with its players,
+scores, phase, and the current question and answer. From there you can:
+
+- create rooms and open a room's TV page (handy for casting a room to a particular TV),
+- start, skip, end a game, or send a room back to the lobby,
+- kick players, move them between teams, and change a room's settings,
+- turn late joins on or off, and close a room.
+
+Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
+your home network can reach the server.
+
 ## Running it
 
 With Docker:
@@ -98,6 +119,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MUSIC_WARMUP` | `true` | Look up every song at startup |
 | `ITUNES_API_URL` | `https://itunes.apple.com` | |
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
+| `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
 
 ## Layout
 
@@ -107,13 +129,16 @@ cargo test                    # unit tests plus full games over WebSockets
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
   - `migrations/` creates the tables and seeds a starter question bank and hangman phrases.
-- `web/` is the TV page (`host.html`) and the phone page (`index.html`), plain HTML/JS with no build step.
+- `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
+- `server/src/admin.rs` is the admin login and API (`/api/admin/*`).
 
 ### WebSocket protocol
 
 The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`), phones to `/ws/play?code=ABCD&name=Sam`
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
-Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`, `play_again`, `profile {name, character}` (lobby only), and from the TV `settings {rounds, max_rating, mode, clip_ms}` and `kick {player_id}`.
+Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`,
+`play_again`, `profile {name, character}` and `team {team}` (phones, lobby only), and from the TV
+`settings {rounds, max_rating, mode, clip_ms, teams, late_join}` and `kick {player_id}`.
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
 The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `question`, `reveal`, `scoreboard`

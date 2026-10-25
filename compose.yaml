@@ -8,6 +8,8 @@ services:
       # Leave empty to use whatever address the TV page was opened on.
       PUBLIC_URL: ${PUBLIC_URL:-}
       MAX_PLAYERS: ${MAX_PLAYERS:-12}
+      # Turns on the admin panel at /admin.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     volumes:
       - triviabix-data:/data
     restart: unless-stopped

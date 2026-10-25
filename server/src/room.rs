@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until};
@@ -22,10 +22,19 @@ const COLORS: [&str; 16] = [
     "#00bbf9", "#fee440", "#e76f51", "#43aa8b", "#c77dff", "#ff006e", "#8ac926", "#6a4c93",
 ];
 
+/// Team names and colors, in order. A room can use up to this many teams.
+const TEAMS: [(&str, &str); 4] = [
+    ("Red Team", "#ff4f6d"),
+    ("Blue Team", "#3fa9f5"),
+    ("Gold Team", "#ffd23f"),
+    ("Green Team", "#2ee59d"),
+];
+
 pub const MIN_ROUNDS: usize = 3;
 pub const MIN_CLIP_MS: u64 = 500;
 pub const MAX_CLIP_MS: u64 = 5_000;
 pub const MAX_ROUNDS: usize = 30;
+pub const MAX_TEAMS: u8 = TEAMS.len() as u8;
 const MAX_NAME_CHARS: usize = 16;
 
 // Speed hangman scoring. Letters pay per tile, misses cost everyone a strike, and solving
@@ -65,6 +74,38 @@ pub struct Settings {
     pub mode: GameMode,
     /// How much of the song the TV plays in Name That Tune.
     pub clip_ms: u64,
+    /// 0 for no teams, otherwise 2 to MAX_TEAMS.
+    pub teams: u8,
+    /// Let new players join a running game; they start at the next question.
+    pub late_join: bool,
+}
+
+impl Settings {
+    fn view(&self) -> SettingsView {
+        SettingsView {
+            rounds: self.rounds,
+            max_rating: self.max_rating,
+            mode: self.mode,
+            clip_ms: self.clip_ms,
+            teams: self.teams,
+            late_join: self.late_join,
+        }
+    }
+}
+
+/// 1 team is no teams; anything above the limit is capped.
+pub fn clamp_teams(teams: u8) -> u8 {
+    if teams < 2 { 0 } else { teams.min(MAX_TEAMS) }
+}
+
+/// A settings change from the TV or the admin panel; `None` leaves a setting as it is.
+pub struct SettingsChange {
+    pub rounds: Option<usize>,
+    pub max_rating: Option<Rating>,
+    pub mode: Option<GameMode>,
+    pub clip_ms: Option<u64>,
+    pub teams: Option<u8>,
+    pub late_join: Option<bool>,
 }
 
 pub enum Join {
@@ -93,6 +134,13 @@ pub enum RoomCmd {
     },
     Info {
         reply: oneshot::Sender<RoomInfo>,
+    },
+    Admin {
+        cmd: AdminCmd,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    Snapshot {
+        reply: oneshot::Sender<AdminRoomView>,
     },
 }
 
@@ -131,6 +179,21 @@ impl RoomHandle {
         self.tx.send(RoomCmd::Info { reply }).ok()?;
         rx.await.ok()
     }
+
+    pub async fn admin(&self, cmd: AdminCmd) -> Result<(), String> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(RoomCmd::Admin { cmd, reply })
+            .map_err(|_| "That room has closed.".to_string())?;
+        rx.await
+            .unwrap_or_else(|_| Err("That room has closed.".into()))
+    }
+
+    pub async fn snapshot(&self) -> Option<AdminRoomView> {
+        let (reply, rx) = oneshot::channel();
+        self.tx.send(RoomCmd::Snapshot { reply }).ok()?;
+        rx.await.ok()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,6 +230,9 @@ struct Player {
     character: String,
     /// Number of open sockets for this player (a phone may briefly have two).
     conns: usize,
+    team: Option<u8>,
+    /// Joined after the game started; plays from the next question.
+    waiting: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -262,6 +328,9 @@ pub struct Room {
     last_points: HashMap<u32, i64>,
     game_id: Option<i64>,
     empty_since: Option<Instant>,
+    created_at: u64,
+    /// Set by the admin panel to shut the room down.
+    closing: bool,
 }
 
 impl Room {
@@ -311,6 +380,11 @@ impl Room {
             last_points: HashMap::new(),
             game_id: None,
             empty_since: Some(Instant::now()),
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+            closing: false,
         };
         let spelled = room
             .code
@@ -333,7 +407,13 @@ impl Room {
             let deadline = self.deadline;
             tokio::select! {
                 cmd = rx.recv() => match cmd {
-                    Some(cmd) => self.handle(cmd).await,
+                    Some(cmd) => {
+                        self.handle(cmd).await;
+                        if self.closing {
+                            tracing::info!(code = %self.code, "room closed by admin");
+                            break;
+                        }
+                    }
                     None => break,
                 },
                 _ = async { sleep_until(deadline.unwrap()).await }, if deadline.is_some() => {
@@ -397,9 +477,16 @@ impl Room {
                     phase: self.phase.name(),
                     players: self.players.len(),
                     max_players: self.max_players,
-                    joinable: self.phase == Phase::Lobby && self.players.len() < self.max_players,
+                    joinable: (self.phase == Phase::Lobby || self.settings.late_join)
+                        && self.players.len() < self.max_players,
                     taken_characters: self.players.iter().map(|p| p.character.clone()).collect(),
                 });
+            }
+            RoomCmd::Admin { cmd, reply } => {
+                let _ = reply.send(self.on_admin(cmd).await);
+            }
+            RoomCmd::Snapshot { reply } => {
+                let _ = reply.send(self.snapshot());
             }
         }
     }
@@ -426,7 +513,8 @@ impl Room {
                     (Role::Player(p.id), p.token.clone())
                 } else {
                     let name = clean_name(name.as_deref().unwrap_or(""))?;
-                    if self.phase != Phase::Lobby {
+                    let late = self.phase != Phase::Lobby;
+                    if late && !self.settings.late_join {
                         return Err("This game has already started. Catch the next one!".into());
                     }
                     if self.players.len() >= self.max_players {
@@ -448,7 +536,11 @@ impl Room {
                     let id = self.next_player_id;
                     self.next_player_id += 1;
                     let color = self.free_color();
+                    let team = self.smallest_team();
                     let token = uuid::Uuid::new_v4().to_string();
+                    if late {
+                        tracing::info!(code = %self.code, %name, "player joining mid-game");
+                    }
                     let line = self.line("join", &[("name", &name)]);
                     self.speak(vec![line], Vec::new());
                     self.players.push(Player {
@@ -460,6 +552,8 @@ impl Room {
                         streak: 0,
                         character,
                         conns: 1,
+                        team,
+                        waiting: late,
                     });
                     (Role::Player(id), token)
                 }
@@ -517,6 +611,20 @@ impl Room {
         pool.choose(&mut rand::rng()).unwrap().id.to_string()
     }
 
+    /// The team with the fewest players (lowest number on a tie), if teams are on.
+    fn smallest_team(&self) -> Option<u8> {
+        (0..self.settings.teams)
+            .min_by_key(|t| self.players.iter().filter(|p| p.team == Some(*t)).count())
+    }
+
+    /// Deals everyone onto teams in join order, e.g. after the team count changes.
+    fn deal_teams(&mut self) {
+        let teams = self.settings.teams;
+        for (i, p) in self.players.iter_mut().enumerate() {
+            p.team = (teams > 0).then(|| (i % teams as usize) as u8);
+        }
+    }
+
     fn free_color(&self) -> &'static str {
         COLORS
             .iter()
@@ -534,15 +642,15 @@ impl Room {
                 if !is_leader {
                     return Err("Only the host or the VIP can start the game.".into());
                 }
-                if self.phase != Phase::Lobby {
-                    return Err("The game is already running.".into());
-                }
                 self.start_game().await?;
             }
             ClientMsg::Answer { choice } => {
                 let Role::Player(pid) = role else {
                     return Err("The TV can't answer, nice try.".into());
                 };
+                if self.player_mut(pid).is_some_and(|p| p.waiting) {
+                    return Err("You're in from the next question. Hang tight!".into());
+                }
                 if self.phase != Phase::Question || self.settings.mode == GameMode::Hangman {
                     return Err("Not taking answers right now.".into());
                 }
@@ -650,12 +758,7 @@ impl Room {
                 if !is_leader {
                     return Err("Only the host or the VIP can skip ahead.".into());
                 }
-                if matches!(
-                    self.phase,
-                    Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard
-                ) {
-                    self.advance().await;
-                }
+                self.skip().await;
             }
             ClientMsg::PlayAgain => {
                 if !is_leader {
@@ -664,37 +767,42 @@ impl Room {
                 if self.phase != Phase::Final {
                     return Err("The game isn't over yet.".into());
                 }
-                for p in &mut self.players {
-                    p.score = 0;
-                }
                 let line = self.line("rematch", &[]);
                 self.speak(vec![line], Vec::new());
-                self.set_phase(Phase::Lobby, None);
-                self.broadcast();
+                self.back_to_lobby();
             }
             ClientMsg::Settings {
                 rounds,
                 max_rating,
                 mode,
                 clip_ms,
+                teams,
+                late_join,
             } => {
                 if !is_host {
                     return Err("Only the host can change settings.".into());
                 }
+                self.change_settings(SettingsChange {
+                    rounds,
+                    max_rating,
+                    mode,
+                    clip_ms,
+                    teams,
+                    late_join,
+                })?;
+            }
+            ClientMsg::Team { team } => {
+                let Role::Player(pid) = role else {
+                    return Err("The TV isn't on a team.".into());
+                };
                 if self.phase != Phase::Lobby {
-                    return Err("Settings are locked once the game starts.".into());
+                    return Err("Teams are locked once the game starts.".into());
                 }
-                if let Some(r) = rounds {
-                    self.settings.rounds = r.clamp(MIN_ROUNDS, MAX_ROUNDS);
+                if team >= self.settings.teams {
+                    return Err("That team doesn't exist.".into());
                 }
-                if let Some(r) = max_rating {
-                    self.settings.max_rating = r;
-                }
-                if let Some(m) = mode {
-                    self.settings.mode = m;
-                }
-                if let Some(ms) = clip_ms {
-                    self.settings.clip_ms = ms.clamp(MIN_CLIP_MS, MAX_CLIP_MS);
+                if let Some(p) = self.player_mut(pid) {
+                    p.team = Some(team);
                 }
                 self.broadcast();
             }
@@ -744,6 +852,151 @@ impl Room {
         Ok(())
     }
 
+    async fn on_admin(&mut self, cmd: AdminCmd) -> Result<(), String> {
+        match cmd {
+            AdminCmd::Start => self.start_game().await?,
+            AdminCmd::Skip => {
+                if !self.skip().await {
+                    return Err("Nothing to skip right now.".into());
+                }
+            }
+            AdminCmd::EndGame => {
+                if !matches!(
+                    self.phase,
+                    Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard
+                ) {
+                    return Err("There's no game running.".into());
+                }
+                if self.phase == Phase::Question && self.settings.mode != GameMode::Hangman {
+                    self.score_question();
+                }
+                self.finale();
+                self.set_phase(Phase::Final, None);
+                self.record_results().await;
+                self.broadcast();
+            }
+            AdminCmd::Lobby => {
+                if self.phase == Phase::Lobby {
+                    return Err("Already in the lobby.".into());
+                }
+                // Abandoned games are not recorded.
+                self.game_id = None;
+                self.back_to_lobby();
+            }
+            AdminCmd::Close => {
+                for conn_id in self.conns.keys() {
+                    self.send_to(
+                        *conn_id,
+                        &ServerMsg::Error {
+                            message: "The organizer closed this room.",
+                            fatal: true,
+                        },
+                    );
+                }
+                self.conns.clear();
+                self.closing = true;
+            }
+            AdminCmd::Kick { player_id } => {
+                if !self.players.iter().any(|p| p.id == player_id) {
+                    return Err("No such player.".into());
+                }
+                self.kick(player_id).await;
+            }
+            AdminCmd::SetTeam { player_id, team } => {
+                if team.is_some_and(|t| t >= self.settings.teams) {
+                    return Err("That team doesn't exist.".into());
+                }
+                let p = self.player_mut(player_id).ok_or("No such player.")?;
+                p.team = team;
+                self.broadcast();
+            }
+            AdminCmd::Settings {
+                rounds,
+                max_rating,
+                mode,
+                clip_ms,
+                teams,
+                late_join,
+            } => {
+                self.change_settings(SettingsChange {
+                    rounds,
+                    max_rating,
+                    mode,
+                    clip_ms,
+                    teams,
+                    late_join,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Moves on from the intro, question, reveal or scoreboard. False if there was nothing to skip.
+    async fn skip(&mut self) -> bool {
+        let running = matches!(
+            self.phase,
+            Phase::Intro | Phase::Question | Phase::Reveal | Phase::Scoreboard
+        );
+        if running {
+            self.advance().await;
+        }
+        running
+    }
+
+    fn back_to_lobby(&mut self) {
+        for p in &mut self.players {
+            p.score = 0;
+            p.waiting = false;
+        }
+        self.answers.clear();
+        self.last_points.clear();
+        self.set_phase(Phase::Lobby, None);
+        self.broadcast();
+    }
+
+    /// Rounds, rating and teams are locked once a game starts; late joins can be switched any time.
+    fn change_settings(&mut self, change: SettingsChange) -> Result<(), String> {
+        let SettingsChange {
+            rounds,
+            max_rating,
+            mode,
+            clip_ms,
+            teams,
+            late_join,
+        } = change;
+        let locked = rounds.is_some()
+            || max_rating.is_some()
+            || mode.is_some()
+            || clip_ms.is_some()
+            || teams.is_some();
+        if locked && self.phase != Phase::Lobby {
+            return Err("Settings are locked once the game starts.".into());
+        }
+        if let Some(r) = rounds {
+            self.settings.rounds = r.clamp(MIN_ROUNDS, MAX_ROUNDS);
+        }
+        if let Some(r) = max_rating {
+            self.settings.max_rating = r;
+        }
+        if let Some(m) = mode {
+            self.settings.mode = m;
+        }
+        if let Some(ms) = clip_ms {
+            self.settings.clip_ms = ms.clamp(MIN_CLIP_MS, MAX_CLIP_MS);
+        }
+        if let Some(t) = teams.map(clamp_teams)
+            && t != self.settings.teams
+        {
+            self.settings.teams = t;
+            self.deal_teams();
+        }
+        if let Some(l) = late_join {
+            self.settings.late_join = l;
+        }
+        self.broadcast();
+        Ok(())
+    }
+
     async fn kick(&mut self, player_id: u32) {
         let Some(idx) = self.players.iter().position(|p| p.id == player_id) else {
             return;
@@ -775,6 +1028,9 @@ impl Room {
     }
 
     async fn start_game(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Lobby {
+            return Err("The game is already running.".into());
+        }
         if self.players.is_empty() {
             return Err("Need at least one player to start.".into());
         }
@@ -931,6 +1187,9 @@ impl Room {
         let Role::Player(pid) = role else {
             return Err("The TV can't guess, nice try.".into());
         };
+        if self.players.iter().any(|p| p.id == pid && p.waiting) {
+            return Err("You're in from the next puzzle. Hang tight!".into());
+        }
         if self.settings.mode != GameMode::Hangman
             || self.phase != Phase::Question
             || self.hm.outcome.is_some()
@@ -966,6 +1225,10 @@ impl Room {
     }
 
     fn begin_question(&mut self) {
+        // Anyone who joined since the last question plays from here on.
+        for p in &mut self.players {
+            p.waiting = false;
+        }
         self.answers.clear();
         self.last_points.clear();
         self.hm = HangmanRound::default();
@@ -1051,7 +1314,7 @@ impl Room {
         let limit = self.question_len.as_secs_f64().max(0.001);
         let (mut right, mut wrong, mut silent, mut streaks, mut broken) =
             (vec![], vec![], vec![], vec![], vec![]);
-        for p in &mut self.players {
+        for p in self.players.iter_mut().filter(|p| !p.waiting) {
             let answer = self.answers.get(&p.id);
             let points = match answer {
                 Some(a) if a.choice == q.answer => {
@@ -1314,22 +1577,29 @@ impl Room {
         if self.settings.mode == GameMode::Hangman {
             return false;
         }
-        let mut active = self.players.iter().filter(|p| p.conns > 0).peekable();
+        let mut active = self
+            .players
+            .iter()
+            .filter(|p| p.conns > 0 && !p.waiting)
+            .peekable();
         active.peek().is_some() && active.all(|p| self.answers.contains_key(&p.id))
     }
 
-    /// The VIP is the earliest-joined player who is still connected.
+    /// The VIP is the earliest-joined player who is still connected and playing.
     fn vip(&self) -> Option<u32> {
-        self.players.iter().find(|p| p.conns > 0).map(|p| p.id)
+        self.players
+            .iter()
+            .find(|p| p.conns > 0 && !p.waiting)
+            .map(|p| p.id)
     }
 
     fn player_mut(&mut self, id: u32) -> Option<&mut Player> {
         self.players.iter_mut().find(|p| p.id == id)
     }
 
-    /// Players by score, with ties sharing a rank (1, 2, 2, 4).
+    /// Playing players by score, with ties sharing a rank (1, 2, 2, 4).
     fn ranked(&self) -> Vec<(usize, &Player)> {
-        let mut sorted: Vec<&Player> = self.players.iter().collect();
+        let mut sorted: Vec<&Player> = self.players.iter().filter(|p| !p.waiting).collect();
         sorted.sort_by(|a, b| b.score.cmp(&a.score));
         let mut out = Vec::with_capacity(sorted.len());
         for (i, p) in sorted.iter().enumerate() {
@@ -1341,6 +1611,115 @@ impl Room {
             out.push((rank, *p));
         }
         out
+    }
+
+    /// Team standings, best first. A team's score is the average of its playing members.
+    fn team_views(&self) -> Vec<TeamView> {
+        let mut teams: Vec<TeamView> = (0..self.settings.teams)
+            .map(|t| {
+                let members: Vec<&Player> =
+                    self.players.iter().filter(|p| p.team == Some(t)).collect();
+                let playing: Vec<i64> = members
+                    .iter()
+                    .filter(|p| !p.waiting)
+                    .map(|p| p.score)
+                    .collect();
+                let score = if playing.is_empty() {
+                    0
+                } else {
+                    playing.iter().sum::<i64>() / playing.len() as i64
+                };
+                let (name, color) = TEAMS[t as usize];
+                TeamView {
+                    id: t,
+                    name,
+                    color,
+                    score,
+                    members: members.iter().map(|p| p.id).collect(),
+                }
+            })
+            .collect();
+        teams.sort_by(|a, b| b.score.cmp(&a.score).then(a.id.cmp(&b.id)));
+        teams
+    }
+
+    fn in_round(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Question | Phase::Reveal | Phase::Scoreboard
+        )
+    }
+
+    fn round_number(&self) -> usize {
+        if self.in_round() || self.phase == Phase::Final {
+            self.round + 1
+        } else {
+            0
+        }
+    }
+
+    fn total_rounds(&self) -> usize {
+        if self.phase == Phase::Lobby {
+            self.settings.rounds
+        } else {
+            self.game_len()
+        }
+    }
+
+    fn ms_left(&self) -> Option<u64> {
+        self.deadline
+            .map(|d| d.saturating_duration_since(Instant::now()).as_millis() as u64)
+    }
+
+    fn snapshot(&self) -> AdminRoomView {
+        let question = self
+            .questions
+            .get(self.round)
+            .filter(|_| self.in_round())
+            .map(|q| AdminQuestionView {
+                category: q.category.clone(),
+                prompt: q.prompt.clone(),
+                answer: q.choices[q.answer].clone(),
+            });
+        let puzzle = self
+            .puzzles
+            .get(self.round)
+            .filter(|_| self.in_round())
+            .map(|p| AdminQuestionView {
+                category: p.category.clone(),
+                prompt: p.mask(),
+                answer: p.answer.clone(),
+            });
+        AdminRoomView {
+            code: self.code.clone(),
+            host_token: self.host_token.clone(),
+            created_at: self.created_at,
+            phase: self.phase.name(),
+            round: self.round_number(),
+            total_rounds: self.total_rounds(),
+            ms_left: self.ms_left(),
+            settings: self.settings.view(),
+            max_players: self.max_players,
+            host_connected: self.conns.values().any(|c| matches!(c.role, Role::Host)),
+            vip: self.vip(),
+            players: self
+                .players
+                .iter()
+                .map(|p| AdminPlayerView {
+                    id: p.id,
+                    name: p.name.clone(),
+                    score: p.score,
+                    color: p.color,
+                    character: p.character.clone(),
+                    connected: p.conns > 0,
+                    answered: self.answers.contains_key(&p.id),
+                    team: p.team,
+                    waiting: p.waiting,
+                })
+                .collect(),
+            teams: self.team_views(),
+            question: question.or(puzzle),
+        }
     }
 
     fn send_to(&self, conn_id: u64, msg: &ServerMsg) {
@@ -1384,6 +1763,8 @@ impl Room {
             .and_then(|q| q.song.as_ref())
             .map(|s| s.preview_url.as_str());
 
+        let teams = self.team_views();
+
         for conn in self.conns.values() {
             let is_host = matches!(conn.role, Role::Host);
             let you = match conn.role {
@@ -1393,6 +1774,12 @@ impl Room {
                     answer: self.answers.get(&id).map(|a| a.choice),
                     is_vip: vip == Some(id),
                     rank: ranks.get(&id).copied().unwrap_or(0),
+                    team: self
+                        .players
+                        .iter()
+                        .find(|p| p.id == id)
+                        .and_then(|p| p.team),
+                    waiting: self.players.iter().any(|p| p.id == id && p.waiting),
                     hangman: live_puzzle.map(|_| HangmanYouView {
                         solve_locked: self.hm.solve_locked.contains(&id),
                         cooldown_ms: self.hm.last_guess.get(&id).map_or(0, |t| {
@@ -1415,16 +1802,14 @@ impl Room {
                         character: &p.character,
                         connected: p.conns > 0,
                         answered: self.answers.contains_key(&p.id),
+                        team: p.team,
+                        waiting: p.waiting,
                     })
                     .collect(),
                 vip,
                 max_players: self.max_players,
-                settings: SettingsView {
-                    rounds: self.settings.rounds,
-                    max_rating: self.settings.max_rating,
-                    mode: self.settings.mode,
-                    clip_ms: self.settings.clip_ms,
-                },
+                settings: self.settings.view(),
+                teams: teams.clone(),
                 round: if in_round || self.phase == Phase::Final {
                     self.round + 1
                 } else {
@@ -1456,6 +1841,7 @@ impl Room {
                         results: self
                             .players
                             .iter()
+                            .filter(|p| !p.waiting)
                             .map(|p| ResultView {
                                 player_id: p.id,
                                 choice: self.answers.get(&p.id).map(|a| a.choice),
