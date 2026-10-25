@@ -7,6 +7,7 @@ pub mod music;
 pub mod protocol;
 pub mod room;
 pub mod rooms;
+pub mod rounds;
 pub mod web;
 
 use std::path::PathBuf;
@@ -58,6 +59,8 @@ impl Config {
                 song_question: secs("SONG_SECS", 15),
                 reveal: secs("REVEAL_SECS", 7),
                 scoreboard: secs("SCOREBOARD_SECS", 6),
+                round_intro: secs("ROUND_INTRO_SECS", 5),
+                recap: secs("RECAP_SECS", 14),
                 intro: secs("INTRO_SECS", 6),
                 talk_cps: var("HOST_TALK_CPS", 13.0),
                 idle_timeout: secs("ROOM_IDLE_SECS", 15 * 60),

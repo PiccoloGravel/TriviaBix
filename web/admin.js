@@ -4,7 +4,10 @@
 const { $, el, show } = TBX;
 const POLL_MS = 1500;
 const RATINGS = ["PG", "PG-13", "MA", "NC-17"];
-const PHASES = { lobby: "Lobby", question: "Question", reveal: "Reveal", scoreboard: "Scores", final: "Final scores" };
+const PHASES = {
+  lobby: "Lobby", intro: "Intro", round_intro: "Round intro", question: "Question", reveal: "Reveal",
+  scoreboard: "Scores", recap: "Round recap", final: "Final scores",
+};
 
 let rooms = [];
 let pollTimer = null;
@@ -104,7 +107,8 @@ function select(options, value, onchange) {
 }
 
 function roomCard(r) {
-  const running = ["question", "reveal", "scoreboard"].includes(r.phase);
+  const running = !["lobby", "final"].includes(r.phase);
+  const trivia = r.settings.mode === "trivia";
   const lobby = r.phase === "lobby";
   const tvLink = `/host?code=${r.code}&token=${encodeURIComponent(r.host_token)}`;
   const joinLink = `${joinBase}/?code=${r.code}`;
@@ -119,6 +123,7 @@ function roomCard(r) {
     el("a", { href: tvLink, target: "_blank", rel: "noopener" }, "Open TV ↗"));
 
   const meta = el("div", { class: "meta" },
+    r.stage ? el("span", {}, `${r.stage.title} (${r.stage.number}/${r.settings.trivia_rounds}): ${r.stage.category} (${r.stage.difficulty}, ×${r.stage.points_pct / 100})`) : null,
     el("span", {}, running || r.phase === "final" ? `Question ${r.round} of ${r.total_rounds}` : `${r.total_rounds} questions`),
     el("span", {}, `Rated ${r.settings.max_rating}`),
     el("span", {}, `${r.players.length}/${r.max_players} players`),
@@ -147,7 +152,11 @@ function roomCard(r) {
   lateJoin.checked = r.settings.late_join;
   const settings = el("div", { class: "settings" },
     el("label", { class: "inline" }, lateJoin, "Late joins"),
-    lobby ? el("label", { class: "inline" }, "Questions",
+    lobby && trivia ? el("label", { class: "inline" }, "Rounds",
+      select([3, 4].map((n) => [n, n]), r.settings.trivia_rounds, (v) => act(r.code, "settings", { trivia_rounds: Number(v) }))) : null,
+    lobby && trivia ? el("label", { class: "inline" }, "Per round",
+      select([3, 5, 7, 10].map((n) => [n, n]), r.settings.per_round, (v) => act(r.code, "settings", { per_round: Number(v) }))) : null,
+    lobby && !trivia ? el("label", { class: "inline" }, "Questions",
       select([5, 10, 15, 20, 30].map((n) => [n, n]), r.settings.rounds, (v) => act(r.code, "settings", { rounds: Number(v) }))) : null,
     lobby ? el("label", { class: "inline" }, "Rated",
       select(RATINGS.map((x) => [x, x]), r.settings.max_rating, (v) => act(r.code, "settings", { max_rating: v }))) : null,
@@ -198,7 +207,8 @@ $("#new-room").addEventListener("submit", async (e) => {
   const f = e.target;
   try {
     const room = await api("rooms", {
-      rounds: Number(f.rounds.value),
+      trivia_rounds: Number(f.trivia_rounds.value),
+      per_round: Number(f.per_round.value),
       max_rating: f.max_rating.value,
       teams: Number(f.teams.value),
       late_join: f.late_join.checked,

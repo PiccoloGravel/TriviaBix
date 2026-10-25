@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -34,6 +35,45 @@ impl Rating {
     pub fn level(self) -> i64 {
         self as i64
     }
+}
+
+/// How hard a question is. Trivia rounds get harder as the game goes on.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Difficulty {
+    Easy,
+    #[default]
+    Medium,
+    Hard,
+}
+
+impl Difficulty {
+    pub fn name(self) -> &'static str {
+        match self {
+            Difficulty::Easy => "easy",
+            Difficulty::Medium => "medium",
+            Difficulty::Hard => "hard",
+        }
+    }
+
+    /// Unknown values count as medium, like the column's default.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "easy" => Difficulty::Easy,
+            "hard" => Difficulty::Hard,
+            _ => Difficulty::Medium,
+        }
+    }
+}
+
+/// Just enough about a question to plan a game's rounds before loading the questions themselves.
+#[derive(Debug, Clone)]
+pub struct PoolEntry {
+    pub id: i64,
+    pub category: String,
+    pub difficulty: Difficulty,
 }
 
 /// A question ready to be played, with its choices already shuffled.
@@ -135,33 +175,58 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut rng = rand::rng();
         let mut out = Vec::with_capacity(n);
         for row in rows {
             let id: i64 = row.get("id");
             if exclude.contains(&id) {
                 continue;
             }
-            let correct: String = row.get("correct");
-            let wrong: Vec<String> = serde_json::from_str(row.get::<&str, _>("wrong"))
-                .with_context(|| format!("question {id} has bad `wrong` JSON"))?;
-            let mut choices = wrong;
-            choices.push(correct.clone());
-            choices.shuffle(&mut rng);
-            let answer = choices.iter().position(|c| *c == correct).unwrap();
-            out.push(Question {
-                id,
-                category: row.get("category"),
-                prompt: row.get("prompt"),
-                choices,
-                answer,
-                song: None,
-            });
+            out.push(question_from_row(&row)?);
             if out.len() == n {
                 break;
             }
         }
         Ok(out)
+    }
+
+    /// Every question a room rated `max_rating` may play, for planning rounds.
+    pub async fn question_pool(&self, max_rating: Rating) -> anyhow::Result<Vec<PoolEntry>> {
+        let rows = sqlx::query(
+            "SELECT id, category, difficulty FROM questions
+             WHERE CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1",
+        )
+        .bind(max_rating.level())
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| PoolEntry {
+                id: row.get("id"),
+                category: row.get("category"),
+                difficulty: Difficulty::parse(row.get("difficulty")),
+            })
+            .collect())
+    }
+
+    /// Loads questions by id, in the order given, with their choices shuffled. Ids that no longer
+    /// exist are skipped.
+    pub async fn questions_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<Question>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query(
+            "SELECT id, category, prompt, correct, wrong FROM questions
+             WHERE id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(serde_json::to_string(ids)?)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut by_id = HashMap::new();
+        for row in rows {
+            let id: i64 = row.get("id");
+            by_id.insert(id, question_from_row(&row)?);
+        }
+        Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
     }
 
     /// Picks up to `n` random hangman phrases rated at most `max_rating`, skipping ids in `exclude`.
@@ -284,4 +349,23 @@ impl Db {
             .await?;
         Ok(row.get("n"))
     }
+}
+
+/// Builds a playable question from a `questions` row, shuffling the right answer in with the wrong ones.
+fn question_from_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Question> {
+    let id: i64 = row.get("id");
+    let correct: String = row.get("correct");
+    let mut choices: Vec<String> = serde_json::from_str(row.get::<&str, _>("wrong"))
+        .with_context(|| format!("question {id} has bad `wrong` JSON"))?;
+    choices.push(correct.clone());
+    choices.shuffle(&mut rand::rng());
+    let answer = choices.iter().position(|c| *c == correct).unwrap();
+    Ok(Question {
+        id,
+        category: row.get("category"),
+        prompt: row.get("prompt"),
+        choices,
+        answer,
+        song: None,
+    })
 }
