@@ -6,3 +6,6 @@ tts/__pycache__
 art/library
 art/.cache
 **/__pycache__
+art/test_generate.py
+gpu/test_vast.py
+server/tests/fake-tools

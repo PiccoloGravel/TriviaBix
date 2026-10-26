@@ -5,8 +5,13 @@ The Unraid box doesn't need a GPU. When there's something to generate, `vast.py`
 card such as an RTX 4090 is usually $0.25 to $0.45 an hour, so making all of Bix's lines once costs cents.
 Everything made is kept in the asset store ([docs/assets.md](../docs/assets.md)) and never made twice.
 
-It's one Python 3 file with no dependencies, so it runs anywhere: a laptop, or a throwaway container on
-Unraid (below).
+The easiest way to use it is the admin panel: **`/admin` → Rendering** runs these same commands inside the
+game's container, with a price check first, a confirm, a live log, a cancel button and a list of past jobs
+and what they cost (see [deploy/unraid/README.md](../deploy/unraid/README.md#rendering-from-the-admin-panel)).
+The game server just needs `VAST_API_KEY` set.
+
+It's one Python 3 file with no dependencies, so it also runs anywhere else: a laptop, or a throwaway
+container on Unraid (below).
 
 ## Setting up, once
 
@@ -87,7 +92,7 @@ with `python3 gpu/assets.py import ./art-output --kind image --style <style>`.
 - **One at a time:** it won't rent a second TriviaBix instance while one is running (`--another` to
   override).
 - `python3 gpu/vast.py list` shows what's running and its price; `python3 gpu/vast.py cleanup` destroys
-  every TriviaBix instance. Instances are labeled `triviabix-...` and nothing else on the account is
+  every TriviaBix instance, and `python3 gpu/vast.py destroy ID` one of them. Instances are labeled `triviabix-...` and nothing else on the account is
   touched.
 
 ## From Unraid
@@ -103,6 +108,14 @@ docker run --rm -it -e VAST_API_KEY=... -e ADMIN_PASSWORD=... \
 
 Scheduled after adding questions, say nightly with `--yes`, it rents nothing on the nights there's nothing
 new to make.
+
+## For the admin panel
+
+With `TBX_EVENTS=1`, `vast.py` (and `art/render_on_vast.py`) also print lines like
+`@tbx {"event": "offer", "gpu": "RTX 4090", "price_hr": 0.31, "max_cost": 0.93, ...}` to stderr: `offer`
+before renting, `rented` and `destroyed` (with the cost) around the instance, `backlog` while voicing and
+`todo` for the art. The game server (`server/src/render.rs`) reads them to show prices, progress and
+costs. They're ignored on the command line.
 
 ## Testing
 

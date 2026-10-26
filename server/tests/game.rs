@@ -57,6 +57,7 @@ async fn start_server_with(tts_url: Option<String>) -> (String, String) {
         tts_url,
         voice_names: vec!["Zelda".into()],
         tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
+        render: Default::default(),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -457,6 +458,8 @@ async fn static_pages_are_served() {
         "/admin",
         "/admin/questions",
         "/admin-questions.js",
+        "/admin/render",
+        "/admin-render.js",
         "/style.css",
         "/player.js",
         "/host.js",

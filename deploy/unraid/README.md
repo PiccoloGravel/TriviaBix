@@ -57,14 +57,30 @@ The **WebUI** entry in the container's menu on the Docker tab opens the TV page.
 
 ## Your data
 
-Everything lives in `/mnt/user/appdata/triviabix`:
+Everything TriviaBix keeps lives in `/mnt/user/appdata/triviabix` (the container's `/data`), never inside
+the image, so updating or recreating the container loses nothing. Back it up with the **Appdata Backup**
+plugin like any other container.
 
-- `triviabix.db` holds rooms, scores, and anything edited in the admin panel. Back up appdata
-  with the **Appdata Backup** plugin like any other container.
-- `content/` holds the question packs and Bix's host scripts. The built-in `starter` folders are
-  refreshed from the image on every start, so don't edit them; put your own packs in
-  `content/packs/mine/` (any folder name other than `starter` works) and restart the container,
-  or press reload in the admin panel. See `content/README.md` for the pack format.
+| What | Where in appdata | Kept as |
+|---|---|---|
+| Players, scores, game history, admin edits to Bix's lines, the music library from Lidarr, rendering jobs and their costs | `triviabix.db` | SQLite database |
+| Question packs | `content/packs/` | TOML files you can edit |
+| Host lines Claude wrote (from the Rendering page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
+| Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)) |
+| Generated art originals (pictures, cut-outs, clips) | `assets/image/`, `assets/clip/` | files plus a `.json` each with prompt, seed, model, tags and rating |
+| The TV's copies of the art | `art/` | small WebP/MP4 files and `manifest.json` |
+
+Files are used for anything big (audio, art) or anything you might edit by hand (packs); the database holds
+everything else. Generated content is looked up in the asset store before anything is made, so nothing is
+paid for twice.
+
+The image only holds the program and the built-in content it starts from. The built-in `starter` folders
+under `content/packs` and `content/scripts` are refreshed from the image on every start, so don't edit
+them; put your own packs in `content/packs/mine/` (any folder name other than `starter` works) and restart
+the container, or press reload in the admin panel. See `content/README.md` for the pack format.
+
+Not kept across restarts, on purpose: live rooms, admin logins, and a voice server the Rendering page
+pointed at a rented GPU (it goes back to `TTS_URL`). API keys and addresses are container settings.
 
 ## Updating
 
@@ -140,6 +156,35 @@ see [gpu/README.md](../../gpu/README.md). Everything it makes stays in `appdata/
 For a custom, cheekier Bix, run `python make_voice.py --count 4` in the voice container's console, listen
 to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.wav` (and its `.txt` to
 `bix.txt`), and set `BIX_VOICE=clone:/voices/bix.wav`.
+
+## Rendering from the admin panel
+
+Bix's voice lines, the cutscene art and the host's per-question lines can all be made from the website:
+open **`/admin` → Rendering** (it works from a phone). Each job shows how much is missing, then
+**Check the price** does a dry run that rents nothing and shows the GPU, its price per hour, the time
+limit and the most the job can cost. Nothing starts until you press **Start** and confirm. While it runs
+you see the log and the progress, and **Cancel** stops it and gives the GPU back. Past jobs and what they
+cost are listed underneath.
+
+1. Add the keys in the template (or the stack's `.env`); they're masked and never shown in the panel:
+   - **vast.ai API key** (`VAST_API_KEY`) for voice and art. Make it at
+     <https://cloud.vast.ai/manage-keys/>. vast.ai is prepaid: keep $5 to $10 of credit with auto-reload
+     off, and that's the most that can ever be spent.
+   - **Anthropic API key** (`ANTHROPIC_API_KEY`) for host lines written by Claude, billed to that account.
+2. Make the `triviabix-tts` and `triviabix-art` packages on GitHub public (see
+   [gpu/README.md](../../gpu/README.md)), or fill in **Private image login**.
+3. **Apply**, then open the Rendering page.
+
+The limits are the scripts' own: at most $0.50/hr for voice and $0.60/hr for art, a voice run stops
+after 3 hours at most, an art run after its estimate plus half, and only one GPU at a time. A job
+rents at no more than a little over the price you confirmed. Whatever happens (it finishes, fails, is
+cancelled, or the container restarts mid-job) the instance is destroyed; **Destroy leftover GPUs**
+clears anything started from the command line.
+
+Everything made is kept in appdata: voice lines in `assets/voice`, art originals in `assets/`, the
+TV's copies of the art in `art/` (served to the TV straight away), and Claude's lines in
+`content/scripts/generated/` (loaded and queued for Bix's voice as soon as the job finishes). Nothing
+is made twice.
 
 ## Troubleshooting
 

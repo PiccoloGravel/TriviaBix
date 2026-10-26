@@ -45,7 +45,13 @@ model, so a new model makes new art next to the old instead of mixing them up.
 
 ## Making art
 
-**On a rented GPU (vast.ai).** Needs `gpu/vast.py` from the vast.ai runner and `VAST_API_KEY`.
+**From the admin panel.** `/admin` → Rendering → Cutscene art → Check the price, then Start. It runs
+`render_on_vast.py` inside the game's container. The originals go into the asset store and the TV's
+copies into `ART_DIR` (`appdata/triviabix/art` on Unraid), which the server serves at
+`/cutscenes/assets/gen/` in place of the art it ships with, so new art shows up on the TV without a
+commit or an image rebuild.
+
+**On a rented GPU (vast.ai) from the command line.** Needs `gpu/vast.py` from the vast.ai runner and `VAST_API_KEY`.
 
 ```bash
 python3 art/render_on_vast.py --dry-run   # what needs a GPU, which card, the price, the time limit

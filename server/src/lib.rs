@@ -9,6 +9,7 @@ pub mod library;
 pub mod music;
 pub mod pregen;
 pub mod protocol;
+pub mod render;
 pub mod room;
 pub mod rooms;
 pub mod rounds;
@@ -49,6 +50,8 @@ pub struct Config {
     pub voice_names: Vec<String>,
     /// Where synthesized lines are kept: the asset store's voice folder (docs/assets.md).
     pub tts_cache_dir: PathBuf,
+    /// Rendering jobs run from the admin panel (voice, art, host lines).
+    pub render: render::RenderConfig,
 }
 
 impl Config {
@@ -111,6 +114,15 @@ impl Config {
                 "TTS_CACHE_DIR",
                 var("ASSETS_DIR", PathBuf::from("data/assets")).join("voice"),
             ),
+            render: render::RenderConfig {
+                tools_dir: var("RENDER_TOOLS_DIR", PathBuf::from(".")),
+                python: var("PYTHON", "python3".to_string()),
+                questions_bin: var("QUESTIONS_BIN", "triviabix-questions".to_string()),
+                art_dir: var("ART_DIR", PathBuf::from("data/art")),
+                assets_dir: var("ASSETS_DIR", PathBuf::from("data/assets")),
+                server_url: nonempty("RENDER_SERVER_URL")
+                    .unwrap_or_else(|| format!("http://127.0.0.1:{}", var("PORT", 8080u16))),
+            },
         }
     }
 }

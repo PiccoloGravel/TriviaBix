@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""A stand-in for the triviabix-questions line writer in the render tests."""
+import json, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+(Path(__file__).resolve().parent / "calls.log").open("a").write(" ".join(["lines", *args]) + "\n")
+print("@tbx " + json.dumps({"event": "todo", "count": 1, "total": 7}), file=sys.stderr)
+if "--dry-run" not in args:
+    print("@tbx " + json.dumps({"event": "progress", "batch": 1, "batches": 1, "written": 1,
+                                "input_tokens": 900, "output_tokens": 120}), file=sys.stderr)
+    print("Wrote lines for 1 questions (0 skipped).")
