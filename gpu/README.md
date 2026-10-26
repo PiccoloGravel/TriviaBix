@@ -73,12 +73,13 @@ the clip and transcript (behind the rental's token), and it then starts the serv
 
 ```sh
 python3 gpu/vast.py design --description "A washed-up game show host..." --text "Welcome back..." --dry-run
-python3 gpu/vast.py design --description "..." --text "..." --count 4
+python3 gpu/vast.py design --description "..." --text "First line..." --text "Second line..." --count 4
 ```
 
 Rents a GPU running the voice image, makes `--count` candidate clips with `tts/make_voice.py` (sent along
 with the job, so the image doesn't need rebuilding when it changes), and keeps them in the asset store as
-kind `voice-sample` (see [docs/assets.md](../docs/assets.md)). The same description, line and take number
+kind `voice-sample` (see [docs/assets.md](../docs/assets.md)). Candidate N says the Nth `--text`, so each one
+sounds different; the Pipeline page picks them at random from an editable list. The same description, line and take number
 always give the same clip, so candidates already in the store are reused and only new ones are paid for.
 The admin panel's Pipeline page runs this, plays the candidates and sets `BIX_VOICE=clone:<key>` for the
 one picked. Defaults: 40 minutes at most, `--max-price` 0.50 (the Settings page's voice limit).
