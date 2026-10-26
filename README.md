@@ -4,16 +4,26 @@ A Jackbox-style party trivia game: the host screen goes on the TV and players an
 
 ## Playing
 
+Everything is played from phones. The TV is display only.
+
 1. Open `http://<server>:8080/host` on the TV (a smart TV browser, a cast Chrome tab, or a laptop on HDMI).
-   Pick how many questions and the rating (PG, PG-13, MA, NC-17), then press **Start a room**.
+   It opens a room straight away and shows the room code and a QR code. Browsers keep a page silent until it has been
+   clicked once, so click the TV page once if you want the host's voice and Name That Tune clips.
 2. Players open `http://<server>:8080` on their phones (or scan the QR code on the TV), type the 4-letter room code and a name.
    Each player picks a character (24 to choose from, one per player per room) and can change their name or character in the lobby.
    Up to 12 players per room by default (`MAX_PLAYERS`).
-3. The first player to join is the VIP and can start the game from their phone. The TV can also start it with **Enter**.
+3. The first player to join is the VIP. On their phone the VIP picks the game (Trivia, Speed Hangman or Name That Tune)
+   and starts it. The TV shows the choice as it changes.
+4. During the game the VIP's phone has **Next** to skip ahead and **End game** to go back to the lobby. After the final
+   scores the VIP taps **Pick the next game** to return to the lobby with everyone still in. The VIP can also remove a
+   player from the lobby.
+5. Only the admin changes a room's settings: rating (PG, PG-13, MA, NC-17), length, teams, clip length and late joins.
+   Rooms start at PG. Sign in to the [admin panel](#admin-panel) at `/admin`, on a phone if you like. The lobby on every
+   phone links to it, and that room is listed first.
 
-After the game starts the TV needs no mouse: questions, reveals and scoreboards advance on timers, and the game moves on
-as soon as everyone has answered. On the TV, **Enter**/**Space** skips ahead, **M** mutes the host voice, **V** tries the next
-voice and **F** toggles fullscreen.
+Questions, reveals and scoreboards advance on timers, and the game moves on as soon as everyone has answered. A keyboard
+on the TV is optional: **Enter**/**Space** skips ahead, **M** mutes the host voice, **V** tries the next voice and **F**
+toggles fullscreen.
 
 ## The host
 
@@ -46,7 +56,7 @@ Google voices sound much better than the defaults). Press **V** on the TV to cyc
 
 ### Trivia rounds
 
-A trivia game is 3 or 4 rounds (3, 5 or 7 questions each, picked on the setup screen) that climb in difficulty:
+A trivia game is 3 or 4 rounds (3, 5 or 7 questions each, set in the admin panel) that climb in difficulty:
 
 | Round | Questions | Points |
 |---|---|---|
@@ -64,7 +74,7 @@ get their own round summary. Each question in the database has a `difficulty` of
 
 ### Speed Hangman
 
-Pick **Speed Hangman** on the setup screen instead of Trivia. Each round puts one phrase on the TV with its category, and
+The VIP picks **Speed Hangman** instead of Trivia. Each round puts one phrase on the TV with its category, and
 everyone races to crack it from their phone at the same time:
 
 - Tap a letter to guess it (one guess per second each). Every tile it reveals is worth 75 points.
@@ -75,7 +85,7 @@ everyone races to crack it from their phone at the same time:
 
 ### Name That Tune
 
-Pick **🎵 Name That Tune** on the TV's setup screen and choose a 1, 2 or 3 second clip. Each round the TV plays a slice of a
+The VIP picks **🎵 Name That Tune**, and the admin panel sets a 1, 2 or 3 second clip. Each round the TV plays a slice of a
 song (once at the start and once more halfway through), and players pick the title and artist from four choices on their
 phones. Wrong answers are songs from around the same year. At the reveal the TV shows the cover art and plays the song.
 **R** replays the clip. If the TV browser blocked sound (for example after reopening the page), the first press of
@@ -96,7 +106,7 @@ Phones that lock or refresh rejoin automatically as the same player. A room clos
 **Joining late.** Players can join a game that has already started. They wait on a "You're in!" screen and play from the
 next question with a score of 0. Turn this off per room in the admin panel.
 
-**Teams.** Pick 2 to 4 teams on the TV setup screen (or in the admin panel). Players are dealt onto the smallest team and can
+**Teams.** Set 2 to 4 teams in the admin panel. Players are dealt onto the smallest team and can
 switch from their phone in the lobby. A team's score is the average of its players' scores, so a team of 3 can beat a team of 5.
 
 ## Admin panel

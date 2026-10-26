@@ -79,7 +79,7 @@ function render(s) {
       el("span", { class: "score" }, player.score.toLocaleString()),
     ].filter(Boolean));
   });
-  document.querySelectorAll("[data-vip-next]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
+  document.querySelectorAll("[data-vip-next], [data-vip-end]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
 
   // Joined mid-game: sit tight until the next question (or the next game).
   if (you.waiting) {
@@ -100,6 +100,10 @@ function render(s) {
     $("#lobby-count").textContent = `${s.players.length} of ${s.max_players} players · room ${s.code}`;
     $("#vip-box").classList.toggle("hidden", !you.is_vip);
     $("#lobby-wait").classList.toggle("hidden", you.is_vip);
+    const vip = s.players.find((p) => p.id === s.vip);
+    $("#lobby-wait").textContent = `Up next: ${gameSummary(s.settings)}. ${vip ? vip.name : "The VIP"} picks the game and starts it.`;
+    $("#admin-link").href = `/admin?room=${s.code}`;
+    if (you.is_vip) renderPicker(s);
     $("#lobby-error").textContent = "";
     const taken = s.players.map((p) => p.character);
     TBX.characterGrid($("#lobby-chars"), player.character, taken, (id) => {
@@ -158,8 +162,39 @@ function render(s) {
     $("#f-text").textContent = you.rank === 1 ? "You won!" : `You came ${ordinal(you.rank)}`;
     $("#f-score").textContent = `${player.score.toLocaleString()} pts`;
     $("#again-btn").classList.toggle("hidden", !you.is_vip);
+    $("#f-wait").classList.toggle("hidden", you.is_vip);
   }
 }
+
+// ---------- VIP: pick the game ----------
+
+function gameSummary(st) {
+  const rated = `rated ${st.max_rating}`;
+  const teams = st.teams ? ` · ${st.teams} teams` : "";
+  if (st.mode === "songs") return `Name That Tune, ${st.rounds} songs, ${st.clip_ms / 1000}-second clips, ${rated}${teams}`;
+  if (st.mode === "hangman") return `Speed Hangman, ${st.rounds} puzzles, ${rated}${teams}`;
+  return `Trivia, ${st.trivia_rounds} rounds of ${st.per_round}${st.trivia_rounds > 3 ? " plus a final" : ""}, ${rated}${teams}`;
+}
+
+function renderPicker(s) {
+  const st = s.settings;
+  document.querySelectorAll("#vip-box [data-opt]").forEach((b) => {
+    b.classList.toggle("picked", String(st[b.dataset.opt]) === b.dataset.val);
+  });
+  $("#pick-summary").textContent = `${gameSummary(st)}. The admin sets the rating, length and teams.`;
+  // Phones that dropped out can be cleared from the lobby, now that the TV has no controls.
+  const others = s.players.filter((p) => p.id !== s.you.player_id);
+  $("#kick-box").classList.toggle("hidden", !others.length);
+  $("#kick-list").replaceChildren(...others.map((p) => el("button", {
+    class: "secondary",
+    onclick: () => { if (confirm(`Remove ${p.name} from the game?`)) send({ type: "kick", player_id: p.id }); },
+  }, `${TBX.characters[p.character] ? TBX.characters[p.character].emoji + " " : ""}${p.name}${p.connected ? "" : " (away)"} ✕`)));
+}
+
+document.querySelectorAll("#vip-box [data-opt]").forEach((b) => b.addEventListener("click", () => {
+  const { opt, val } = b.dataset;
+  send({ type: "settings", [opt]: val });
+}));
 
 function renderQuestion(s, fresh) {
   const picked = s.you.answer;
@@ -325,6 +360,9 @@ $("#rename-form").addEventListener("submit", (e) => {
 $("#start-btn").addEventListener("click", () => send({ type: "start" }));
 $("#again-btn").addEventListener("click", () => send({ type: "play_again" }));
 document.querySelectorAll("[data-vip-next]").forEach((b) => b.addEventListener("click", () => send({ type: "next" })));
+document.querySelectorAll("[data-vip-end]").forEach((b) => b.addEventListener("click", () => {
+  if (confirm("End this game and go back to the lobby? Scores won't count.")) send({ type: "lobby" });
+}));
 $("#leave-btn").addEventListener("click", () => {
   conn && conn.close();
   conn = null;

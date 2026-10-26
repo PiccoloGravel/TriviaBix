@@ -811,6 +811,12 @@ impl Room {
                 self.speak(vec![line], Vec::new(), None);
                 self.back_to_lobby();
             }
+            ClientMsg::Lobby => {
+                if !is_leader {
+                    return Err("Only the host or the VIP can end the game.".into());
+                }
+                self.abandon_game()?;
+            }
             ClientMsg::Settings {
                 rounds,
                 max_rating,
@@ -821,8 +827,20 @@ impl Room {
                 trivia_rounds,
                 per_round,
             } => {
-                if !is_host {
-                    return Err("Only the host can change settings.".into());
+                if !is_leader {
+                    return Err("Only the VIP can change the game.".into());
+                }
+                // Players only choose which game to play. Rating, length, teams and late joins
+                // are for the admin panel, so nobody can flip a room to NC-17 from a phone.
+                let admin_only = rounds.is_some()
+                    || max_rating.is_some()
+                    || clip_ms.is_some()
+                    || teams.is_some()
+                    || late_join.is_some()
+                    || trivia_rounds.is_some()
+                    || per_round.is_some();
+                if !is_host && admin_only {
+                    return Err("Only the admin can change the game's settings.".into());
                 }
                 self.change_settings(SettingsChange {
                     rounds,
@@ -887,8 +905,13 @@ impl Room {
                 self.broadcast();
             }
             ClientMsg::Kick { player_id } => {
-                if !is_host {
-                    return Err("Only the host can kick players.".into());
+                // The TV has no controls, so the VIP tidies up the lobby (say, a phone that left).
+                let vip_in_lobby = is_leader && self.phase == Phase::Lobby;
+                if !is_host && !vip_in_lobby {
+                    return Err("Only the VIP can remove players, in the lobby.".into());
+                }
+                if matches!(role, Role::Player(id) if id == player_id) {
+                    return Err("You can't remove yourself. Just leave!".into());
                 }
                 self.kick(player_id).await;
             }
@@ -916,14 +939,7 @@ impl Room {
                 self.record_results().await;
                 self.broadcast();
             }
-            AdminCmd::Lobby => {
-                if self.phase == Phase::Lobby {
-                    return Err("Already in the lobby.".into());
-                }
-                // Abandoned games are not recorded.
-                self.game_id = None;
-                self.back_to_lobby();
-            }
+            AdminCmd::Lobby => self.abandon_game()?,
             AdminCmd::Close => {
                 for conn_id in self.conns.keys() {
                     self.send_to(
@@ -983,6 +999,16 @@ impl Room {
             self.advance().await;
         }
         running
+    }
+
+    /// Drops the game in progress (it isn't recorded) and goes back to the lobby.
+    fn abandon_game(&mut self) -> Result<(), String> {
+        if self.phase == Phase::Lobby {
+            return Err("Already in the lobby.".into());
+        }
+        self.game_id = None;
+        self.back_to_lobby();
+        Ok(())
     }
 
     fn back_to_lobby(&mut self) {

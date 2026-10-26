@@ -1345,3 +1345,100 @@ async fn trivia_rounds_get_harder_with_recaps_between() {
             .all(|r| r["status"] == "done")
     );
 }
+
+#[tokio::test]
+async fn the_vip_runs_the_whole_game_from_their_phone() {
+    let addr = start_server().await;
+    // The TV opens a room with no settings at all.
+    let (code, host_token) = create_room_with(&addr, json!({})).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut vip = open(&addr, &format!("/ws/play?code={code}&name=Vee")).await;
+    recv(&mut vip).await;
+    let mut bob = open(&addr, &format!("/ws/play?code={code}&name=Bob")).await;
+    recv(&mut bob).await;
+    let mut ghost = open(&addr, &format!("/ws/play?code={code}&name=Ghost")).await;
+    let ghost_id = recv(&mut ghost).await["player_id"].as_u64().unwrap();
+    wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 3).await;
+
+    // Only the VIP picks the game.
+    send(&mut bob, json!({ "type": "settings", "mode": "hangman" })).await;
+    assert!(
+        next_error(&mut bob).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("VIP")
+    );
+    send(&mut bob, json!({ "type": "kick", "player_id": ghost_id })).await;
+    next_error(&mut bob).await;
+
+    // The VIP picks the game, but the rating, length and teams are for the admin only.
+    send(
+        &mut vip,
+        json!({ "type": "settings", "mode": "hangman", "max_rating": "NC-17" }),
+    )
+    .await;
+    assert!(
+        next_error(&mut vip).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("admin")
+    );
+    for setting in [
+        json!({ "rounds": 5 }),
+        json!({ "teams": 2 }),
+        json!({ "late_join": false }),
+        json!({ "per_round": 3 }),
+        json!({ "clip_ms": 1000 }),
+    ] {
+        let mut msg = setting;
+        msg["type"] = json!("settings");
+        send(&mut vip, msg).await;
+        next_error(&mut vip).await;
+    }
+    send(&mut vip, json!({ "type": "settings", "mode": "hangman" })).await;
+    let s = wait_state(&mut host, |s| s["settings"]["mode"] == "hangman").await;
+    assert_eq!(s["settings"]["max_rating"], "PG");
+    assert_eq!(s["settings"]["teams"], 0);
+    send(&mut vip, json!({ "type": "settings", "mode": "trivia" })).await;
+    send(&mut host, json!({ "type": "settings", "per_round": 3 })).await;
+    wait_state(&mut host, |s| {
+        s["settings"]["mode"] == "trivia" && s["settings"]["per_round"] == 3
+    })
+    .await;
+
+    // The VIP clears out a player, but can't remove themselves.
+    let vip_id = wait_state(&mut vip, |_| true).await["you"]["player_id"].clone();
+    send(&mut vip, json!({ "type": "kick", "player_id": vip_id })).await;
+    next_error(&mut vip).await;
+    send(&mut vip, json!({ "type": "kick", "player_id": ghost_id })).await;
+    assert_eq!(next_error(&mut ghost).await["fatal"], true);
+    wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 2).await;
+
+    // Start, skip ahead, then drop the game to pick another one.
+    send(&mut vip, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] != "lobby").await;
+    send(&mut vip, json!({ "type": "next" })).await;
+    send(&mut bob, json!({ "type": "lobby" })).await;
+    next_error(&mut bob).await;
+    send(&mut vip, json!({ "type": "lobby" })).await;
+    let s = wait_state(&mut host, |s| s["phase"] == "lobby").await;
+    assert!(
+        s["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["score"] == 0)
+    );
+    send(&mut vip, json!({ "type": "lobby" })).await;
+    next_error(&mut vip).await;
+
+    // Kicking mid-game is left to the admin panel.
+    send(&mut vip, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] != "lobby").await;
+    send(
+        &mut vip,
+        json!({ "type": "kick", "player_id": s["players"][1]["id"] }),
+    )
+    .await;
+    next_error(&mut vip).await;
+}
