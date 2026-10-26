@@ -28,6 +28,7 @@ import queue
 import subprocess
 import sys
 import time
+import traceback
 
 # server.py is next to this file in the repo; in the image (where this runs from gpu/vast.py) it's in /app.
 sys.path.insert(0, os.environ.get("TTS_APP") or (os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals()
@@ -98,7 +99,7 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results, siz
             many = MingBatch(model)
         except Exception as e:  # noqa: BLE001
             results.put(("note", n, f"batching is off ({type(e).__name__}: {e}); voicing one line at a time", 0.0))
-    finished = False
+    finished = traced = False
     while not finished:
         job = jobs.get()
         if job is None:
@@ -115,26 +116,9 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results, siz
             chunk.append(more)
         started = time.monotonic()
         try:
-            if many:
-                try:
-                    waves = many.synthesize([text for _, text in chunk])
-                except Exception as e:  # noqa: BLE001
-                    if "CUDA error" in str(e):
-                        raise
-                    # The batched sampler is ours, not Ming's; if it trips, the reference one still works.
-                    results.put(("note", n, f"batching failed ({type(e).__name__}: {first_line(str(e))}); "
-                                            "voicing one line at a time from now on", 0.0))
-                    many = None
-                    waves = [e] * len(chunk)
-            if not many:
-                waves = []
-                for _, text in chunk:
-                    try:
-                        waves.append(model.synthesize(text))
-                    except Exception as e:  # noqa: BLE001
-                        if "CUDA error" in str(e):
-                            raise
-                        waves.append(e)
+            waves, many, said = voice_chunk(many, model, [text for _, text in chunk])
+            if said:
+                results.put(("note", n, said, 0.0))
         except Exception as e:  # a broken GPU stops everything
             for j in chunk:
                 jobs.put(j)
@@ -144,6 +128,9 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results, siz
         for (key, _), wave in zip(chunk, waves):
             if isinstance(wave, Exception):
                 results.put(("failed", n, f"{key}: {type(wave).__name__}: {wave}", secs))
+                if not traced:  # the first one in full, so the log shows where it came from
+                    traced = True
+                    results.put(("trace", n, "".join(traceback.format_exception(wave)), 0.0))
                 continue
             try:
                 audio = server.encode(wave, model.sample_rate, fmt)
@@ -156,6 +143,41 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results, siz
                 results.put(("failed", n, f"{key}: {type(e).__name__}: {e}", secs))
     if finished:
         jobs.put(None)  # leave the stop sign for the next copy
+
+
+def voice_chunk(many, model, texts: list[str]):
+    """Voices `texts` with the batched sampler `many` if there is one, else one line at a time. Lines the
+    batched sampler couldn't make are tried again one at a time; if that works where batching didn't, the
+    batched sampler is the problem, and it's turned off. Returns the waves (or each line's exception), the
+    sampler to use from now on, and a note for the log if it was turned off. A CUDA error is raised."""
+    def one(text):
+        try:
+            return model.synthesize(text)
+        except Exception as e:  # noqa: BLE001
+            if "CUDA error" in str(e):
+                raise
+            return e
+
+    if not many:
+        return [one(t) for t in texts], None, None
+    try:
+        waves = many.synthesize(texts)
+    except Exception as e:  # noqa: BLE001
+        if "CUDA error" in str(e):
+            raise
+        # The batched sampler is ours, not Ming's; if it trips, the reference one still works.
+        return [one(t) for t in texts], None, (f"batching failed ({type(e).__name__}: {first_line(str(e))}); "
+                                               "voicing one line at a time from now on")
+    bad = [i for i, w in enumerate(waves) if isinstance(w, Exception)]
+    if not bad:
+        return waves, many, None
+    first = waves[bad[0]]
+    for i in bad:
+        waves[i] = one(texts[i])
+    if all(isinstance(waves[i], Exception) for i in bad):
+        return waves, many, None  # the lines themselves fail, batched or not
+    return waves, None, (f"batching failed on {len(bad)} line(s) that work one at a time ({type(first).__name__}: "
+                         f"{first_line(str(first))}); voicing one line at a time from now on")
 
 
 class MingBatch:
@@ -180,7 +202,9 @@ class MingBatch:
 
         def note(**kw):
             asked[-1].append(kw)
-            return torch.zeros(self.ming.sample_rate // 10)
+            # Shaped as the model's generate returns it, (1, samples): Ming trims each piece's trailing
+            # silence, which needs that leading dimension.
+            return torch.zeros(1, self.ming.sample_rate // 10)
 
         out: list = [None] * len(texts)
         m.generate = note
@@ -438,6 +462,9 @@ def main(argv=None) -> int:
             print(f"[batch] copy {n} couldn't load: {info}", flush=True)
             if ready == 0 and n == 0:
                 return 1
+        elif what == "trace":
+            for line in info.rstrip().splitlines():
+                print(f"[batch] copy {n}: {line}", flush=True)
         elif what == "note":
             if info not in errors:
                 errors[info] = 0

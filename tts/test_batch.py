@@ -14,6 +14,41 @@ import server  # noqa: E402
 
 
 class BatchTest(unittest.TestCase):
+    def test_lines_batching_cant_make_are_made_one_at_a_time_and_batching_stops(self):
+        class Model:
+            def synthesize(self, text):
+                if "bad" in text:
+                    raise ValueError("a bad line")
+                return f"one:{text}"
+
+        class Broken:  # the batched sampler fails every line, as it did with mis-shaped pieces
+            def synthesize(self, texts):
+                return [IndexError("tuple index out of range") for _ in texts]
+
+        waves, many, said = batch.voice_chunk(Broken(), Model(), ["a", "bb"])
+        self.assertEqual(waves, ["one:a", "one:bb"])
+        self.assertIsNone(many)
+        self.assertIn("batching failed on 2 line(s) that work one at a time (IndexError", said)
+
+        class Fine:
+            def synthesize(self, texts):
+                return [ValueError("a bad line") if "bad" in t else f"many:{t}" for t in texts]
+
+        fine = Fine()
+        waves, many, said = batch.voice_chunk(fine, Model(), ["a", "bad"])
+        self.assertEqual(waves[0], "many:a")
+        self.assertIsInstance(waves[1], ValueError)
+        self.assertIs(many, fine, "a line that fails either way doesn't turn batching off")
+        self.assertIsNone(said)
+
+        class Crashes:
+            def synthesize(self, texts):
+                raise RuntimeError("shapes")
+
+        waves, many, said = batch.voice_chunk(Crashes(), Model(), ["a"])
+        self.assertEqual((waves, many), (["one:a"], None))
+        self.assertIn("batching failed (RuntimeError: shapes)", said)
+
     def test_cards_the_build_runs_by_compatibility_are_accepted(self):
         cu124 = ["sm_50", "sm_60", "sm_70", "sm_75", "sm_80", "sm_86", "sm_90"]
         cu128 = ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120", "compute_120"]
@@ -94,7 +129,10 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("lines all failed", log)
         self.assertEqual(log.count("failed k"), 1, log)
-        self.assertLess(log.count("ValueError"), 4, log)
+        # The first failure's traceback once, in full; after that, only the summary.
+        self.assertEqual(log.count("Traceback (most recent call last)"), 1, log)
+        self.assertIn('raise ValueError("bad text', log)
+        self.assertLess(log.count("ValueError"), 5, log)
 
 
 if __name__ == "__main__":
