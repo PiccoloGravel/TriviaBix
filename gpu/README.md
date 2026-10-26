@@ -36,15 +36,16 @@ python3 gpu/vast.py voice --server http://192.168.1.20:8080             # does i
 It logs in to the game server's admin API and gets every line still waiting for audio in Bix's voice
 (renting nothing if there are none). It rents the GPU expected to finish the job for the least money,
 starts the `triviabix-tts` image there and uploads the whole backlog in one go. On the GPU,
-`tts/batch.py` (sent along, so the image needn't be rebuilt) loads several copies of the model, as many
-as fit in its memory, and works through the lines on all of them at once, longest first. Every minute
+`tts/batch.py` (sent along, so the image needn't be rebuilt) loads a few copies of the model, as many as
+fit in its memory, and each voices 16 lines side by side in every model call (Ming's own sampler does
+one line at a time, which leaves the GPU mostly idle), longest lines first. Every minute
 the audio made so far comes back and is filed in `appdata/triviabix/assets/voice` through the game
 server, so a run that's stopped keeps what it made. When it's done the instance is destroyed. Cached
 lines keep playing with no GPU at all; only new lines with player names fall back to the browser voice.
 
 Each run measures how many lines a minute it made and keeps that in the asset store
 (`gpu-speeds.json`), so the next price check's "expected time and cost" is based on real numbers.
-Until the first run it guesses 60 lines a minute on an RTX 4090.
+Until the first run it guesses 150 lines a minute on an RTX 4090.
 
 `--hours N` instead keeps a voice service running on the GPU for N hours with the game server pointed
 at it, so live lines (new players' names) are in Bix's voice during a game night.

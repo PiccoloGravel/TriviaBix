@@ -32,6 +32,27 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(json.loads((out / "voice.json").read_text())["voice"], "ip:US_James")
         self.assertEqual(json.loads((out / "stats.json").read_text())["workers"], 3)
 
+    def test_lines_go_to_the_model_in_batches(self):
+
+        class Many:
+            def __init__(self, backend):
+                self.backend = backend
+
+            def synthesize(self, texts):
+                return [self.backend.synthesize(t) for t in texts]
+
+        server.StubBackend.model = "ming"
+        old = batch.MingBatch
+        batch.MingBatch = Many
+        try:
+            code, out, log = self.run_batch(40)
+        finally:
+            batch.MingBatch = old
+            del server.StubBackend.model
+        self.assertEqual(code, 0, log)
+        self.assertEqual(len(list(out.glob("*.wav"))), 40)
+        self.assertNotIn("batching", log, "the batched path ran without falling back")
+
     def test_a_cuda_error_stops_the_run_at_once(self):
         def broken(self, text):
             raise RuntimeError("CUDA error: no kernel image is available for execution on the device")
