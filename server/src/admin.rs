@@ -82,6 +82,9 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
             axum::routing::put(set_lines),
         )
         .route("/api/admin/content/reload", post(reload_content))
+        .route("/api/admin/duplicates", get(list_duplicates))
+        .route("/api/admin/duplicates/keep", post(keep_pair))
+        .route("/api/admin/questions/{id}/hidden", post(set_hidden))
         .route("/api/admin/voice", get(voice_status).put(set_voice_server))
         .route("/api/admin/music", get(music_status))
         .route("/api/admin/music/sync", post(music_sync))
@@ -234,6 +237,78 @@ async fn set_lines(
             Json(json!({ "ok": true })).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Questions that look like the same question asked twice, and the ones hidden as duplicates.
+async fn list_duplicates(State(app): State<AppState>) -> Response {
+    match app.db.duplicate_report(&app.content_dir).await {
+        Ok(report) => Json(report).into_response(),
+        Err(e) => {
+            tracing::error!("finding duplicate questions: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Couldn't check for duplicates." })),
+            )
+                .into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct KeepPair {
+    a: i64,
+    b: i64,
+}
+
+/// Marks two look-alike questions as different, so both stay and the pair stops showing up.
+async fn keep_pair(State(app): State<AppState>, Json(body): Json<KeepPair>) -> Response {
+    match app.db.keep_question_pair(body.a, body.b).await {
+        Ok(()) => {
+            tracing::info!(a = body.a, b = body.b, "admin kept a look-alike pair");
+            Json(json!({ "ok": true })).into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Couldn't keep that pair: {e}") })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetHidden {
+    hidden: bool,
+}
+
+/// Hides a question as a duplicate (it stops being played, even after a reload) or brings it back.
+async fn set_hidden(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<SetHidden>,
+) -> Response {
+    match app.db.set_question_hidden(id, body.hidden).await {
+        Ok(true) => {
+            tracing::info!(
+                id,
+                hidden = body.hidden,
+                "admin changed a question's visibility"
+            );
+            Json(json!({ "ok": true })).into_response()
+        }
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No question with that id." })),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("hiding question {id}: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Couldn't save that." })),
+            )
+                .into_response()
+        }
     }
 }
 

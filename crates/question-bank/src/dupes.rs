@@ -248,7 +248,9 @@ fn compare(a: &Print, b: &Print) -> Option<(Verdict, f32)> {
         }
         // Different answers but almost the same words: maybe the same answer spelled
         // differently, maybe a genuinely different question.
-        (None, None) if score >= 0.75 => Some(Verdict::Possible),
+        (None, None) if score >= 0.75 && !a.answers.is_empty() && !b.answers.is_empty() => {
+            Some(Verdict::Possible)
+        }
         _ => None,
     }?;
     Some((verdict, score))

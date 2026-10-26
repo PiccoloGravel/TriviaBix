@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>TriviaBix · Duplicates</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { font-size: 16px; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+    header { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    header h1 { margin: 0; font-size: 28px; color: var(--accent); flex: 1; }
+    h2 { font-size: 20px; margin: 28px 0 12px; }
+    a { color: var(--accent); }
+    .stat { background: var(--panel); border-radius: 999px; padding: 6px 14px; color: var(--muted); }
+    .stat b { color: var(--text); }
+    button { padding: 8px 14px; font-size: 15px; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+    button.small { padding: 4px 10px; font-size: 13px; box-shadow: none; }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .pair { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .pair-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+    .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 700px) { .sides { grid-template-columns: 1fr; } }
+    .side { background: rgba(0,0,0,.2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+    .badge { border-radius: 999px; padding: 2px 9px; font-size: 12px; background: rgba(255,255,255,.12); color: var(--text); }
+    .badge.sure { background: var(--bad); color: #fff; }
+    .badge.maybe { background: var(--accent); color: #1a0b3d; }
+    .prompt { font-size: 17px; }
+    .answer { color: var(--good); font-size: 14px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .none { color: var(--muted); font-size: 15px; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 10px 18px; border-radius: 14px; z-index: 10; }
+    .toast.ok { background: var(--good); color: #1a0b3d; }
+    #login { max-width: 360px; margin: 18vh auto 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="login" class="hidden" data-screen>
+    <h1 style="color:var(--accent)">TriviaBix</h1>
+    <p class="muted"><a href="/admin">Log in on the admin page</a> first, then come back here.</p>
+  </section>
+
+  <section id="report" class="wrap hidden" data-screen>
+    <header>
+      <h1>Duplicate questions</h1>
+      <span class="stat"><b id="stat-sure">0</b> duplicates</span>
+      <span class="stat"><b id="stat-maybe">0</b> to check</span>
+      <a href="/admin/questions">Bix's lines</a>
+      <a href="/admin">← Rooms</a>
+    </header>
+
+    <p class="muted" style="margin-top:0">
+      Questions that ask the same thing in different words, from any pack, import or seed. "Keep this one" hides the
+      other: it stops being played and stays hidden when the packs reload. "Different questions" keeps both and
+      stops showing the pair. Imports already skip questions you have, so this is mostly for older content.
+    </p>
+
+    <div class="list" id="pairs"></div>
+
+    <h2>Hidden as duplicates</h2>
+    <div class="list" id="hidden"></div>
+  </section>
+
+  <script src="/common.js"></script>
+  <script src="/admin-duplicates.js"></script>
+</body>
+</html>

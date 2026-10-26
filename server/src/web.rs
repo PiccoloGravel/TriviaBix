@@ -131,6 +131,10 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             "/admin/questions",
             ServeFile::new(dir.join("admin-questions.html")),
         )
+        .route_service(
+            "/admin/duplicates",
+            ServeFile::new(dir.join("admin-duplicates.html")),
+        )
         .fallback_service(ServeDir::new(dir))
         .layer(TraceLayer::new_for_http())
         .with_state(state))

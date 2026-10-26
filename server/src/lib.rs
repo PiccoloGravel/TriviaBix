@@ -2,6 +2,7 @@ pub mod admin;
 pub mod characters;
 pub mod content;
 pub mod db;
+pub mod duplicates;
 pub mod hangman;
 pub mod host;
 pub mod library;
