@@ -128,11 +128,15 @@ pub struct SongClip {
     pub title: String,
     pub artist: String,
     pub year: i64,
+    /// An Apple preview, or a `/media/...` link to a file from the music library.
     pub preview_url: String,
-    /// Where in the 30-second preview the clip starts.
+    /// Where in the preview (or the library track) the clip starts.
     pub start_ms: u64,
     pub artwork_url: Option<String>,
     pub store_url: Option<String>,
+    /// Set when the clip comes from the music library rather than Apple.
+    pub album: Option<String>,
+    pub from_library: bool,
 }
 
 /// A row from the `songs` table.
@@ -144,6 +148,44 @@ pub struct Song {
     pub year: i64,
     pub itunes_id: Option<i64>,
     pub explicit: bool,
+    /// "hits" for the curated list, "library" for songs that only exist in the music library.
+    pub source: String,
+    /// The library file to play, when the song is in the music library.
+    pub file_path: Option<String>,
+    pub album: Option<String>,
+    pub genre: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub artwork_url: Option<String>,
+}
+
+/// What a music library sync changed.
+#[derive(Debug, Default, Clone, Copy, serde::Serialize)]
+pub struct LibrarySync {
+    /// New songs that only exist in the library.
+    pub added: usize,
+    /// Library songs that were already there.
+    pub kept: usize,
+    /// Curated songs found in the library, which now play from the file.
+    pub matched: usize,
+    /// Library songs that are no longer in the library.
+    pub removed: u64,
+}
+
+fn song_from_row(row: &sqlx::sqlite::SqliteRow) -> Song {
+    Song {
+        id: row.get("id"),
+        title: row.get("title"),
+        artist: row.get("artist"),
+        year: row.get("year"),
+        itunes_id: row.get("itunes_id"),
+        explicit: row.get::<i64, _>("explicit") != 0,
+        source: row.get("source"),
+        file_path: row.get("file_path"),
+        album: row.get("album"),
+        genre: row.get("genre"),
+        duration_ms: row.get("duration_ms"),
+        artwork_url: row.get("artwork_url"),
+    }
 }
 
 /// A speed hangman phrase.
@@ -387,24 +429,167 @@ impl Db {
     /// Every playable song rated at most `max_rating`.
     pub async fn songs(&self, max_rating: Rating) -> anyhow::Result<Vec<Song>> {
         let rows = sqlx::query(
-            "SELECT id, title, artist, year, itunes_id, explicit FROM songs
-             WHERE unplayable = 0
+            "SELECT id, title, artist, year, itunes_id, explicit, source, file_path, album, genre,
+                    duration_ms, artwork_url
+             FROM songs
+             WHERE (unplayable = 0 OR file_path IS NOT NULL)
                AND CASE rating WHEN 'PG' THEN 0 WHEN 'PG-13' THEN 1 WHEN 'MA' THEN 2 ELSE 3 END <= ?1",
         )
         .bind(max_rating.level())
         .fetch_all(&self.pool)
         .await?;
+        Ok(rows.iter().map(song_from_row).collect())
+    }
+
+    /// Random songs from the music library with their ratings, for background music on the TV.
+    pub async fn library_playlist(&self, n: usize) -> anyhow::Result<Vec<(Song, Rating)>> {
+        let rows = sqlx::query(
+            "SELECT id, title, artist, year, itunes_id, explicit, source, file_path, album, genre,
+                    duration_ms, artwork_url, rating
+             FROM songs WHERE file_path IS NOT NULL ORDER BY RANDOM() LIMIT ?1",
+        )
+        .bind(n as i64)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows
-            .into_iter()
-            .map(|row| Song {
-                id: row.get("id"),
-                title: row.get("title"),
-                artist: row.get("artist"),
-                year: row.get("year"),
-                itunes_id: row.get("itunes_id"),
-                explicit: row.get::<i64, _>("explicit") != 0,
+            .iter()
+            .map(|row| {
+                let rating = Rating::parse(row.get("rating")).unwrap_or(Rating::Nc17);
+                (song_from_row(row), rating)
             })
             .collect())
+    }
+
+    /// How many songs can play from the music library.
+    pub async fn library_count(&self) -> anyhow::Result<i64> {
+        let row = sqlx::query("SELECT COUNT(*) AS n FROM songs WHERE file_path IS NOT NULL")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get("n"))
+    }
+
+    /// Replaces the music library with `tracks`. A track that matches a curated song (same title
+    /// and artist, ignoring case and punctuation) is attached to it, so that song plays from the
+    /// file and keeps its hand-picked rating. Library songs that are gone are removed.
+    pub async fn sync_library(
+        &self,
+        tracks: &[crate::library::LibraryTrack],
+    ) -> anyhow::Result<LibrarySync> {
+        let mut tx = self.pool.begin().await?;
+        let rows = sqlx::query("SELECT id, title, artist, source FROM songs")
+            .fetch_all(&mut *tx)
+            .await?;
+        let mut existing: HashMap<String, (i64, bool)> = HashMap::new();
+        for row in &rows {
+            let key = crate::library::song_key(row.get("title"), row.get("artist"));
+            let from_library = row.get::<String, _>("source") == "library";
+            existing.entry(key).or_insert((row.get("id"), from_library));
+        }
+
+        let mut report = LibrarySync::default();
+        let mut seen = Vec::with_capacity(tracks.len());
+        for t in tracks {
+            let key = crate::library::song_key(&t.title, &t.artist);
+            match existing.get(&key) {
+                // A curated song: keep its title, year and rating, just point it at the file.
+                Some(&(id, false)) => {
+                    sqlx::query(
+                        "UPDATE songs SET file_path = ?2, album = ?3, genre = ?4, duration_ms = ?5,
+                                artwork_url = COALESCE(artwork_url, ?6)
+                         WHERE id = ?1",
+                    )
+                    .bind(id)
+                    .bind(&t.path)
+                    .bind(&t.album)
+                    .bind(&t.genre)
+                    .bind(t.duration_ms)
+                    .bind(&t.artwork_url)
+                    .execute(&mut *tx)
+                    .await?;
+                    report.matched += 1;
+                    seen.push(id);
+                }
+                Some(&(id, true)) => {
+                    sqlx::query(
+                        "UPDATE songs SET title = ?2, artist = ?3, year = ?4, rating = ?5,
+                                file_path = ?6, album = ?7, genre = ?8, duration_ms = ?9,
+                                artwork_url = ?10, explicit = ?11
+                         WHERE id = ?1",
+                    )
+                    .bind(id)
+                    .bind(&t.title)
+                    .bind(&t.artist)
+                    .bind(t.year)
+                    .bind(t.rating.as_str())
+                    .bind(&t.path)
+                    .bind(&t.album)
+                    .bind(&t.genre)
+                    .bind(t.duration_ms)
+                    .bind(&t.artwork_url)
+                    .bind(t.explicit as i64)
+                    .execute(&mut *tx)
+                    .await?;
+                    report.kept += 1;
+                    seen.push(id);
+                }
+                None => {
+                    let id: i64 = sqlx::query(
+                        "INSERT INTO songs (title, artist, year, rating, source, file_path, album,
+                                            genre, duration_ms, artwork_url, explicit)
+                         VALUES (?1, ?2, ?3, ?4, 'library', ?5, ?6, ?7, ?8, ?9, ?10)
+                         RETURNING id",
+                    )
+                    .bind(&t.title)
+                    .bind(&t.artist)
+                    .bind(t.year)
+                    .bind(t.rating.as_str())
+                    .bind(&t.path)
+                    .bind(&t.album)
+                    .bind(&t.genre)
+                    .bind(t.duration_ms)
+                    .bind(&t.artwork_url)
+                    .bind(t.explicit as i64)
+                    .fetch_one(&mut *tx)
+                    .await?
+                    .get("id");
+                    existing.insert(key, (id, true));
+                    report.added += 1;
+                    seen.push(id);
+                }
+            }
+        }
+
+        // Whatever wasn't seen has left the library.
+        sqlx::query("CREATE TEMP TABLE IF NOT EXISTS seen_songs (id INTEGER PRIMARY KEY)")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM seen_songs")
+            .execute(&mut *tx)
+            .await?;
+        for id in &seen {
+            sqlx::query("INSERT OR IGNORE INTO seen_songs (id) VALUES (?1)")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        report.removed = sqlx::query(
+            "DELETE FROM songs WHERE source = 'library' AND id NOT IN (SELECT id FROM seen_songs)",
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        sqlx::query(
+            "UPDATE songs SET file_path = NULL, album = NULL, genre = NULL, duration_ms = NULL
+             WHERE source = 'hits' AND file_path IS NOT NULL
+               AND id NOT IN (SELECT id FROM seen_songs)",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM seen_songs")
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(report)
     }
 
     /// Remembers which store track a song is, so later games need one lookup instead of a search.

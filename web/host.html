@@ -123,6 +123,7 @@
 
     .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
+    .now-playing { position: fixed; left: 1.5vw; bottom: 1.5vh; z-index: 5; font-size: 2vh; color: var(--muted); background: rgba(0,0,0,.35); border-radius: 999px; padding: .6vh 1.2vw; max-width: 45vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sound-hint { font-size: 2vh; align-self: center; background: var(--accent); color: #1a0b3d; border-radius: 1vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
     /* ---------- Game show graphics ---------- */
@@ -301,7 +302,7 @@
       <div>
         <div class="title" id="r-title"></div>
         <div class="artist" id="r-artist"></div>
-        <div class="muted credit">Song preview courtesy of Apple Music</div>
+        <div class="muted credit" id="r-credit">Song preview courtesy of Apple Music</div>
       </div>
     </div>
     <div class="choices" id="r-choices"></div>
@@ -368,9 +369,11 @@
   <div class="callouts" id="callouts"></div>
   <canvas id="confetti"></canvas>
 
+  <div class="now-playing hidden" id="now-playing"></div>
   <div class="corner">
     <span class="sound-hint hidden" id="sound-hint">🔈 Click this screen once to turn on sound</span>
     <button class="secondary hidden" id="sound-btn">🔈 Tap for sound</button>
+    <button class="secondary" id="music-btn" title="B">🎵 Music</button>
     <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
     <button class="secondary" id="voice-btn" title="V">🗣 Voice</button>
     <button class="secondary" id="fs-btn" title="F">⛶ Fullscreen</button>
@@ -379,6 +382,7 @@
   <script src="/common.js"></script>
   <script src="/bix.js"></script>
   <script src="/cutscenes.js"></script>
+  <script src="/sfx.js"></script>
   <script src="/host.js"></script>
 </body>
 </html>
