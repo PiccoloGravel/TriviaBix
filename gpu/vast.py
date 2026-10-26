@@ -190,6 +190,25 @@ class Vast:
     def ours(self) -> list:
         return [i for i in self.instances() if str(i.get("label") or "").startswith(LABEL)]
 
+    def logs(self, iid: int, tail: int = 200, wait: float = 45) -> list:
+        """The container's last `tail` lines of output. vast.ai uploads them and returns a link, which can
+        take a few seconds to fill."""
+        res = self.call("PUT", f"/instances/request_logs/{iid}/", {"tail": str(tail)}, tries=2)
+        url = res.get("result_url")
+        if not url:
+            raise Abort(f"vast.ai didn't return a logs link: {res}")
+        give_up = time.time() + wait
+        while True:
+            try:
+                with urllib.request.urlopen(url, timeout=30) as r:
+                    text = r.read().decode(errors="replace")
+                if text.strip() or time.time() > give_up:
+                    return text.splitlines()
+            except (urllib.error.URLError, OSError) as e:
+                if time.time() > give_up:
+                    raise Abort(f"the logs link didn't work: {e}")
+            time.sleep(3)
+
     def destroy(self, iid: int):
         for attempt in range(6):
             try:
@@ -208,16 +227,22 @@ class Vast:
 
 # ---------- What runs on the instance ----------
 
-# Started as `python3 -c ...` in the image, so the image only needs Python 3. It runs TBX_CMD; in job mode
-# it also serves /status and the tarred TBX_OUT on TBX_PORT behind TBX_TOKEN. At TBX_DEADLINE, or once a
-# finished job's result has waited TBX_LINGER seconds, it destroys its own instance (vast.ai gives every
-# instance CONTAINER_ID and CONTAINER_API_KEY) or, failing that, exits, which stops the GPU billing.
+# Started as `python3 -c ...` in the image, so the image only needs Python 3. The job J (see job_blob) comes
+# in one env var, TBX_JOB. The wrapper exports J's env plus TBX_TOKEN, TBX_PORT and TBX_OUT, then runs J's
+# cmd; in job mode it also serves /status and the tarred output dir on the port behind the token. At the
+# deadline, or once a finished job's result has waited `linger` seconds, it destroys its own instance
+# (vast.ai gives every instance CONTAINER_ID and CONTAINER_API_KEY) or, failing that, exits, which stops
+# the GPU billing.
 WRAPPER = r'''
 import collections, hmac, json, os, signal, subprocess, sys, tarfile, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 E = os.environ
-mode, cmd, out, token = E["TBX_MODE"], E["TBX_CMD"], E.get("TBX_OUT", "/out"), E["TBX_TOKEN"]
-deadline, linger = float(E["TBX_DEADLINE"]), float(E.get("TBX_LINGER", "900"))
+E.update(J.get("env") or {})
+mode, cmd, out, token = J["mode"], J["cmd"], J.get("out") or "/out", J["token"]
+port = int(E.get("TBX_PORT") or J["port"])
+E.update(TBX_TOKEN=token, TBX_PORT=str(port), TBX_OUT=out)
+deadline, linger = float(J["deadline"]), float(J.get("linger", 900))
+print("[tbx] wrapper up: %s mode, %s, python %s, port %s" % (mode, os.getcwd(), sys.version.split()[0], port), flush=True)
 log = collections.deque(maxlen=400); seq = [0]
 state = {"state": "running", "code": None}
 done_at = [None]
@@ -267,7 +292,7 @@ class H(BaseHTTPRequestHandler):
             with open(RESULT, "rb") as f: return self.body(f.read(), "application/gzip")
         self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()
 if mode == "job":
-    srv = ThreadingHTTPServer(("0.0.0.0", int(E["TBX_PORT"])), H)
+    srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 signal.signal(signal.SIGTERM, lambda *a: finish("stopped"))
 while True:
@@ -292,8 +317,21 @@ def pack(source: str) -> str:
     return base64.b64encode(zlib.compress(source.encode(), 9)).decode()
 
 
+def job_blob(**job) -> str:
+    """Everything the wrapper needs, the wrapper's own source included, as one env value of only base64
+    characters. vast.ai turns env into docker flags, and values with spaces, quotes, `&&` or `$` (like a
+    job's command) don't reliably survive that."""
+    return pack(json.dumps({"wrapper": WRAPPER, **job}))
+
+
+# Decodes TBX_JOB and runs the wrapper in it.
+BOOT = "import base64,json,os,zlib;J=json.loads(zlib.decompress(base64.b64decode(os.environ['TBX_JOB'])));exec(J['wrapper'])"
+
+
 def boot_args() -> list:
-    return ["python3", "-c", f"import base64,zlib;exec(zlib.decompress(base64.b64decode('{pack(WRAPPER)}')))"]
+    # The boot code goes as a list of byte values, with no spaces or quotes, so it reaches Python intact
+    # whether vast.ai hands docker the args as they are or joins and splits them again.
+    return ["python3", "-c", "exec(bytes([%s]))" % ",".join(map(str, BOOT.encode()))]
 
 
 # Started in place of the voice service when Bix speaks in a cloned voice. It answers /healthz as "not
@@ -368,9 +406,9 @@ class Rental:
         self.body = {
             "client_id": "me", "image": image, "disk": disk, "label": f"{LABEL}-{kind}",
             "runtype": "args", "args": boot_args(), "image_login": login,
-            "env": {f"-p {port}:{port}": "1", **(env or {}), "TBX_MODE": mode, "TBX_CMD": cmd,
-                    "TBX_OUT": out, "TBX_TOKEN": self.token, "TBX_PORT": str(port),
-                    "TBX_DEADLINE": str(int(self.deadline))},
+            "env": {f"-p {port}:{port}": "1",
+                    "TBX_JOB": job_blob(mode=mode, cmd=cmd, out=out, token=self.token, port=port,
+                                        deadline=int(self.deadline), env=dict(env or {}))},
         }
 
     def __enter__(self):
@@ -390,12 +428,28 @@ class Rental:
         event("rented", instance=self.id, price_hr=self.offer.get("dph_total", 0))
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, kind, err, tb):
         if self.id is not None:
+            if kind is not None and not issubclass(kind, KeyboardInterrupt):
+                self.show_logs()
             self.vast.destroy(self.id)
             seconds = time.time() - self.rented_at
             event("destroyed", instance=self.id, seconds=round(seconds),
                   cost=round(self.offer.get("dph_total", 0) * seconds / 3600, 4))
+
+    def show_logs(self, lines: int = 80):
+        """Puts the end of the instance's own output in our log, so a failed start says why."""
+        try:
+            tail = self.vast.logs(self.id)
+        except Exception as e:
+            say(f"couldn't get instance {self.id}'s logs: {e}")
+            return
+        if not tail:
+            say(f"instance {self.id} logged nothing")
+            return
+        say(f"the last {min(len(tail), lines)} lines instance {self.id} logged:")
+        for line in tail[-lines:]:
+            say(f"[gpu] {line}")
 
     def address(self, boot_minutes: float = 20) -> str:
         """Waits for the instance to run and returns http://ip:port for the container's port."""

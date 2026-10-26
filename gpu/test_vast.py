@@ -2,6 +2,7 @@
     cd gpu && python3 -m unittest test_vast.py
 """
 
+import base64
 import io
 import json
 import os
@@ -13,10 +14,16 @@ import tempfile
 import threading
 import unittest
 import unittest.mock
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 os.environ["VAST_API_KEY"] = "test-key"
+
+
+def job(body: dict) -> dict:
+    """The job a rental hands its instance in TBX_JOB."""
+    return json.loads(zlib.decompress(base64.b64decode(body["env"]["TBX_JOB"])))
 
 
 def free_port():
@@ -30,8 +37,10 @@ class FakeVast:
 
     def __init__(self):
         self.created, self.destroyed, self.procs = [], [], {}
-        # Offer ids someone else rents first, and what instances say while starting.
-        self.taken, self.status_msg = set(), None
+        # Offer ids someone else rents first, what instances say while starting, and a status that makes
+        # them stop while starting.
+        self.taken, self.status_msg, self.stopped = set(), None, None
+        self.logs = tempfile.mkdtemp(prefix="fake-vast-logs-")
         self.offers = [{"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.31,
                         "geolocation": "Testland"}]
         fake = self
@@ -58,6 +67,9 @@ class FakeVast:
 
             def do_PUT(self):
                 b = self.body()
+                if self.path.startswith("/api/v0/instances/request_logs/"):
+                    fake.log_tail = int(b["tail"])
+                    return self.reply({"success": True, "result_url": f"{fake.url}/logs/7.txt"})
                 ask = int(self.path.rstrip("/").rsplit("/", 1)[1])
                 if ask in fake.taken:
                     return self.reply({"success": False, "error": "no_such_ask",
@@ -67,14 +79,24 @@ class FakeVast:
                 env = {k: v for k, v in b["env"].items() if not k.startswith("-p ")}
                 env["TBX_PORT"] = str(port)
                 args = [sys.executable] + b["args"][1:]
-                fake.procs[7] = (subprocess.Popen(args, env={**os.environ, **env}, stdout=subprocess.DEVNULL), port)
+                with open(os.path.join(fake.logs, "7.txt"), "w") as log:
+                    fake.procs[7] = (subprocess.Popen(args, env={**os.environ, **env}, stdout=log,
+                                                      stderr=subprocess.STDOUT), port)
                 self.reply({"success": True, "new_contract": 7})
 
             def do_GET(self):
                 if self.path.startswith("/api/v1/instances/"):
                     return self.reply({"instances": [{"id": i, "label": "triviabix-job"} for i in fake.procs
                                                      if i not in fake.destroyed]})
+                if self.path.startswith("/logs/"):
+                    data = Path(fake.logs, "7.txt").read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    return self.wfile.write(data)
                 proc, port = fake.procs[7]
+                if fake.stopped:
+                    return self.reply({"instances": {"actual_status": "exited", "status_msg": fake.stopped}})
                 if fake.status_msg:
                     return self.reply({"instances": {"actual_status": "loading", "status_msg": fake.status_msg}})
                 self.reply({"instances": {"actual_status": "running", "public_ipaddr": "127.0.0.1",
@@ -116,7 +138,10 @@ class VastTest(Base):
         self.assertIn(7, self.fake.destroyed)
         body = self.fake.created[-1]
         self.assertEqual((body["runtype"], body["image"]), ("args", "ghcr.io/x/art"))
-        self.assertIn("-p 8000:8000", body["env"])
+        self.assertEqual(sorted(body["env"]), ["-p 8000:8000", "TBX_JOB"])
+        self.assertRegex(body["env"]["TBX_JOB"], r"^[A-Za-z0-9+/=]+$")
+        self.assertEqual(job(body)["cmd"], cmd)
+        self.assertRegex(" ".join(body["args"]), r"^python3 -c exec\(bytes\(\[[0-9,]+\]\)\)$")
         self.assertLessEqual(self.fake.query["dph_total"]["lte"], 0.5)
         # Destroying twice (the instance already shut itself down) is fine.
         self.vast.Vast().destroy(7)
@@ -157,6 +182,24 @@ class VastTest(Base):
         finally:
             self.fake.status_msg = None
         self.assertIn(7, self.fake.destroyed)
+
+    def test_an_instance_that_stops_while_starting_shows_its_logs(self):
+        self.fake.stopped = "success, running ghcr.io/x/tts"
+        err = io.StringIO()
+        try:
+            with unittest.mock.patch("sys.stderr", err), \
+                    self.assertRaisesRegex(self.vast.Abort, "stopped while starting"):
+                # The wrapper starts (and logs) before vast.py sees the instance stopped.
+                self.vast.run_job("ghcr.io/x/tts", "echo the job ran; sleep 30", "/nonexistent", yes=True,
+                                  max_minutes=2, another=True)
+        finally:
+            self.fake.stopped = None
+        log = err.getvalue()
+        self.assertEqual(self.fake.log_tail, 200)
+        self.assertRegex(log, r"\[gpu\] \[tbx\] wrapper up: job mode")
+        self.assertIn(7, self.fake.destroyed)
+        # Fetched before the instance is destroyed (instance 7 can already be gone from an earlier test).
+        self.assertRegex(log, r"(?s)\[gpu\] \[tbx\] wrapper up.*(destroyed instance 7|instance 7 is gone)")
 
     def test_only_the_chosen_gpus_are_rented(self):
         with unittest.mock.patch.dict(os.environ, {"VAST_GPU_NAMES": "RTX 4090, RTX 3090 ,"}):
@@ -211,8 +254,8 @@ class VastTest(Base):
             self.assertFalse(Path(d, "evil.txt").exists())
 
     def test_wrapper_stops_at_its_deadline(self):
-        env = {**os.environ, "TBX_MODE": "serve", "TBX_CMD": "sleep 60", "TBX_TOKEN": "t",
-               "TBX_DEADLINE": "0", "TBX_PORT": str(free_port())}
+        blob = self.vast.job_blob(mode="serve", cmd="sleep 60", token="t", deadline=0, port=free_port())
+        env = {**os.environ, "TBX_JOB": blob}
         env.pop("CONTAINER_API_KEY", None)
         proc = subprocess.run([sys.executable] + self.vast.boot_args()[1:], env=env, timeout=20,
                               capture_output=True, text=True)
@@ -280,7 +323,7 @@ class VoiceTest(Base):
         self.assertEqual(game.servers[0]["spoke"], 200)
         self.assertIsNone(game.servers[-1]["url"], "the game goes back to its own voice")
         self.assertEqual(self.fake.destroyed, [7])
-        self.assertNotIn("TTS_MODEL", self.fake.created[-1]["env"])
+        self.assertNotIn("TTS_MODEL", job(self.fake.created[-1])["env"])
         with unittest.mock.patch.dict(os.environ, {"TTS_MODEL": "someone/other-tts"}):
             self.assertEqual(self.vast.voice_env("ip:US_James")["TTS_MODEL"], "someone/other-tts")
 
@@ -347,7 +390,7 @@ class DesignTest(Base):
                 self.assertEqual(len(self.fake.created), before + 1)
                 self.vast.design("A tired host's voice", lines, count=3, library=lib, yes=True,
                                  max_minutes=2)
-                cmd = self.fake.created[-1]["env"]["TBX_CMD"]
+                cmd = job(self.fake.created[-1])["cmd"]
                 self.assertIn("--seeds 3 ", cmd)
                 self.assertTrue(cmd.endswith("--text 'Hi, it'\"'\"'s me. Again.'"), cmd)
 
