@@ -23,7 +23,8 @@ assets/
 - **Style** is a string naming what makes the same inputs come out differently: the voice for speech
   (whatever the TTS service sends as `X-Voice`), or the model plus a named look for images and clips.
   Change the style (a new voice, a new art direction) and everything is made fresh in a new folder, while
-  the old folder stays for going back.
+  the old folder stays for going back. For voice lines, each folder is a voice pack on the Pipeline page:
+  switching packs points the game at another folder, and a voice run only adds the lines it's missing.
 - **Key** is `sha256(canonical_json(inputs))[:32]` in hex. `inputs` is a JSON object holding everything
   else that changes the output: `{"text": "..."}` for a voice line, `{"prompt", "width", "height",
   "seed", ...}` for an image. Canonical JSON is sorted keys, no spaces (`","` and `":"`), UTF-8 as is

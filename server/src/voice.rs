@@ -72,6 +72,9 @@ struct Inner {
     /// lines have audio without touching the disk.
     ready: Mutex<Option<(String, HashSet<String>)>>,
     queued: Mutex<HashSet<String>>,
+    /// Every line pre-generation was asked for, in any voice, to count what a voice pack still
+    /// lacks.
+    wanted: Mutex<HashSet<String>>,
     wake: Notify,
 }
 
@@ -112,6 +115,7 @@ impl Voice {
             queue: Default::default(),
             ready: Default::default(),
             queued: Default::default(),
+            wanted: Default::default(),
             wake: Notify::new(),
         });
         tokio::spawn(warm_worker(inner.clone()));
@@ -140,16 +144,81 @@ impl Voice {
 
     /// Whether `text` has audio in the current voice already, so playing it needs no TTS service.
     pub fn is_ready(&self, text: &str) -> bool {
-        let Some(inner) = &self.0 else { return false };
-        let Some((key, _)) = inner.voice.lock().unwrap().clone() else {
-            return false;
-        };
+        self.with_ready(|made| made.contains(&hash(text.trim())))
+            .unwrap_or(false)
+    }
+
+    /// Runs `f` on the lines made in the current voice, or gives `None` with no voice yet.
+    fn with_ready<T>(&self, f: impl FnOnce(&HashSet<String>) -> T) -> Option<T> {
+        let inner = self.0.as_ref()?;
+        let (key, _) = inner.voice.lock().unwrap().clone()?;
         let slug = slug(&key);
         let mut ready = inner.ready.lock().unwrap();
         if ready.as_ref().is_none_or(|(s, _)| *s != slug) {
             *ready = Some((slug.clone(), made(&inner.dir.join(&slug))));
         }
-        ready.as_ref().unwrap().1.contains(&hash(text.trim()))
+        Some(f(&ready.as_ref().unwrap().1))
+    }
+
+    /// The voice lines play in, as the TTS service names it (its cache folder's style).
+    pub fn current_voice(&self) -> Option<String> {
+        let inner = self.0.as_ref()?;
+        inner.voice.lock().unwrap().as_ref().map(|(k, _)| k.clone())
+    }
+
+    /// Plays lines from `key`'s folder from now on, such as after switching voice packs, and
+    /// queues again what that voice doesn't have yet. A TTS service that's up still has the last
+    /// word: lines are always filed under the voice it actually speaks in.
+    pub fn set_voice(&self, key: &str) {
+        let Some(inner) = &self.0 else { return };
+        *inner.voice.lock().unwrap() = Some((key.to_string(), Instant::now() - VOICE_TTL));
+        if let Err(e) = std::fs::create_dir_all(&inner.dir)
+            .and_then(|()| std::fs::write(inner.dir.join(CURRENT), key))
+        {
+            tracing::warn!("couldn't note the voice in {}: {e}", inner.dir.display());
+        }
+        // What's waiting was picked for the old voice; the caller queues again for this one.
+        inner.queue.lock().unwrap().clear();
+        inner.queued.lock().unwrap().clear();
+    }
+
+    /// How many lines are made in `key`'s folder, and how many of the lines the game wants ahead
+    /// of time it still lacks.
+    pub fn counts(&self, key: &str) -> (usize, usize) {
+        let Some(inner) = &self.0 else { return (0, 0) };
+        let made = made(&inner.dir.join(slug(key)));
+        let wanted = inner.wanted.lock().unwrap();
+        (
+            made.len(),
+            wanted.iter().filter(|h| !made.contains(*h)).count(),
+        )
+    }
+
+    /// One line made in `key`'s folder, picked at random, to hear a voice pack.
+    pub async fn sample(&self, key: &str) -> Option<(Vec<u8>, &'static str)> {
+        let inner = self.0.as_ref()?;
+        let dir = inner.dir.join(slug(key));
+        let made: Vec<String> = made(&dir).into_iter().collect();
+        if made.is_empty() {
+            return None;
+        }
+        let pick = &made[rand::random_range(0..made.len())];
+        cached(&dir, pick).await
+    }
+
+    /// The voices with a folder of lines in the cache, as the TTS service named them.
+    pub fn voices_on_disk(&self) -> Vec<String> {
+        let Some(inner) = &self.0 else {
+            return Vec::new();
+        };
+        std::fs::read_dir(&inner.dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path().join("style.txt")).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 
     /// Remembers `text` as a line the game may ask for, and returns its hash.
@@ -223,11 +292,23 @@ impl Voice {
     /// that's about to start.
     pub fn warm(&self, texts: impl IntoIterator<Item = String>, soon: bool) {
         let Some(inner) = &self.0 else { return };
+        let mut hashes: Vec<String> = texts
+            .into_iter()
+            .filter_map(|text| self.register(&text))
+            .collect();
+        inner.wanted.lock().unwrap().extend(hashes.iter().cloned());
+        // Lines the current voice has already are never made again, so they aren't waiting.
+        if let Some(left) = self.with_ready(|made| {
+            hashes
+                .iter()
+                .filter(|h| !made.contains(*h))
+                .cloned()
+                .collect::<Vec<_>>()
+        }) {
+            hashes = left;
+        }
         let mut fresh = Vec::new();
-        for text in texts {
-            let Some(hash) = self.register(&text) else {
-                continue;
-            };
+        for hash in hashes {
             if soon || inner.queued.lock().unwrap().insert(hash.clone()) {
                 fresh.push(hash);
             }

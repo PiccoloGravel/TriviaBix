@@ -13,6 +13,7 @@ struct Server {
     addr: String,
     cookie: String,
     tools: PathBuf,
+    tmp: PathBuf,
 }
 
 fn copy_dir(from: &Path, to: &Path) {
@@ -93,6 +94,7 @@ async fn start() -> Server {
         addr,
         cookie,
         tools,
+        tmp,
     }
 }
 
@@ -702,6 +704,128 @@ async fn designing_listening_to_and_picking_a_voice() {
     );
     let (_, view) = s.call("settings", None).await;
     assert_eq!(setting(&view, "BIX_VOICE")["value"], format!("clone:{key}"));
+    // The new voice got its own pack, in use, and the old one is kept to come back to.
+    let (_, list) = s.call("packs", None).await;
+    let packs = list["packs"].as_array().unwrap();
+    assert_eq!(packs[0]["voice"], format!("clone:{key}"), "{list}");
+    assert_eq!(packs[0]["active"], true);
+    assert!(packs[0]["name"].as_str().unwrap().starts_with("Take "));
+    assert!(
+        packs
+            .iter()
+            .any(|p| p["voice"] == "ip:US_James" && p["active"] == false)
+    );
+}
+
+#[tokio::test]
+async fn voice_packs_switch_and_keep_their_lines() {
+    let s = start().await;
+    let (code, list) = s.call("packs", None).await;
+    assert_eq!(code, 200, "{list}");
+    let packs = list["packs"].as_array().unwrap();
+    assert_eq!(packs.len(), 1, "{list}");
+    let james = packs[0]["id"].as_i64().unwrap();
+    assert_eq!(packs[0]["voice"], "ip:US_James");
+    assert_eq!(packs[0]["active"], true);
+    assert_eq!(packs[0]["made"], 0);
+    assert!(packs[0]["missing"].as_u64().unwrap() > 100, "{list}");
+
+    // A line James already has: kept in his folder of the asset store (slug of ip:US_James).
+    let dir = s.tmp.join("assets/voice/8f7aee184357");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("style.txt"), "ip:US_James").unwrap();
+    std::fs::write(
+        dir.join("ef73ae6a8b47cd3601ab3fad1fb8099e.ogg"),
+        b"OggS fake",
+    )
+    .unwrap();
+
+    let (code, err) = s
+        .call(
+            "packs",
+            Some(json!({ "name": "Nope", "voice": "ip:Nobody" })),
+        )
+        .await;
+    assert_eq!(code, 400, "{err}");
+    let (code, list) = s
+        .call(
+            "packs",
+            Some(json!({ "name": "  Posh   Bix ", "voice": "ip:UK_George" })),
+        )
+        .await;
+    assert_eq!(code, 200, "{list}");
+    let george = list["packs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Posh Bix")
+        .unwrap()
+        .clone();
+    assert_eq!(george["active"], false);
+    let george = george["id"].as_i64().unwrap();
+    let (code, _) = s
+        .call(
+            "packs",
+            Some(json!({ "name": "Again", "voice": "ip:UK_George" })),
+        )
+        .await;
+    assert_eq!(code, 400);
+
+    // James talks faster; switching away and back brings his speed back with him.
+    let (code, list) = s
+        .put(&format!("packs/{james}"), json!({ "speed": "1.2" }))
+        .await;
+    assert_eq!(code, 200, "{list}");
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "BIX_SPEED")["value"], "1.2");
+
+    let (code, list) = s
+        .call(&format!("packs/{george}/use"), Some(json!({})))
+        .await;
+    assert_eq!(code, 200, "{list}");
+    assert_eq!(list["packs"][0]["id"], george);
+    assert_eq!(list["packs"][0]["active"], true);
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "BIX_VOICE")["value"], "ip:UK_George");
+    assert_eq!(setting(&view, "BIX_SPEED")["value"], "1.0");
+
+    let (_, list) = s.call(&format!("packs/{james}/use"), Some(json!({}))).await;
+    let back = &list["packs"][0];
+    assert_eq!(back["id"], james);
+    assert_eq!(back["made"], 1, "{list}");
+    assert_eq!(back["speed"], 1.2);
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "BIX_SPEED")["value"], "1.2");
+
+    // His line is still there to hear; George has none yet.
+    let res = reqwest::Client::new()
+        .get(format!("http://{}/api/admin/packs/{james}/sample", s.addr))
+        .header("cookie", &s.cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.bytes().await.unwrap().as_ref(), b"OggS fake");
+    let res = reqwest::Client::new()
+        .get(format!("http://{}/api/admin/packs/{george}/sample", s.addr))
+        .header("cookie", &s.cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+
+    // Changing the voice on the Settings page switches packs too, making one if it's new.
+    let (code, _) = s
+        .put(
+            "settings",
+            json!({ "key": "BIX_VOICE", "value": "ip:US_Emma" }),
+        )
+        .await;
+    assert_eq!(code, 200);
+    let (_, list) = s.call("packs", None).await;
+    assert_eq!(list["packs"][0]["voice"], "ip:US_Emma", "{list}");
+    assert_eq!(list["packs"][0]["name"], "Emma (built-in)");
+    assert_eq!(list["packs"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test]

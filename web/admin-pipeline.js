@@ -35,6 +35,8 @@ const picked = {
 };
 /** The candidate voices in the asset store, and the voice in use. */
 let voices = { voices: [], bix_voice: null };
+/** Bix's voice packs, the one in use first. */
+let packs = { packs: [], built_in: [], speeds: [], voice_running: false };
 let pipeline = { batches: [], questions: null };
 let checking = null;
 /** The job shown in the panel, and how much of its log is on screen. */
@@ -88,7 +90,7 @@ function select(options, value, onchange) {
 
 async function load(refresh = false) {
   try {
-    [status, pipeline, voices] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline"), api("voices")]);
+    [status, pipeline, voices, packs] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline"), api("voices"), api("packs")]);
   } catch (e) {
     if (refresh) toast(e.message);
     return;
@@ -264,8 +266,95 @@ function card(kind) {
 }
 
 function renderCards() {
+  const active = packs.packs.find((p) => p.active);
+  KINDS.voice.what = active ? `voice lines the “${active.name}” pack still needs` : "voice lines waiting";
   $("#cards").replaceChildren(...["import", "lines", "voice", "art"].map(card));
+  renderPacks();
   renderDesign();
+}
+
+// ---------- Voice packs ----------
+
+const speedLabel = (s) => Number(s) === 1 ? "1× (as made)" : `${s}×`;
+
+function renderPacks() {
+  // Redrawn only when something changes, so the name box keeps its cursor.
+  const drawn = JSON.stringify([packs, voices.voices.map((v) => v.key)]);
+  if (drawn === renderPacks.drawn) return;
+  renderPacks.drawn = drawn;
+  const taken = new Set(packs.packs.map((p) => p.voice));
+  const choices = [
+    ...voices.voices.map((v) => [`clone:${v.key}`, `Designed: take ${v.seed ?? "?"}${v.description ? ` (${v.description.slice(0, 40)}…)` : ""}`]),
+    ...packs.built_in.map((v) => [v, `Built-in: ${v.slice(3).replace("_", " ")}`]),
+  ].filter(([v]) => !taken.has(v));
+  const name = el("input", { type: "text", placeholder: "Name, e.g. Late-night Bix", maxlength: "40", style: "width:auto;flex:1;min-width:180px;max-width:320px" });
+  const voice = select(choices.length ? choices : [["", "Every voice has a pack"]], choices.length ? choices[0][0] : "", () => {});
+  const add = el("button", { class: "secondary small", onclick: () => newPack(name.value, voice.value) }, "Add pack");
+  add.disabled = !choices.length;
+  $("#packs").replaceChildren(
+    el("p", { class: "muted small", style: "margin-top:0" },
+      "A pack is one of Bix's voices and the speed he talks at. Everything made in a pack is kept: each voice run (step 3) only adds the lines the pack in use is missing, ",
+      "and switching to another pack and back loses nothing and pays for nothing twice."),
+    ...(packs.voice_running ? [el("p", { class: "meta" }, "A voice run is adding lines to the pack in use. You can switch packs when it's done.")] : []),
+    el("div", { class: "voices" }, packs.packs.map(packCard)),
+    el("div", { class: "opts", style: "margin-top:12px" }, el("b", {}, "New pack"), name, voice, add));
+}
+
+function packCard(p) {
+  const use = p.active
+    ? el("span", { class: "badge done" }, "✓ In use")
+    : el("button", { class: "small", onclick: () => usePack(p) }, "Switch to this pack");
+  use.disabled = !p.active && packs.voice_running;
+  const speed = select(packs.speeds.map((s) => [s, speedLabel(s)]), packs.speeds.find((s) => Number(s) === p.speed) || "1.0",
+    (v) => changePack(p, { speed: v }));
+  const hear = el("button", { class: "secondary small", onclick: () => hearPack(p) }, "▶ Hear a line");
+  hear.disabled = !p.made;
+  const what = p.voice.startsWith("ip:") ? `Built-in voice ${p.voice.slice(3).replace("_", " ")}`
+    : p.take != null ? `Designed voice, take ${p.take}` : p.voice;
+  return el("div", { class: `voice${p.active ? " current" : ""}` },
+    el("div", { class: "row" }, el("b", {}, p.name), el("span", { style: "flex:1" }), use),
+    el("div", { class: "muted small", title: p.description || p.voice }, what, p.description ? ` · ${p.description}` : ""),
+    el("div", {}, el("b", {}, p.made.toLocaleString()), " lines made",
+      p.missing ? el("span", { class: "muted" }, ` · ${p.missing.toLocaleString()} still to make`) : null),
+    el("div", { class: "row" }, el("label", { class: "inline muted small" }, "Speed ", speed), el("span", { style: "flex:1" }), hear,
+      el("button", { class: "secondary small", onclick: () => renamePack(p) }, "Rename")));
+}
+
+async function packCall(path, body, method, done) {
+  try {
+    packs = await api(path, body, method);
+    if (done) toast(done, true);
+    await load();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function newPack(name, voice) {
+  if (!name.trim()) return toast("Give the pack a name.");
+  return packCall("packs", { name, voice }, "POST", "Pack added. Switch to it to play it and add lines to it.");
+}
+
+function changePack(p, change) {
+  return packCall(`packs/${p.id}`, change, "PUT");
+}
+
+function renamePack(p) {
+  const name = prompt("New name for this pack:", p.name);
+  if (name && name.trim() !== p.name) changePack(p, { name });
+}
+
+function usePack(p) {
+  const left = p.missing ? ` It still needs ${p.missing.toLocaleString()} lines; until a voice run makes them, those use the TV's own voice.` : "";
+  if (!confirm(`Switch Bix to “${p.name}”? Its ${p.made.toLocaleString()} lines play at once.${left} The pack in use now keeps all its lines for when you come back.`)) return;
+  return packCall(`packs/${p.id}/use`, {}, "POST", `Bix now speaks with “${p.name}”.`);
+}
+
+function hearPack(p) {
+  const a = new Audio(`/api/admin/packs/${p.id}/sample?n=${Date.now()}`);
+  a.preservesPitch = true;
+  a.playbackRate = p.speed || 1;
+  a.play().catch(() => toast("Couldn't play a line from this pack."));
 }
 
 // ---------- Designing Bix's voice ----------
@@ -340,10 +429,10 @@ function voiceCard(v) {
 }
 
 async function useVoice(v) {
-  if (!confirm("Make this Bix's voice? Lines already made keep playing in the old voice until the next voice run makes them again in this one.")) return;
+  if (!confirm("Make this Bix's voice? It gets its own voice pack. The pack in use now keeps all its lines, so you can switch back to it any time under Voice packs.")) return;
   try {
     voices = await api(`voices/${v.key}/use`, {});
-    toast("Bix has a new voice. Run step 3 to make his lines in it.", true);
+    toast("Bix has a new voice pack. Run step 3 to make his lines in it.", true);
     await load(true);
   } catch (e) {
     toast(e.message);

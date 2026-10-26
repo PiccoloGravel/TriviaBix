@@ -50,6 +50,7 @@ pub(crate) struct AppState {
     pub voice_names: std::sync::Arc<[String]>,
     pub render: crate::render::Render,
     pub settings: crate::settings::Settings,
+    pub packs: crate::packs::Packs,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -78,6 +79,16 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             "host voice from {url}, cached in {}",
             config.tts_cache_dir.display()
         );
+    }
+    // Lines play from the voice pack in use (BIX_VOICE), and only what it lacks is queued.
+    let packs = crate::packs::Packs::new(
+        db.clone(),
+        settings.clone(),
+        voice.clone(),
+        &config.render.assets_dir,
+    );
+    if let Err(e) = packs.sync().await {
+        tracing::warn!("voice packs: {e}");
     }
     // Queued even with no TTS service, for one set later (such as a rented GPU, see gpu/).
     voice.warm(script.fixed_lines(), false);
@@ -132,6 +143,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         voice_names: config.voice_names.clone().into(),
         render: render.clone(),
         settings,
+        packs,
     };
     // New questions and Claude's host lines are loaded and queued for the voice as soon as
     // they're written.
@@ -147,6 +159,12 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
                     load_content(&app.db, &app.content_dir).await;
                     warm_questions(&app.voice, &app.db, &app.host_name).await;
                     warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
+                }
+                // A voice run may have filled a voice no pack has yet.
+                if kind == crate::render::Kind::Voice
+                    && let Err(e) = app.packs.sync().await
+                {
+                    tracing::warn!("voice packs: {e}");
                 }
             }
         }
