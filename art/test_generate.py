@@ -1,6 +1,7 @@
 """Tests for the art pipeline, using the stub backend (no GPU): python3 -m unittest discover art"""
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -240,6 +241,60 @@ class ShipCodeTest(unittest.TestCase):
                         "art/backends/models.py", "content/categories.toml"):
                 self.assertTrue(Path(d, rel).is_file(), rel)
             self.assertFalse(Path(d, "art/test_generate.py").exists())
+
+
+class ModelAccessTest(unittest.TestCase):
+    """render_on_vast.model_access against a stand-in for the Hugging Face Hub."""
+
+    def setUp(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Hub(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def send(self, code, body=b""):
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(body)
+
+            def do_GET(self):
+                repos = {"bfl/flux": {"gated": "manual", "siblings": [{"rfilename": "README.md"},
+                                                                      {"rfilename": "model_index.json"}]},
+                         "open/birefnet": {"gated": False}}
+                repo = self.path.removeprefix("/api/models/")
+                if repo not in repos:
+                    return self.send(404)
+                self.send(200, json.dumps(repos[repo]).encode())
+
+            def do_HEAD(self):
+                ok = self.path == "/bfl/flux/resolve/main/model_index.json" and \
+                    self.headers.get("Authorization") == "Bearer good"
+                self.send(200 if ok else 401)
+
+        self.hub = ThreadingHTTPServer(("127.0.0.1", 0), Hub)
+        threading.Thread(target=self.hub.serve_forever, daemon=True).start()
+        self.old = os.environ.get("HF_ENDPOINT")
+        os.environ["HF_ENDPOINT"] = f"http://127.0.0.1:{self.hub.server_address[1]}"
+
+    def tearDown(self):
+        self.hub.shutdown()
+        if self.old is None:
+            os.environ.pop("HF_ENDPOINT", None)
+        else:
+            os.environ["HF_ENDPOINT"] = self.old
+
+    def test_a_gated_model_needs_a_token_that_can_read_it(self):
+        import render_on_vast
+        check = render_on_vast.model_access
+        self.assertIsNone(check(["open/birefnet"], None))
+        self.assertIn("accept its terms", check(["bfl/flux", "open/birefnet"], None))
+        self.assertIn("can't download bfl/flux (401)", check(["bfl/flux"], "bad"))
+        self.assertIsNone(check(["bfl/flux", "open/birefnet"], "good"))
+        self.assertIn("doesn't exist", check(["nobody/nothing"], "good"))
 
 if __name__ == "__main__":
     unittest.main()
