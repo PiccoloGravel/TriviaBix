@@ -1,5 +1,5 @@
-//! Rendering jobs started from the admin panel: Bix's voice and the cutscene art on a rented
-//! vast.ai GPU, and the host's per-question lines from Claude.
+//! Rendering jobs started from the admin panel: Bix's voice, candidate voices for him and the
+//! cutscene art on a rented vast.ai GPU, and the host's per-question lines from Claude.
 //!
 //! Each job is one of the command-line tools run as a child process (`gpu/vast.py voice`,
 //! `art/render_on_vast.py`, `triviabix-questions scripts generate`), so the panel and the command
@@ -43,6 +43,16 @@ const CANCEL_GRACE: Duration = Duration::from_secs(90);
 const MISSING_TTL: Duration = Duration::from_secs(60);
 /// The most hours a voice run may keep a GPU (vast.py's default).
 const VOICE_MAX_HOURS: f64 = 3.0;
+/// The most candidate voices one design run may make.
+const DESIGN_MAX: usize = 8;
+/// Where gpu/vast.py keeps candidate voices in the asset store.
+const SAMPLE_KIND: &str = "voice-sample";
+/// What the Pipeline page suggests for a new voice, the same as tts/make_voice.py's defaults.
+pub const VOICE_DESCRIPTION: &str = "A washed-up American game show host in his fifties, clinging to his last gig. \
+His voice is warm and a little gravelly, cheeky and quick but world-weary, with dry, sarcastic timing and a tired \
+sigh in it, and the old showman's bounce still comes back for the big moments. Always clear and easy to follow.";
+pub const VOICE_SAMPLE: &str = "Welcome back to TriviaBix. I'm Bix, your host. Still. Twenty years in show business, \
+and this is the room they give me. Phones out, brains on. Let's play!";
 /// The most questions one line-writing run may cover.
 const LINES_MAX: usize = 500;
 /// Where the line writer saves, under content/scripts. Not a folder the image ships, so a
@@ -96,6 +106,8 @@ impl Default for RenderConfig {
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Voice,
+    /// Candidate voices for Bix from a description, kept in the asset store to listen to and pick.
+    Design,
     Art,
     Lines,
     /// Destroys every TriviaBix instance on the vast.ai account. Costs nothing, so no preview.
@@ -108,11 +120,17 @@ impl Kind {
     fn as_str(self) -> &'static str {
         match self {
             Kind::Voice => "voice",
+            Kind::Design => "design",
             Kind::Art => "art",
             Kind::Lines => "lines",
             Kind::Cleanup => "cleanup",
             Kind::Import => "import",
         }
+    }
+
+    /// Whether the job rents a GPU.
+    fn rents(self) -> bool {
+        matches!(self, Kind::Voice | Kind::Design | Kind::Art)
     }
 
     fn parse(s: &str) -> Option<Self> {
@@ -126,6 +144,15 @@ pub struct Options {
     /// Voice: the most hours the GPU may run (up to 3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_hours: Option<f64>,
+    /// Design: what the voice should sound like.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Design: what each candidate says, which becomes the clip the voice is cloned from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Design: how many candidates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<usize>,
     /// Art: only this kind (backdrop, sticker, category or clip).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kinds: Option<String>,
@@ -162,6 +189,35 @@ impl Options {
                 }
                 Options {
                     max_hours: Some(hours),
+                    ..Default::default()
+                }
+            }
+            Kind::Design => {
+                let tidy = |v: Option<String>, default: &str| {
+                    let v = v.unwrap_or_default();
+                    let v = v.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if v.is_empty() { default.to_string() } else { v }
+                };
+                let description = tidy(self.description, VOICE_DESCRIPTION);
+                let text = tidy(self.text, VOICE_SAMPLE);
+                if !(20..=800).contains(&description.chars().count()) {
+                    return Err("Describe the voice in 20 to 800 characters.".into());
+                }
+                // Ming clones best from a clip of 5 to 15 seconds.
+                if !(30..=300).contains(&text.chars().count()) {
+                    return Err(
+                        "The sample line should be 30 to 300 characters (5 to 15 seconds spoken)."
+                            .into(),
+                    );
+                }
+                let count = self.count.unwrap_or(4);
+                if !(1..=DESIGN_MAX).contains(&count) {
+                    return Err(format!("Make 1 to {DESIGN_MAX} candidates at a time."));
+                }
+                Options {
+                    description: Some(description),
+                    text: Some(text),
+                    count: Some(count),
                     ..Default::default()
                 }
             }
@@ -330,6 +386,12 @@ impl Job {
             Some("todo") => d["todo"] = ev.clone(),
             Some("progress") => d["progress"] = ev.clone(),
             Some("imported") => d["imported"] = ev.clone(),
+            Some("made") => {
+                if !d["made"].is_array() {
+                    d["made"] = json!([]);
+                }
+                d["made"].as_array_mut().unwrap().push(ev["key"].clone());
+            }
             _ => {}
         }
     }
@@ -464,7 +526,7 @@ impl Render {
     /// The most a GPU job may pay per hour: the Settings page's limit, never above the ceiling.
     fn cap(&self, kind: Kind) -> f64 {
         match kind {
-            Kind::Voice => self
+            Kind::Voice | Kind::Design => self
                 .0
                 .settings
                 .price("VOICE_MAX_PRICE", settings::VOICE_PRICE),
@@ -482,6 +544,53 @@ impl Render {
 
     pub fn art_dir(&self) -> &Path {
         &self.0.cfg.art_dir
+    }
+
+    /// The candidate voices for Bix in the asset store, newest first, each with whether it's the
+    /// voice in use (BIX_VOICE=clone:<key>).
+    pub fn voices(&self) -> Vec<Value> {
+        let current = self.0.settings.get("BIX_VOICE").unwrap_or_default();
+        let mut out: Vec<Value> = std::fs::read_dir(self.0.cfg.assets_dir.join(SAMPLE_KIND))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .flat_map(|style| std::fs::read_dir(style.path()).into_iter().flatten().flatten())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+            .filter_map(|e| {
+                let meta: Value = serde_json::from_slice(&std::fs::read(e.path()).ok()?).ok()?;
+                let key = meta["key"].as_str().filter(|k| is_key(k))?;
+                e.path().with_file_name(format!("{key}.wav")).is_file().then(|| {
+                    json!({
+                        "key": key,
+                        "description": meta["description"].as_str().or(meta["inputs"]["description"].as_str()),
+                        "text": meta["transcript"].as_str().or(meta["inputs"]["text"].as_str()),
+                        "seed": meta["seed"].as_u64().or(meta["inputs"]["seed"].as_u64()),
+                        "model": meta["model"],
+                        "created": meta["created"],
+                        "current": current == format!("clone:{key}"),
+                    })
+                })
+            })
+            .collect();
+        out.sort_by_key(|v| {
+            (
+                std::cmp::Reverse(v["created"].as_u64().unwrap_or(0)),
+                v["seed"].as_u64().unwrap_or(0),
+            )
+        });
+        out
+    }
+
+    /// One candidate voice's clip.
+    pub fn voice_clip(&self, key: &str) -> Option<PathBuf> {
+        if !is_key(key) {
+            return None;
+        }
+        std::fs::read_dir(self.0.cfg.assets_dir.join(SAMPLE_KIND))
+            .ok()?
+            .flatten()
+            .map(|style| style.path().join(format!("{key}.wav")))
+            .find(|p| p.is_file())
     }
 
     /// Tells the subscriber which kind of job just finished successfully.
@@ -544,6 +653,9 @@ impl Render {
             "voice_max_price": self.cap(Kind::Voice),
             "art_max_price": self.cap(Kind::Art),
             "voice_max_hours": VOICE_MAX_HOURS,
+            "design_max": DESIGN_MAX,
+            "voice_description": VOICE_DESCRIPTION,
+            "voice_sample": VOICE_SAMPLE,
             "lines_max": LINES_MAX,
         })
     }
@@ -770,7 +882,7 @@ impl Render {
             .ok_or("That price check has expired. Check the price again.")?;
         // Rent at no more than a little over the price shown, and never over the script's limit,
         // so the most it can cost stays close to what was confirmed.
-        let cap = matches!(preview.kind, Kind::Voice | Kind::Art).then(|| self.cap(preview.kind));
+        let cap = preview.kind.rents().then(|| self.cap(preview.kind));
         let max_price = cap.map(|cap| {
             preview
                 .price_hr
@@ -1255,6 +1367,20 @@ impl Render {
                     .arg(o.max_hours.unwrap_or(VOICE_MAX_HOURS).to_string());
                 cmd
             }
+            Kind::Design => {
+                let mut cmd = tool("gpu/vast.py");
+                cmd.arg("design")
+                    .arg("--library")
+                    .arg(&c.assets_dir)
+                    .args([
+                        "--description",
+                        o.description.as_deref().unwrap_or(VOICE_DESCRIPTION),
+                    ])
+                    .args(["--text", o.text.as_deref().unwrap_or(VOICE_SAMPLE)])
+                    .arg("--count")
+                    .arg(o.count.unwrap_or(4).to_string());
+                cmd
+            }
             Kind::Art => {
                 let mut cmd = tool("art/render_on_vast.py");
                 cmd.arg("--out")
@@ -1307,12 +1433,12 @@ impl Render {
             Mode::DryRun => {
                 cmd.arg("--dry-run");
                 // Price the GPU the job would be allowed to rent.
-                if matches!(kind, Kind::Voice | Kind::Art) {
+                if kind.rents() {
                     cmd.arg("--max-price").arg(format!("{:.2}", self.cap(kind)));
                 }
             }
             Mode::Run(max_price) => {
-                if matches!(kind, Kind::Voice | Kind::Art) {
+                if kind.rents() {
                     cmd.arg("--yes");
                 }
                 if let Some(p) = max_price {
@@ -1339,6 +1465,11 @@ impl Render {
             tracing::warn!("copying the shipped art to {}: {e}", dir.display());
         }
     }
+}
+
+/// An asset store key: 32 hex digits.
+fn is_key(key: &str) -> bool {
+    key.len() == 32 && key.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {

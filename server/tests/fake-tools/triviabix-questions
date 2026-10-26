@@ -3,8 +3,13 @@
 import json, sys
 from pathlib import Path
 
+import os
+
 args = sys.argv[1:]
-(Path(__file__).resolve().parent / "calls.log").open("a").write(" ".join(["lines", *args]) + "\n")
+# Which persona it was given, on one line, so the tests can tell the Settings page's reached it.
+persona = os.environ.get("HOST_PERSONA", "").replace("\n", "|")
+(Path(__file__).resolve().parent / "calls.log").open("a").write(
+    " ".join(["lines", *args]) + (f" [persona {persona}]" if persona else "") + "\n")
 if "import" in args:
     # Writes a pack like the real importer and reports which questions it added.
     content = Path(args[args.index("--content") + 1])

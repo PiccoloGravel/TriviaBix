@@ -176,7 +176,9 @@ cargo run -p triviabix-questions --features cli -- scripts generate --topic 80s
 It only fills slots a question doesn't have yet, writes a few lines per slot (including spicier MA ones for tamer
 questions), and saves after every request into the same `scripts/` files `scripts add` uses. Options: `--missing`,
 `--topic`, `--limit` (default 50), `--batch` (default 10), `--model` (default `claude-opus-5-5`), and `--effort`
-(`low` to `max`, default `medium`). It prints the tokens used at the end; at Opus 5.5 prices ($4 in, $20 out per million
+(`low` to `max`, default `medium`). Who Bix is comes from `HOST_PERSONA` (the admin panel's **Settings → Host
+persona**), else a washed-up host clinging to his last gig; changing it only changes lines written afterwards. Lines
+may use the voice's sound tags (`[Sigh]`, `[Laughter]`...) now and then; they're hidden on screen. It prints the tokens used at the end; at Opus 5.5 prices ($4 in, $20 out per million
 tokens) a batch of 10 questions costs roughly 10 to 20 cents, mostly for Claude's thinking. Read what it wrote before a party: it's good, but it's a comedian, not
 an encyclopedia.
 

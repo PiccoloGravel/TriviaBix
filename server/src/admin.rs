@@ -97,6 +97,9 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/pipeline/pack", post(upload_pack))
         .route("/api/admin/settings", get(settings_view).put(settings_set))
         .route("/api/admin/settings/test", post(settings_test))
+        .route("/api/admin/voices", get(list_voices))
+        .route("/api/admin/voices/{key}/clip", get(voice_clip))
+        .route("/api/admin/voices/{key}/use", post(use_voice))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -578,6 +581,7 @@ async fn settings_set(State(app): State<AppState>, Json(body): Json<SettingBody>
     let s = &app.settings;
     match body.key.as_str() {
         "TTS_URL" => app.voice.set_default(s.get("TTS_URL").as_deref()),
+        "BIX_VOICE" => crate::web::warm_all(&app).await,
         "LIDARR_URL" | "LIDARR_API_KEY" => app
             .music
             .library
@@ -599,4 +603,39 @@ async fn settings_test(State(app): State<AppState>, Json(body): Json<TestBody>) 
         Ok(message) => Json(json!({ "ok": true, "message": message })).into_response(),
         Err(error) => Json(json!({ "ok": false, "error": error })).into_response(),
     }
+}
+
+/// The candidate voices designed for Bix, and the voice in use.
+async fn list_voices(State(app): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "voices": app.render.voices(),
+        "bix_voice": app.settings.get("BIX_VOICE"),
+    }))
+}
+
+/// A candidate voice's clip, to listen to before picking it.
+async fn voice_clip(State(app): State<AppState>, Path(key): Path<String>) -> Response {
+    let Some(path) = app.render.voice_clip(&key) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, "audio/wav")], bytes).into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Makes a candidate Bix's voice. Lines are made again in it the next time the voice runs, and
+/// the old voice's lines keep playing until then.
+async fn use_voice(State(app): State<AppState>, Path(key): Path<String>) -> Response {
+    if app.render.voice_clip(&key).is_none() {
+        let error = "There's no such voice in the asset store.";
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": error }))).into_response();
+    }
+    let spec = format!("clone:{key}");
+    if let Err(e) = app.settings.set("BIX_VOICE", Some(&spec)).await {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
+    }
+    tracing::info!("admin picked Bix's voice {spec}");
+    crate::web::warm_all(&app).await;
+    list_voices(State(app)).await.into_response()
 }

@@ -20,9 +20,13 @@ const API_VERSION: &str = "2026-10-21";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const MAX_TOKENS: u32 = 16_000;
 
-const SYSTEM: &str = "You write lines for Bix, the host of TriviaBix, a party trivia game played on a TV with \
-phones as buzzers. Bix is a cartoon microphone: quick, cheeky, warm underneath, and happy to roast the players. \
-His lines are read aloud by text-to-speech, so they must sound natural spoken.
+const INTRO: &str =
+    "You write lines for Bix, the host of TriviaBix, a party trivia game played on a TV with \
+phones as buzzers.";
+
+/// Everything after the persona: what to write and the rules every line follows.
+const RULES: &str = "His lines are read aloud by text-to-speech, so they must sound natural spoken. Stay in \
+character in every line.
 
 For each question you get, write the slots listed in its `write` field:
 - lead_in: said right after Bix reads the question, before anyone answers. Set the mood, tease the topic, or \
@@ -38,7 +42,9 @@ the question's rating. Roasting the players (\"half of you are guessing\", \"you
 welcome.
 
 Rules for every line: one to three short sentences, at most 280 characters, plain text with no emoji, stage \
-directions, or quotation marks around the whole line. Bix can say his own name as {host}; use no other braces. \
+directions, or quotation marks around the whole line. The voice can perform a few sounds written as tags: [Sigh], \
+[Laughter], [Uhm] and [Breathing]. Use one now and then where it lands a joke, never more than one per line and \
+not in most lines; they're hidden on screen. Bix can say his own name as {host}; use no other braces. \
 Don't repeat or paraphrase lines in the question's `existing` list. Return every question you were given, using \
 its `question` id exactly, with an empty list for any slot you were not asked to write.";
 
@@ -83,6 +89,8 @@ pub struct Generator {
     api_key: String,
     pub model: String,
     pub effort: String,
+    /// Who Bix is, in a paragraph; the rest of the instructions are fixed.
+    pub persona: String,
     agent: ureq::Agent,
 }
 
@@ -103,12 +111,27 @@ impl Generator {
             api_key: api_key.into(),
             model: model.into(),
             effort: effort.into(),
+            persona: crate::DEFAULT_PERSONA.into(),
             // A batch can take a few minutes while Claude thinks.
             agent: ureq::AgentBuilder::new()
                 .timeout_read(Duration::from_secs(600))
                 .user_agent("triviabix-questions")
                 .build(),
         }
+    }
+
+    /// Uses this persona instead of the default one. Empty keeps the default.
+    pub fn with_persona(mut self, persona: &str) -> Self {
+        let persona = persona.trim();
+        if !persona.is_empty() {
+            self.persona = persona.chars().take(crate::MAX_PERSONA_CHARS).collect();
+        }
+        self
+    }
+
+    /// The system prompt: the fixed introduction, the persona, then the rules.
+    pub fn system(&self) -> String {
+        format!("{INTRO} {}\n\n{RULES}", self.persona)
     }
 
     /// Writes lines for one batch. Questions with no slots to write are skipped.
@@ -154,7 +177,7 @@ impl Generator {
             "model": self.model,
             "max_tokens": MAX_TOKENS,
             "fallbacks": "default",
-            "system": SYSTEM,
+            "system": self.system(),
             "output_config": {
                 "effort": self.effort,
                 "format": { "type": "json_schema", "schema": reply_schema() },
@@ -371,6 +394,20 @@ answer = "Canada"
         assert_eq!(briefs[0]["write"], json!(["lead_in"]));
         assert_eq!(briefs[0]["existing"], json!(["They hold grudges."]));
         assert_eq!(briefs[1]["choices"][3], "Finland");
+        let system = req["system"].as_str().unwrap();
+        assert!(system.contains("seen better days") && system.contains("lead_in:"));
+    }
+
+    #[test]
+    fn a_custom_persona_replaces_the_default() {
+        let gen = Generator::new("key", DEFAULT_MODEL, "medium")
+            .with_persona("  Bix is a pirate who only speaks in sea shanties.  ");
+        let system = gen.system();
+        assert!(system.contains("Bix is a pirate who only speaks in sea shanties.\n\n"));
+        assert!(!system.contains("seen better days"));
+        assert!(system.contains("Never give away"));
+        let blank = Generator::new("key", DEFAULT_MODEL, "medium").with_persona("   ");
+        assert_eq!(blank.persona, crate::DEFAULT_PERSONA);
     }
 
     fn reply(body: Value) -> Value {

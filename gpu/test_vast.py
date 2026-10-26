@@ -228,6 +228,71 @@ class VoiceTest(Base):
         with unittest.mock.patch.dict(os.environ, {"TTS_MODEL": "someone/other-tts"}):
             self.assertEqual(self.vast.voice_env("ip:US_James")["TTS_MODEL"], "someone/other-tts")
 
+
+class CloneTest(Base):
+    def test_a_designed_voice_is_cloned_on_the_gpu(self):
+        import assets
+        tts = Path(__file__).resolve().parent.parent / "tts"
+        with tempfile.TemporaryDirectory() as lib, tempfile.TemporaryDirectory() as voices:
+            store = assets.Store(lib)
+            inputs = {"description": "tired host", "text": "Hello there.", "seed": 1}
+            hit = store.put(self.vast.SAMPLE_KIND, "ming-freeform:x", inputs, b"RIFFfake", ".wav",
+                            transcript="Hello there.")
+            key = hit.meta["key"]
+            self.assertEqual(self.vast.clone_clip(f"clone:{key}", store), (b"RIFFfake", "Hello there.", key))
+            with self.assertRaises(self.vast.Abort):
+                self.vast.clone_clip("clone:" + "0" * 32, store)
+            self.vast.CLONE_CMD = (f"cd {tts} && TTS_BACKEND=stub TTS_TOKEN=$TBX_TOKEN PORT=$TBX_PORT "
+                                   f"TBX_VOICES={voices} exec {sys.executable} -c "
+                                   "\"import base64,os,zlib;exec(zlib.decompress(base64.b64decode(os.environ['TBX_PY'])))\"")
+            self.fake.destroyed.clear()
+            game = FakeGame()
+            with unittest.mock.patch.dict(os.environ, {"ASSETS_DIR": lib}):
+                self.vast.voice(game.url, "pw", f"clone:{key}", yes=True, max_hours=0.1)
+            self.assertEqual(Path(voices, f"{key}.wav").read_bytes(), b"RIFFfake")
+            self.assertEqual(Path(voices, f"{key}.txt").read_text().strip(), "Hello there.")
+            self.assertEqual(game.servers[0]["spoke"], 200)
+            self.assertEqual(game.backlog, 0)
+            self.assertEqual(self.fake.destroyed, [7])
+
+
+class DesignTest(Base):
+    def test_candidates_are_made_once_and_kept(self):
+        import assets
+        with tempfile.TemporaryDirectory() as lib, tempfile.TemporaryDirectory() as root, \
+                tempfile.TemporaryDirectory() as box:
+            # Stands in for tts/make_voice.py: writes bix-<seed>.wav for each --seeds into --out.
+            Path(root, "tts").mkdir()
+            Path(root, "tts", "make_voice.py").write_text(
+                "import argparse, os\n"
+                "p = argparse.ArgumentParser(); [p.add_argument(a) for a in ('--out', '--seeds', '--mode', "
+                "'--description', '--text')]\n"
+                "a = p.parse_args(); os.makedirs(a.out, exist_ok=True)\n"
+                "for n in a.seeds.split(','):\n"
+                "    open(os.path.join(a.out, f'bix-{n}.wav'), 'w').write(a.description + '|' + n)\n")
+            out = os.path.join(box, "out")
+            with unittest.mock.patch.multiple(self.vast, ROOT=Path(root), DESIGN_OUT=out, DESIGN_CMD=(
+                    f"{sys.executable} -c "
+                    "\"import base64,os,zlib;exec(zlib.decompress(base64.b64decode(os.environ['TBX_PY'])))\"")):
+                before = len(self.fake.created)
+                code = self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=2, library=lib,
+                                        yes=True, max_minutes=2)
+                self.assertEqual(code, 0)
+                self.assertEqual(len(self.fake.created), before + 1)
+                store = assets.Store(lib)
+                made = [a for a in store.all() if a.meta["kind"] == self.vast.SAMPLE_KIND]
+                self.assertEqual(sorted(a.path.read_text() for a in made),
+                                 ["A tired host's voice|1", "A tired host's voice|2"])
+                self.assertEqual({a.meta["transcript"] for a in made}, {"Hi, it's me. Again."})
+                # Asking again rents nothing; one more candidate rents for that one only.
+                self.assertEqual(self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=2,
+                                                  library=lib, yes=True), 0)
+                self.assertEqual(len(self.fake.created), before + 1)
+                self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=3, library=lib, yes=True,
+                                 max_minutes=2)
+                self.assertIn("--seeds 3 ", self.fake.created[-1]["env"]["TBX_CMD"])
+
+
 class AssetsTest(unittest.TestCase):
     def test_put_find_index_import(self):
         import assets

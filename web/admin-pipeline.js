@@ -9,6 +9,7 @@ const KINDS = {
   lines: { title: "✍️ Bix's lines", what: "questions without a lead-in or reveal line", gpu: false, step: 2 },
   voice: { title: "🎙️ Bix's voice", what: "voice lines waiting", gpu: true, step: 3 },
   art: { title: "🎨 Art", what: "pieces of art the TV doesn't have yet", gpu: true, step: 4 },
+  design: { title: "🎭 Design Bix's voice", gpu: true },
   cleanup: { title: "🧹 Destroy leftover GPUs" },
 };
 const OPENTDB = [[9, "General Knowledge"], [10, "Books"], [11, "Film"], [12, "Music"], [13, "Musicals & Theatres"],
@@ -30,7 +31,10 @@ const quotes = {};
 const picked = {
   import: { source: "opentdb", amount: 20, category: "any", difficulty: "any" },
   voice: { max_hours: 3 }, art: { kinds: "all" }, lines: { limit: 50, missing: "either" },
+  design: { description: null, text: null, count: 4 },
 };
+/** The candidate voices in the asset store, and the voice in use. */
+let voices = { voices: [], bix_voice: null };
 let pipeline = { batches: [], questions: null };
 let checking = null;
 /** The job shown in the panel, and how much of its log is on screen. */
@@ -39,9 +43,9 @@ let logSeq = 0;
 let logLines = [];
 let timer = null;
 
-async function api(path, body) {
+async function api(path, body, method = "POST") {
   const res = await fetch(`/api/admin/${path}`, body === undefined ? {} : {
-    method: "POST",
+    method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -84,7 +88,7 @@ function select(options, value, onchange) {
 
 async function load(refresh = false) {
   try {
-    [status, pipeline] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline")]);
+    [status, pipeline, voices] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline"), api("voices")]);
   } catch (e) {
     if (refresh) toast(e.message);
     return;
@@ -196,6 +200,10 @@ function quoteBox(kind) {
   const lines = [];
   if (kind === "voice") lines.push(`${d.backlog} lines to voice`);
   if (kind === "art" && d.todo) lines.push(`${d.todo.count} pieces need a GPU${d.todo.clips ? ` (${d.todo.clips} clips)` : ""}, about ${d.todo.minutes} minutes`);
+  if (kind === "design" && d.todo) {
+    const reused = d.todo.total - d.todo.count;
+    lines.push(`${plural(d.todo.count, "new candidate")} to make` + (reused ? `; ${reused} already made, so free` : ""));
+  }
   if (kind === "lines" && d.todo) lines.push(`Lines for ${d.todo.count} of ${d.todo.total} questions, about ${Math.ceil(d.todo.count / 10)} ${d.todo.count > 10 ? "calls" : "call"} to Claude`);
   const head = q.gpu
     ? el("div", { class: "big" }, `${q.gpu} · ${money(q.price_hr)}/hr`)
@@ -236,6 +244,70 @@ function card(kind) {
 
 function renderCards() {
   $("#cards").replaceChildren(...["import", "lines", "voice", "art"].map(card));
+  renderDesign();
+}
+
+// ---------- Designing Bix's voice ----------
+
+function textBox(key, rows) {
+  const o = picked.design;
+  if (o[key] == null) o[key] = status.ready[key === "description" ? "voice_description" : "voice_sample"];
+  const t = el("textarea", { rows: String(rows), oninput: (e) => {
+    o[key] = e.target.value;
+    if (quotes.design) { delete quotes.design; renderDesign(); }
+  } });
+  t.value = o[key];
+  return t;
+}
+
+let designForm = null;
+
+function renderDesign() {
+  const o = picked.design;
+  // The form is made once, so a refresh doesn't take the cursor out of a box being typed in.
+  if (!designForm) {
+    const count = select([1, 2, 3, 4, 6, 8].map((n) => [n, String(n)]), o.count, (v) => { o.count = Number(v); delete quotes.design; renderDesign(); });
+    designForm = el("div", { class: "design-form" },
+      el("label", {}, "What Bix sounds like", textBox("description", 4)),
+      el("label", {}, "What he says in each clip (his voice is copied from it, so 5 to 15 seconds)", textBox("text", 2)),
+      el("div", { class: "opts" }, el("label", { class: "inline" }, "Make", count, "candidates"),
+        el("span", { class: "muted small" }, "The same description and line always make the same candidates, so each is only paid for once.")),
+      el("div", { id: "design-action" }));
+    $("#design").replaceChildren(designForm, el("div", { id: "design-voices" }));
+  }
+  const running = status.job && status.job.state === "running";
+  const btn = el("button", { class: "secondary", onclick: () => check("design") }, "Check the price");
+  btn.disabled = running || !!checking || !canRun("design");
+  $("#design-action").replaceChildren(quoteBox("design") || btn);
+  const spec = voices.bix_voice || "ip:US_James";
+  const inUse = voices.voices.some((v) => v.current);
+  $("#design-voices").replaceChildren(
+    el("div", { class: "meta" }, "Bix speaks as ", el("b", {}, inUse ? "the voice marked below" : spec),
+      " on rented GPUs. ", el("a", { href: "/admin/settings" }, "Settings"), " has the built-in voices."),
+    voices.voices.length
+      ? el("div", { class: "voices" }, voices.voices.map(voiceCard))
+      : el("p", { class: "muted" }, "No candidates yet. Describe the voice above, check the price and start."));
+}
+
+function voiceCard(v) {
+  const use = v.current
+    ? el("span", { class: "badge done" }, "✓ Bix's voice")
+    : el("button", { class: "small", onclick: () => useVoice(v) }, "Use this voice");
+  return el("div", { class: `voice${v.current ? " current" : ""}` },
+    el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${v.key}/clip` }),
+    el("div", { class: "row" }, el("b", {}, `Take ${v.seed ?? "?"}`), el("span", { style: "flex:1" }), use),
+    el("div", { class: "muted small", title: v.description || "" }, v.description || ""));
+}
+
+async function useVoice(v) {
+  if (!confirm("Make this Bix's voice? Lines already made keep playing in the old voice until the next voice run makes them again in this one.")) return;
+  try {
+    voices = await api(`voices/${v.key}/use`, {});
+    toast("Bix has a new voice. Run step 3 to make his lines in it.", true);
+    await load(true);
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 // ---------- Importing ----------
@@ -362,6 +434,10 @@ function progress(job) {
       `${d.progress.written} questions written · ${d.progress.input_tokens.toLocaleString()} tokens in, ${d.progress.output_tokens.toLocaleString()} out`];
   }
   if (job.kind === "art" && d.todo) return [null, `${d.todo.count} pieces to make`];
+  if (job.kind === "design" && d.todo) {
+    const made = (d.made || []).length;
+    return [d.todo.count ? made / d.todo.count : null, `${made} of ${plural(d.todo.count, "candidate")} made`];
+  }
   if (job.kind === "import" && d.imported) {
     const i = d.imported;
     return [null, plural(i.added, "new question") + (i.skipped ? `, ${plural(i.skipped, "duplicate")} skipped` : "") + (i.pack ? ` → ${i.pack}` : "")];
@@ -422,6 +498,7 @@ function renderHistory() {
     if (j.kind === "lines" && d.progress) what.push(`${d.progress.written} questions`);
     if (j.kind === "voice" && d.backlog_start != null) what.push(`${(d.backlog_start - (d.backlog ?? d.backlog_start)).toLocaleString()} lines`);
     if (j.kind === "art" && d.todo) what.push(`${d.todo.count} pieces`);
+    if (j.kind === "design") what.push(plural((d.made || []).length, "voice"));
     if (j.kind === "import" && d.imported) what.push(plural(d.imported.added, "new question"));
     const cost = j.kind === "lines" && d.progress
       ? `${Math.round((d.progress.input_tokens + d.progress.output_tokens) / 1000)}k tokens`

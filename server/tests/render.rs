@@ -558,3 +558,138 @@ async fn settings_reach_the_jobs_and_keys_stay_hidden() {
         "{res}"
     );
 }
+
+#[tokio::test]
+async fn designing_listening_to_and_picking_a_voice() {
+    let s = start().await;
+    let (_, status) = s.call("render", None).await;
+    assert!(
+        status["ready"]["voice_description"]
+            .as_str()
+            .unwrap()
+            .contains("washed-up")
+    );
+
+    // Out-of-range options are refused before anything runs.
+    let (code, _) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "design", "options": { "count": 20 } })),
+        )
+        .await;
+    assert_eq!(code, 409);
+
+    let description = "A tired, gravelly game show host who has seen it all.";
+    let options = json!({ "description": description, "count": 2 });
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "design", "options": options })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    assert_eq!(preview["details"]["todo"]["count"], 2);
+    assert_eq!(preview["max_cost"], 0.13);
+    let calls = s.calls();
+    assert!(calls.contains("vast design --library"), "{calls}");
+    assert!(
+        calls.contains("--count 2 --dry-run --max-price 0.50"),
+        "{calls}"
+    );
+    let (code, job) = s
+        .call(
+            "render/start",
+            Some(json!({ "token": preview["token"], "confirm": true })),
+        )
+        .await;
+    assert_eq!(code, 200, "{job}");
+    let job = s.finish(job["id"].as_i64().unwrap()).await;
+    assert_eq!(job["state"], "done", "{job}");
+    assert_eq!(job["details"]["made"].as_array().unwrap().len(), 2);
+    assert_eq!(job["cost"], 0.033);
+
+    // Asking again makes nothing, so there's nothing to rent.
+    let (_, again) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "design", "options": options })),
+        )
+        .await;
+    assert_eq!(
+        (&again["ok"], &again["nothing"]),
+        (&json!(true), &json!(true))
+    );
+    assert!(again["token"].is_null());
+
+    let (_, list) = s.call("voices", None).await;
+    let voices = list["voices"].as_array().unwrap();
+    assert_eq!(voices.len(), 2, "{list}");
+    assert_eq!(voices[0]["description"], description);
+    assert_eq!(voices[0]["current"], false);
+    let key = voices[0]["key"].as_str().unwrap().to_string();
+
+    let res = reqwest::Client::new()
+        .get(format!("http://{}/api/admin/voices/{key}/clip", s.addr))
+        .header("cookie", &s.cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()["content-type"], "audio/wav");
+    assert!(res.bytes().await.unwrap().starts_with(b"RIFF"));
+    let (code, _) = s
+        .call(&format!("voices/{}/use", "f".repeat(32)), Some(json!({})))
+        .await;
+    assert_eq!(code, 404);
+
+    let (code, list) = s.call(&format!("voices/{key}/use"), Some(json!({}))).await;
+    assert_eq!(code, 200, "{list}");
+    assert_eq!(list["bix_voice"], format!("clone:{key}"));
+    assert!(
+        list["voices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["key"] == key.as_str() && v["current"] == true)
+    );
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "BIX_VOICE")["value"], format!("clone:{key}"));
+}
+
+#[tokio::test]
+async fn the_host_persona_reaches_the_line_writer() {
+    let s = start().await;
+    let (_, view) = s.call("settings", None).await;
+    let persona = setting(&view, "HOST_PERSONA");
+    assert_eq!(persona["kind"]["type"], "long_text");
+    assert!(
+        persona["default"]
+            .as_str()
+            .unwrap()
+            .contains("seen better days")
+    );
+    let (code, view) = s
+        .put(
+            "settings",
+            json!({ "key": "HOST_PERSONA", "value": "Bix is a burnt-out host.\nHe sighs a lot." }),
+        )
+        .await;
+    assert_eq!(code, 200, "{view}");
+    assert_eq!(
+        setting(&view, "HOST_PERSONA")["value"],
+        "Bix is a burnt-out host.\nHe sighs a lot."
+    );
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "limit": 5 } })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    assert!(
+        s.calls()
+            .contains("[persona Bix is a burnt-out host.|He sighs a lot.]"),
+        "{}",
+        s.calls()
+    );
+}

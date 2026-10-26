@@ -18,6 +18,10 @@ pub enum Kind {
     Secret,
     Url,
     Text,
+    /// Several lines of text, up to `max` characters.
+    LongText {
+        max: usize,
+    },
     /// A Hugging Face model, as "owner/name".
     Model,
     Choice {
@@ -129,6 +133,16 @@ pub const FIELDS: &[Field] = &[
         help: "How hard Claude thinks about each batch. Higher costs more.",
     },
     Field {
+        key: "HOST_PERSONA",
+        group: CLAUDE,
+        label: "Host persona",
+        kind: Kind::LongText {
+            max: triviabix_questions::MAX_PERSONA_CHARS,
+        },
+        default: Some(triviabix_questions::DEFAULT_PERSONA),
+        help: "Who Bix is: his character, history and sense of humour, in a paragraph. Claude writes every new line in this voice. Lines already written stay as they are.",
+    },
+    Field {
         key: "TTS_URL",
         group: VOICE,
         label: "Voice server address",
@@ -150,7 +164,7 @@ pub const FIELDS: &[Field] = &[
         label: "Voice (on rented GPUs)",
         kind: Kind::Text,
         default: Some("ip:US_James"),
-        help: "One of the model's built-in voices, as ip:NAME. A new voice gets its own folder of lines.",
+        help: "One of the model's built-in voices as ip:NAME (US_James, US_Emma, UK_George, UK_Charlotte), or a designed voice as clone:ID, which Pipeline → Design Bix's voice sets for you. A new voice gets its own folder of lines.",
     },
     Field {
         key: "ART_IMAGE_MODEL",
@@ -314,7 +328,8 @@ impl Settings {
         let value = value.map(str::trim).filter(|v| !v.is_empty());
         match value {
             Some(v) => {
-                if v.len() > 4096 || v.contains(['\n', '\r', '\0']) {
+                let long = matches!(f.kind, Kind::LongText { .. });
+                if v.contains('\0') || (!long && (v.len() > 4096 || v.contains(['\n', '\r']))) {
                     return Err(format!(
                         "That doesn't look like a {}.",
                         f.label.to_lowercase()
@@ -461,6 +476,15 @@ fn short(e: reqwest::Error) -> String {
 fn check(f: &Field, v: &str) -> Result<String, String> {
     match f.kind {
         Kind::Secret | Kind::Text => Ok(v.to_string()),
+        Kind::LongText { max } => {
+            let v = v.replace("\r\n", "\n").replace('\r', "\n");
+            let n = v.chars().count();
+            if n > max {
+                Err(format!("Keep it under {max} characters; that's {n}."))
+            } else {
+                Ok(v)
+            }
+        }
         Kind::Url => {
             if v.starts_with("http://") || v.starts_with("https://") {
                 Ok(v.trim_end_matches('/').to_string())
@@ -540,6 +564,23 @@ mod tests {
             again.get("TTS_URL").as_deref(),
             Some("http://from-config:8000")
         );
+    }
+
+    #[tokio::test]
+    async fn the_persona_takes_several_lines() {
+        let s = Settings::load(db().await).await.unwrap();
+        assert_eq!(s.get("HOST_PERSONA"), None);
+        s.set("HOST_PERSONA", Some("Bix is tired.\r\n\r\nVery tired."))
+            .await
+            .unwrap();
+        assert_eq!(
+            s.get("HOST_PERSONA").as_deref(),
+            Some("Bix is tired.\n\nVery tired.")
+        );
+        let long = "a".repeat(triviabix_questions::MAX_PERSONA_CHARS + 1);
+        assert!(s.set("HOST_PERSONA", Some(&long)).await.is_err());
+        // Other text settings still take one line.
+        assert!(s.set("BIX_VOICE", Some("ip:US_James\nx")).await.is_err());
     }
 
     #[tokio::test]

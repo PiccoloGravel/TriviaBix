@@ -63,6 +63,12 @@ function input(f) {
     return el("input", { id: f.key, type: "password", autocomplete: "off", spellcheck: "false",
       placeholder: f.source === "unset" ? "Paste the key" : "•••••••• set (paste a new one to replace it)" });
   }
+  if (k.type === "long_text") {
+    // Starts from the default, so it can be edited rather than written from scratch.
+    const t = el("textarea", { id: f.key, rows: "7", maxlength: String(k.max), spellcheck: "true" });
+    t.value = f.value || f.default || "";
+    return t;
+  }
   if (k.type === "price") {
     return el("input", { id: f.key, type: "number", min: "0.05", max: String(k.max), step: "0.05",
       value: f.value || "", placeholder: f.default || "" });
@@ -79,16 +85,17 @@ function field(f) {
     if (!v && f.kind.type !== "choice") return toast("Type a value first, or use the container's.");
     save(f, v || null);
   } }, "Save");
-  box.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
+  const long = f.kind.type === "long_text";
+  box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (!long || e.ctrlKey || e.metaKey)) go.click(); });
   if (f.kind.type === "choice") box.addEventListener("change", () => go.click());
   const reset = f.source === "saved"
-    ? el("button", { class: "secondary small", onclick: () => save(f, null) }, "Use container's")
+    ? el("button", { class: "secondary small", onclick: () => save(f, null) }, long && f.default ? "Back to the default" : "Use container's")
     : null;
   return el("div", { class: "field" },
     el("div", { class: "field-head" },
       el("label", { for: f.key }, f.label),
       el("span", { class: `badge ${f.source}` }, f.source === "unset" && f.default ? "Default" : SOURCES[f.source])),
-    el("div", { class: "row" }, box, f.kind.type === "choice" ? null : go, reset),
+    el("div", { class: `row${long ? " long" : ""}` }, box, f.kind.type === "choice" ? null : go, reset),
     el("div", { class: "help" }, f.help));
 }
 
