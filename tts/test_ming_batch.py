@@ -18,6 +18,17 @@ except ImportError:
     HAVE = False
 
 
+def ming_trim():
+    """Ming's own trim_trailing_silence (ming_tts.py), without importing the rest of ming_tts."""
+    import ast
+    tree = ast.parse(Path(MING, "ming_tts.py").read_text())
+    keep = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name == "trim_trailing_silence")
+            or (isinstance(n, ast.Assign) and all(getattr(t, "id", "").isupper() for t in n.targets))]
+    space = {"torch": torch}
+    exec(compile(ast.Module(keep, []), "ming_tts.py", "exec"), space)
+    return space["trim_trailing_silence"]
+
+
 def load_ming():
     sys.path.insert(0, MING)
     # The audio codec is never built here; only its import has to succeed.
@@ -88,8 +99,8 @@ class BatchedSamplerTest(unittest.TestCase):
 
 
 class FakeMing:
-    """MingTTS.synthesize's shape: splits a line into fragments, asks the model's `generate` for each, and
-    joins what comes back."""
+    """MingTTS.synthesize's shape: splits a line into fragments, asks the model's `generate` for each, trims
+    each piece's trailing silence with Ming's own code, and joins what comes back."""
 
     sample_rate = 100
 
@@ -105,7 +116,8 @@ class FakeMing:
         if "boom" in text:
             raise ValueError("can't say boom")
         gen = getattr(self.model, "generate", self.generate)
-        return torch.cat([gen(prompt=task, text=frag) for frag in text.split("|")], dim=-1)
+        trim = ming_trim()
+        return torch.cat([trim(gen(prompt=task, text=frag), self.sample_rate) for frag in text.split("|")], dim=-1)
 
 
 @unittest.skipUnless(HAVE, "needs torch")
