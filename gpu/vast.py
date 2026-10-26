@@ -71,6 +71,17 @@ class Gone(Abort):
     """vast.ai has no such thing (404)."""
 
 
+class Taken(Abort):
+    """The offer was rented by someone else (or withdrawn) between pricing it and renting it."""
+
+
+# How vast.ai says an offer can't be rented any more.
+TAKEN = re.compile(r"no_such_ask|no longer available|not available|unavailable|already rented|said 410", re.I)
+# How an instance says it can't pull its image, which waiting won't fix.
+PULL_FAILED = re.compile(r"pull access denied|manifest unknown|unauthorized|authentication required|"
+                         r"error response from daemon|denied:|no such image|repository does not exist", re.I)
+
+
 def image_login(image: str, given: str | None = None) -> str | None:
     """vast.ai's login for pulling `image`: the one given (--login or VAST_IMAGE_LOGIN), else, for an image
     on ghcr.io, one made from GHCR_TOKEN (a read:packages token) and GHCR_USER. None for a public image."""
@@ -152,7 +163,14 @@ class Vast:
         return self.call("POST", "/bundles/", q).get("offers") or []
 
     def create(self, offer_id: int, body: dict) -> int:
-        res = self.call("PUT", f"/asks/{offer_id}/", body, tries=1)
+        try:
+            res = self.call("PUT", f"/asks/{offer_id}/", body, tries=1)
+        except Gone as e:
+            raise Taken(str(e))
+        except Abort as e:
+            if TAKEN.search(str(e)):
+                raise Taken(str(e))
+            raise
         if not res.get("success") or not res.get("new_contract"):
             raise Abort(f"vast.ai didn't start the instance: {res}")
         return int(res["new_contract"])
@@ -336,10 +354,13 @@ class Rental:
     """A rented instance running `cmd` in `image` under the wrapper. A context manager: leaving it, however
     that happens, destroys the instance."""
 
-    def __init__(self, vast: Vast, offer: dict, image: str, cmd: str, mode: str, minutes: float,
+    def __init__(self, vast: Vast, offers: list | dict, image: str, cmd: str, mode: str, minutes: float,
                  env: dict | None = None, port: int = PORT, disk: float = 40, out: str = "/out",
                  login: str | None = None, kind: str = "job"):
-        self.vast, self.offer, self.port = vast, offer, port
+        # The offers to try in order, cheapest first, all within the price limit already confirmed: one can be
+        # taken by someone else between pricing it and renting it.
+        self.offers = [offers] if isinstance(offers, dict) else list(offers)
+        self.vast, self.offer, self.port, self.image = vast, self.offers[0], port, image
         self.token = secrets.token_urlsafe(24)
         self.deadline = time.time() + minutes * 60
         self.id = None
@@ -353,7 +374,17 @@ class Rental:
         }
 
     def __enter__(self):
-        self.id = self.vast.create(self.offer["id"], self.body)
+        for offer in self.offers:
+            try:
+                self.id = self.vast.create(offer["id"], self.body)
+            except Taken:
+                say(f"offer {offer['id']} ({offer.get('gpu_name')}) was just taken by someone else; trying the next")
+                continue
+            self.offer = offer
+            break
+        else:
+            raise Abort(f"every suitable GPU under the price limit ({len(self.offers)} tried) was taken before it "
+                        "could be rented; nothing was rented or charged. Try again in a minute")
         self.rented_at = time.time()
         say(f"rented instance {self.id}: {describe(self.offer)}")
         event("rented", instance=self.id, price_hr=self.offer.get("dph_total", 0))
@@ -378,6 +409,10 @@ class Rental:
                 last = status
             if info.get("actual_status") in ("exited", "offline"):
                 raise Abort(f"the instance stopped while starting ({info.get('status_msg') or status})")
+            msg = str(info.get("status_msg") or "")
+            if info.get("actual_status") != "running" and PULL_FAILED.search(msg):
+                raise Abort(f"the GPU couldn't download {self.image}: {msg.strip()[:300]}. If the image is private, "
+                            "set the image registry login on the Settings page (or make the package public)")
             mapping = (info.get("ports") or {}).get(f"{self.port}/tcp") or []
             if info.get("actual_status") == "running" and info.get("public_ipaddr") and mapping:
                 return f"http://{info['public_ipaddr'].strip()}:{mapping[0]['HostPort']}"
@@ -395,12 +430,13 @@ def describe(offer: dict) -> str:
             f"{offer.get('geolocation') or 'unknown location'} (offer {offer.get('id')})")
 
 
-def pick_offer(vast: Vast, min_vram: float, max_price: float, disk: float) -> dict:
+def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float) -> list:
+    """The suitable offers under `max_price`, cheapest first. The first is the one quoted; the rest are fallbacks."""
     offers = vast.offers(min_vram, max_price, disk)
     if not offers:
         raise Abort(f"no verified GPU with {min_vram:g} GB or more is available under ${max_price:.2f}/hr right "
                     "now; raise --max-price or try again later")
-    return offers[0]
+    return offers
 
 
 def confirm(offer: dict, minutes: float, yes: bool, what: str):
@@ -443,13 +479,13 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
     """Runs `cmd` in `image` on a rented GPU, copies the container's `out` folder into `to`, and destroys the
     instance. Returns the command's exit code."""
     vast = vast or Vast()
-    offer = pick_offer(vast, min_vram, max_price, disk)
-    confirm(offer, max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
+    offers = pick_offers(vast, min_vram, max_price, disk)
+    confirm(offers[0], max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
     if dry_run:
         return 0
     refuse_doubles(vast, another)
     on_signals()
-    with Rental(vast, offer, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login) as r:
+    with Rental(vast, offers, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login) as r:
         base = r.address(boot_minutes)
         say(f"job running at {base}")
         since, status = 0, {}
@@ -647,8 +683,8 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
         say("nothing to make; not renting anything")
         return
     minutes = (min(hours, max_hours) if hours else max_hours) * 60
-    offer = pick_offer(vast, min_vram, max_price, disk)
-    confirm(offer, minutes, yes or dry_run, "would voice lines" if dry_run else "voicing lines")
+    offers = pick_offers(vast, min_vram, max_price, disk)
+    confirm(offers[0], minutes, yes or dry_run, "would voice lines" if dry_run else "voicing lines")
     if dry_run:
         return
     refuse_doubles(vast, another)
@@ -658,7 +694,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
     if clip:
         env.update(BIX_VOICE="ip:US_James", TBX_PY=pack(CLONE_BOOT), TBX_VOICE_NAME=clip[2])
         cmd = CLONE_CMD
-    with Rental(vast, offer, image, cmd, "serve",
+    with Rental(vast, offers, image, cmd, "serve",
                 minutes, env=env, disk=disk, login=login, kind="voice") as r:
         base = r.address(boot_minutes)
         ready_by = time.time() + boot_minutes * 60
