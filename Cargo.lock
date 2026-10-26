@@ -2599,6 +2599,7 @@ dependencies = [
  "anyhow",
  "axum",
  "futures-util",
+ "libc",
  "qrcode",
  "rand 0.9.5",
  "reqwest",

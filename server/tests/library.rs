@@ -482,6 +482,7 @@ async fn start_server(library: LibraryConfig) -> String {
         tts_url: None,
         voice_names: Vec::new(),
         tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
+        render: Default::default(),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

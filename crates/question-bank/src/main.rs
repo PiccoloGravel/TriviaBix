@@ -13,8 +13,9 @@ use triviabix_questions::*;
 #[command(about = "Manage the TriviaBix question bank")]
 struct Cli {
     /// The content folder holding categories.toml and packs/.
-    #[arg(long, global = true, default_value = "content")]
-    content: PathBuf,
+    /// Defaults to CONTENT_DIR (the Docker image sets it to the appdata copy), else `content`.
+    #[arg(long, global = true)]
+    content: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -94,6 +95,12 @@ enum ScriptsAction {
         /// Show what would be sent without calling the API.
         #[arg(long)]
         dry_run: bool,
+        /// A folder under content/scripts to save into, such as `generated` (default: the
+        /// SCRIPTS_INTO environment variable, else next to the packs). Folders that come with
+        /// the server (like `starter`) are replaced on every container start, so the Docker image
+        /// sets SCRIPTS_INTO=generated to keep written lines in appdata.
+        #[arg(long)]
+        into: Option<PathBuf>,
     },
 }
 
@@ -160,9 +167,18 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<(), String> {
+    let content = cli
+        .content
+        .clone()
+        .or_else(|| {
+            std::env::var_os("CONTENT_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("content"));
     match &cli.command {
         Command::Validate => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             for w in bank.warnings() {
                 println!("warning: {w}");
             }
@@ -173,7 +189,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             );
         }
         Command::Stats => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let s = bank.stats();
             println!("{} questions", s.total);
             println!(
@@ -213,7 +229,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             topics,
             rating,
         } => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let filter = Filter {
                 topics: topics.clone(),
                 max_rating: *rating,
@@ -252,7 +268,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             }
         }
         Command::Export { out } => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let json = serde_json::to_string_pretty(bank.questions()).map_err(|e| e.to_string())?;
             std::fs::write(out, json).map_err(|e| e.to_string())?;
             println!(
@@ -261,8 +277,8 @@ fn run(cli: &Cli) -> Result<(), String> {
                 out.display()
             );
         }
-        Command::Import { source } => import_cmd(&cli.content, source)?,
-        Command::Scripts { action } => scripts_cmd(&cli.content, action)?,
+        Command::Import { source } => import_cmd(&content, source)?,
+        Command::Scripts { action } => scripts_cmd(&content, action)?,
     }
     Ok(())
 }
@@ -454,7 +470,11 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
         ScriptsAction::Add { file } => {
             let incoming =
                 ScriptFile::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
-            let (added, updated) = add_scripts(content, &bank, incoming.scripts)?;
+            let into = std::env::var_os("SCRIPTS_INTO")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            let scripts = content.join("scripts").join(into);
+            let (added, updated) = add_scripts(&scripts, &bank, incoming.scripts)?;
             println!("Added scripts for {added} questions and replaced {updated}.");
             println!("Check them with `triviabix-questions sample`, then restart the server to load them.");
         }
@@ -466,14 +486,24 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
             model,
             effort,
             dry_run,
+            into,
         } => {
             let todo = needing_lines(&bank, wanted(missing), topics);
             let total = todo.len();
             let todo: Vec<_> = todo.into_iter().take(*limit).collect();
+            event(serde_json::json!({ "event": "todo", "count": todo.len(), "total": total }));
             if todo.is_empty() {
                 println!("Every matching question already has lines.");
                 return Ok(());
             }
+            let into = into.clone().or_else(|| {
+                std::env::var_os("SCRIPTS_INTO")
+                    .filter(|v| !v.is_empty())
+                    .map(PathBuf::from)
+            });
+            let scripts = content
+                .join("scripts")
+                .join(into.as_deref().unwrap_or(Path::new("")));
             let batches: Vec<_> = todo.chunks((*batch).max(1)).collect();
             if *dry_run {
                 let gen = Generator::new("", model, effort);
@@ -506,7 +536,7 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                         usage.output_tokens += used.output_tokens;
                         skipped += chunk.len() - entries.len();
                         // Save as we go, so a failure later doesn't waste what's paid for.
-                        let (added, updated) = add_scripts(content, &bank, entries)?;
+                        let (added, updated) = add_scripts(&scripts, &bank, entries)?;
                         written += added + updated;
                         eprintln!(
                             "  batch {}/{}: {} questions",
@@ -514,6 +544,11 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                             batches.len(),
                             added + updated
                         );
+                        event(serde_json::json!({
+                            "event": "progress", "batch": i + 1, "batches": batches.len(),
+                            "written": written, "input_tokens": usage.input_tokens,
+                            "output_tokens": usage.output_tokens, "model": model,
+                        }));
                     }
                     Err(e @ (GenerateError::Api { .. } | GenerateError::Http(_))) => {
                         return Err(format!(
@@ -563,10 +598,17 @@ fn needing_lines<'a>(
         .collect()
 }
 
-/// Files script entries under `content/scripts`, in a file named after each question's pack.
-/// Returns how many entries were new and how many replaced an older script.
+/// A line the game server's admin panel reads (TBX_EVENTS=1), such as how many questions need lines.
+fn event(data: serde_json::Value) {
+    if std::env::var_os("TBX_EVENTS").is_some() {
+        eprintln!("@tbx {data}");
+    }
+}
+
+/// Files script entries under `scripts` (usually `content/scripts`), in a file named after each
+/// question's pack. Returns how many entries were new and how many replaced an older script.
 fn add_scripts(
-    content: &Path,
+    scripts: &Path,
     bank: &QuestionBank,
     entries: Vec<ScriptEntry>,
 ) -> Result<(usize, usize), String> {
@@ -592,10 +634,7 @@ fn add_scripts(
             .pack_of(&e.question)
             .map(|p| p.with_extension("toml"))
             .unwrap_or_else(|| PathBuf::from("misc.toml"));
-        by_file
-            .entry(content.join("scripts").join(pack))
-            .or_default()
-            .push(e);
+        by_file.entry(scripts.join(pack)).or_default().push(e);
     }
     if !problems.is_empty() {
         return Err(format!("nothing was saved:\n  {}", problems.join("\n  ")));

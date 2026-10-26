@@ -47,6 +47,7 @@ pub(crate) struct AppState {
     pub script: std::sync::Arc<crate::host::Script>,
     /// VOICE_NAMES
     pub voice_names: std::sync::Arc<[String]>,
+    pub render: crate::render::Render,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -96,6 +97,14 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
     if config.admin_password.is_none() {
         tracing::info!("ADMIN_PASSWORD is not set, so the admin panel is off");
     }
+    let render = crate::render::Render::new(
+        config.render.clone(),
+        config.content_dir.clone(),
+        config.static_dir.clone(),
+        db.clone(),
+        voice.clone(),
+    );
+    render.recover().await;
     let state = AppState {
         rooms,
         db,
@@ -107,7 +116,21 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         host_name,
         script,
         voice_names: config.voice_names.clone().into(),
+        render: render.clone(),
     };
+    // New host lines from Claude are loaded and queued for the voice as soon as they're written.
+    tokio::spawn({
+        let app = state.clone();
+        async move {
+            let mut done = render.finished();
+            while let Ok(kind) = done.recv().await {
+                if kind == crate::render::Kind::Lines {
+                    load_content(&app.db, &app.content_dir).await;
+                    warm_questions(&app.voice, &app.db, &app.host_name).await;
+                }
+            }
+        }
+    });
 
     let dir = &config.static_dir;
     Ok(Router::new()
@@ -130,6 +153,16 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route_service(
             "/admin/questions",
             ServeFile::new(dir.join("admin-questions.html")),
+        )
+        .route_service(
+            "/admin/render",
+            ServeFile::new(dir.join("admin-render.html")),
+        )
+        // Art made from the admin panel lives in appdata; the art the server ships is the fallback.
+        .nest_service(
+            "/cutscenes/assets/gen",
+            ServeDir::new(&config.render.art_dir)
+                .fallback(ServeDir::new(dir.join("cutscenes/assets/gen"))),
         )
         .fallback_service(ServeDir::new(dir))
         .layer(TraceLayer::new_for_http())

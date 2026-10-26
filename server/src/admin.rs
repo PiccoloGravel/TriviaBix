@@ -85,6 +85,12 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/voice", get(voice_status).put(set_voice_server))
         .route("/api/admin/music", get(music_status))
         .route("/api/admin/music/sync", post(music_sync))
+        .route("/api/admin/render", get(render_status))
+        .route("/api/admin/render/preview", post(render_preview))
+        .route("/api/admin/render/start", post(render_start))
+        .route("/api/admin/render/cleanup", post(render_cleanup))
+        .route("/api/admin/render/jobs/{id}", get(render_job))
+        .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
     Router::new()
         .route("/api/admin/session", get(session))
@@ -348,4 +354,91 @@ async fn set_voice_server(State(app): State<AppState>, Json(body): Json<VoiceSer
         app.voice.server().as_deref().unwrap_or("none")
     );
     voice_status(State(app)).await.into_response()
+}
+
+#[derive(Deserialize)]
+struct RenderQuery {
+    #[serde(default)]
+    refresh: bool,
+    #[serde(default)]
+    since: u64,
+}
+
+/// The Rendering page: what's set up, what's waiting to be made, the running job and past ones.
+async fn render_status(
+    State(app): State<AppState>,
+    Query(q): Query<RenderQuery>,
+) -> Json<serde_json::Value> {
+    let r = &app.render;
+    Json(json!({
+        "ready": r.ready(),
+        "missing": r.missing(q.refresh).await,
+        "job": r.current(q.since),
+        "history": r.history(20).await,
+        "spent": r.spent().await,
+    }))
+}
+
+#[derive(Deserialize)]
+struct PreviewBody {
+    kind: crate::render::Kind,
+    #[serde(default)]
+    options: crate::render::Options,
+}
+
+/// A dry run: what would be made, on which GPU, at what price, and the most it can cost.
+async fn render_preview(State(app): State<AppState>, Json(body): Json<PreviewBody>) -> Response {
+    match app.render.preview(body.kind, body.options).await {
+        Ok(view) => Json(view).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct StartBody {
+    token: String,
+    /// The admin saw the price and said yes.
+    #[serde(default)]
+    confirm: bool,
+}
+
+async fn render_start(State(app): State<AppState>, Json(body): Json<StartBody>) -> Response {
+    if !body.confirm {
+        let error = "Confirm the price first.";
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response();
+    }
+    match app.render.start(&body.token).await {
+        Ok(job) => Json(job).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Destroys every TriviaBix instance on the vast.ai account, e.g. one left from the command line.
+async fn render_cleanup(State(app): State<AppState>) -> Response {
+    match app.render.cleanup().await {
+        Ok(job) => Json(job).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+async fn render_job(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Query(q): Query<RenderQuery>,
+) -> Response {
+    match app.render.job(id, q.since).await {
+        Some(job) => Json(job).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No such job." })),
+        )
+            .into_response(),
+    }
+}
+
+async fn render_cancel(State(app): State<AppState>, Path(id): Path<i64>) -> Response {
+    match app.render.cancel(id) {
+        Ok(()) => Json(json!({ "ok": true })).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
 }

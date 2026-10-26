@@ -141,6 +141,13 @@ questions missing a lead-in or reveal, and edit, add, or mute lines per rating. 
 the pack's lines for that question, and survive restarts; "Use pack lines" undoes them. **Reload packs** loads the content
 folder again without a restart, e.g. after an import.
 
+**Rendering** (`/admin/render`) makes Bix's voice lines and the cutscene art on a rented vast.ai GPU, and has Claude
+write host lines for questions that have none. It shows what's missing, prices each job with a dry run (the GPU, its
+hourly price and the most the job can cost), starts only after you confirm, then shows the log and progress with a
+Cancel button that gives the GPU back. Past jobs are listed with their cost. It needs `VAST_API_KEY` and/or
+`ANTHROPIC_API_KEY` on the server, which the panel never shows. See
+[deploy/unraid/README.md](deploy/unraid/README.md#rendering-from-the-admin-panel).
+
 Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
 your home network can reach the server.
 

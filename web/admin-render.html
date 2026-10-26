@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>TriviaBix · Rendering</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { font-size: 16px; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+    header { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    header h1 { margin: 0; font-size: 28px; color: var(--accent); flex: 1; }
+    a { color: var(--accent); }
+    .stat { background: var(--panel); border-radius: 999px; padding: 6px 14px; color: var(--muted); }
+    .stat b { color: var(--text); }
+    button { padding: 8px 14px; font-size: 15px; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+    button.small { padding: 4px 10px; font-size: 13px; box-shadow: none; }
+    button.danger { background: var(--bad); color: #fff; }
+    button:disabled { opacity: .5; cursor: default; }
+    select { font: inherit; border-radius: 10px; border: none; padding: 6px 8px; background: #fff; color: #1a0b3d; }
+    label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+    h2 { font-family: "Bungee", sans-serif; font-size: 18px; margin: 0; }
+    .setup { background: rgba(255,80,80,.15); border: 1px solid var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+    .setup ul { margin: 6px 0 0; padding-left: 20px; }
+    code { background: rgba(0,0,0,.3); border-radius: 6px; padding: 1px 6px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .card .count { font-size: 30px; font-family: "Bungee", sans-serif; color: var(--accent); }
+    .card .what { color: var(--muted); font-size: 14px; }
+    .opts { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 14px; }
+    .quote { background: rgba(0,0,0,.25); border-radius: 12px; padding: 10px 12px; font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+    .quote .big { font-size: 20px; color: var(--text); }
+    .quote .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .error { color: #ff9b9b; }
+    .job { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
+    .job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .badge { border-radius: 999px; padding: 3px 10px; font-size: 13px; background: rgba(255,255,255,.12); }
+    .badge.running { background: var(--accent); color: #1a0b3d; }
+    .badge.done { background: var(--good); color: #1a0b3d; }
+    .badge.failed, .badge.interrupted { background: var(--bad); color: #fff; }
+    .meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .meta b { color: var(--text); }
+    .bar { height: 10px; background: rgba(0,0,0,.3); border-radius: 999px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--good); transition: width .5s; }
+    pre.log { background: #0d0620; border-radius: 12px; padding: 10px 12px; margin: 0; max-height: 360px; overflow: auto; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; color: var(--muted); font-weight: 700; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,.12); }
+    td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
+    td.num { text-align: right; white-space: nowrap; }
+    tr.pick { cursor: pointer; }
+    tr.pick:hover { background: rgba(255,255,255,.05); }
+    .history { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; }
+    .history-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 10px 18px; border-radius: 14px; z-index: 10; }
+    .toast.ok { background: var(--good); color: #1a0b3d; }
+    #login { max-width: 360px; margin: 18vh auto 0; text-align: center; }
+    @media (max-width: 440px) { .cards { grid-template-columns: 1fr; } .hide-narrow { display: none; } }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="login" class="hidden" data-screen>
+    <h1 style="color:var(--accent)">TriviaBix</h1>
+    <p class="muted"><a href="/admin">Log in on the admin page</a> first, then come back here.</p>
+  </section>
+
+  <section id="render" class="wrap hidden" data-screen>
+    <header>
+      <h1>Rendering</h1>
+      <span class="stat" title="GPU time on vast.ai">GPUs: <b id="spent-month">$0.00</b> in 30 days</span>
+      <span class="stat hide-narrow"><b id="spent-total">$0.00</b> all time</span>
+      <a href="/admin/questions">Bix's lines</a>
+      <a href="/admin">← Rooms</a>
+    </header>
+
+    <div id="setup" class="setup hidden"></div>
+
+    <div id="job"></div>
+
+    <div class="cards" id="cards"></div>
+
+    <p class="muted" style="margin-top:0;font-size:14px">
+      GPU jobs rent the cheapest suitable card on vast.ai, never above the price limit, and always give it back when
+      they finish, fail or are cancelled. Anything already in the asset store is reused, so nothing is paid for twice.
+      Prepaid vast.ai credit with auto-reload off is the hard limit on spending.
+    </p>
+
+    <div class="history">
+      <div class="history-head">
+        <h2 style="flex:1">Past jobs</h2>
+        <button class="secondary small" id="refresh">↻ Recount what's missing</button>
+        <button class="secondary small" id="cleanup" title="Destroys every TriviaBix instance on the vast.ai account">Destroy leftover GPUs</button>
+      </div>
+      <table>
+        <thead><tr><th>Started</th><th>Job</th><th>Result</th><th class="hide-narrow">GPU</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
+        <tbody id="history"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <script src="/common.js"></script>
+  <script src="/admin-render.js"></script>
+</body>
+</html>
