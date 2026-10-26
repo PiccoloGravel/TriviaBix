@@ -1,5 +1,8 @@
 services:
   triviabix:
+    # `docker compose up --build` builds from source. To use the published image instead
+    # (what Unraid does), run `docker compose pull && docker compose up`.
+    image: ghcr.io/piccologravel/triviabix:latest
     build: .
     ports:
       - "8080:8080"
