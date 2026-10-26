@@ -1,2 +1,5 @@
 /target
 /data
+# Reference clips for Bix's voice (see tts/README.md)
+voices/
+__pycache__/

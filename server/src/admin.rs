@@ -225,6 +225,9 @@ async fn set_lines(
     match app.db.set_edited_lines(id, &slot, &body.lines).await {
         Ok(()) => {
             tracing::info!(id, %slot, lines = body.lines.len(), "admin edited host lines");
+            let host = app.host_name.clone();
+            let texts = body.lines.iter().map(|l| l.text.replace("{host}", &host));
+            app.voice.warm(texts.collect::<Vec<_>>(), true);
             Json(json!({ "ok": true })).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
@@ -234,7 +237,10 @@ async fn set_lines(
 /// Reloads the question packs and script files from disk, e.g. after an import.
 async fn reload_content(State(app): State<AppState>) -> Response {
     match crate::web::load_content(&app.db, &app.content_dir).await {
-        Some(report) => Json(report).into_response(),
+        Some(report) => {
+            crate::web::warm_questions(&app.voice, &app.db, &app.host_name).await;
+            Json(report).into_response()
+        }
         None => (
             StatusCode::CONFLICT,
             Json(json!({ "error": "Couldn't load the question packs; the server log says why." })),
