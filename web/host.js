@@ -247,8 +247,12 @@ function cutsceneContext(s) {
 }
 
 // ---------- Name That Tune audio ----------
-// The TV streams Apple's 30-second preview and plays only a slice of it. Browsers block sound
-// until someone has pressed something on the page, so after a refresh we ask for one press.
+// The TV streams Apple's 30-second preview, or a song from the music library, and plays only a
+// slice of it. Browsers block sound until someone has pressed something on the page, so after a
+// refresh we ask for one press.
+
+/** Library clips come as /media/... links; <audio>.src always reads back absolute. */
+const absUrl = (url) => (url ? new URL(url, location.href).href : url);
 
 const tune = {
   audio: new Audio(),
@@ -258,6 +262,7 @@ const tune = {
   last: null,
 
   prefetch(url) {
+    url = absUrl(url);
     if (!url || this.next.src === url || this.audio.src === url) return;
     this.next.preload = "auto";
     this.next.src = url;
@@ -265,6 +270,7 @@ const tune = {
 
   /** Plays `ms` of `url` from `startMs`, then calls `onEnd`. A null `ms` plays to the end. */
   play(url, startMs, ms, { volume = 1, onEnd } = {}) {
+    url = absUrl(url);
     this.stop();
     this.last = [url, startMs, ms, { volume, onEnd }];
     if (this.next.src === url) [this.audio, this.next] = [this.next, this.audio];
@@ -428,6 +434,10 @@ function render(s) {
     clearTimeout(replayTimer);
   }
   tune.prefetch(s.next_clip);
+  Bgm.setList(s.playlist);
+  if (phaseChanged) phaseSound(s);
+  // The playlist can arrive after the phase started (a fresh room, or after a library sync).
+  else if (["lobby", "scoreboard", "recap"].includes(s.phase) && !Bgm.blocked) Bgm.start();
   if (s.hangman && (s.phase === "question" || s.phase === "reveal")) {
     show("hangman");
     renderHangman(s, phaseChanged);
@@ -444,6 +454,64 @@ function render(s) {
   hostSays(s, s.phase === "question" && s.question.kind !== "song"
     ? { text: s.question.prompt, audio: s.question.prompt_audio } : null);
 }
+
+// ---------- Music and stings ----------
+
+/** Background music between rounds, a thinking bed during questions, and a sting for each moment. */
+function phaseSound(s) {
+  const was = prev ? prev.phase : null;
+  const songs = s.settings.mode === "songs";
+  if (s.phase !== "question") Sfx.bed.stop();
+  switch (s.phase) {
+    case "question":
+      Bgm.stop();
+      // Name That Tune needs quiet for the clip.
+      if (!songs) Sfx.bed.play(s.ms_left);
+      break;
+    case "reveal":
+      Bgm.stop();
+      if (was === "question" && s.reveal && !s.reveal.results.some((r) => r.choice != null)) Sfx.play("timeup");
+      else if (!songs) Sfx.play("reveal");
+      break;
+    case "intro":
+    case "round_intro":
+      Bgm.stop();
+      Sfx.play("round");
+      break;
+    case "scoreboard":
+    case "recap":
+      Sfx.play("scores");
+      Bgm.start();
+      break;
+    case "final":
+      Bgm.stop();
+      Sfx.play("fanfare");
+      setTimeout(() => { if (state && state.phase === "final") Bgm.start(); }, 4000);
+      break;
+    case "lobby":
+      Bgm.start();
+      break;
+  }
+}
+
+Bgm.onTrack = (t) => {
+  $("#now-playing").classList.toggle("hidden", !t);
+  if (t) $("#now-playing").textContent = `♪ ${t.title} · ${t.artist}`;
+};
+// Dip the music under the host's voice.
+new MutationObserver(() => Bgm.duck(hostBar.classList.contains("talking")))
+  .observe(hostBar, { attributes: true, attributeFilter: ["class"] });
+
+function toggleMusic() {
+  Sfx.on = !Sfx.on;
+  if (Sfx.on) {
+    Sfx.unlock();
+    if (state && ["lobby", "scoreboard", "recap", "final"].includes(state.phase)) Bgm.start();
+  } else Bgm.stop();
+  $("#music-btn").textContent = Sfx.on ? "🎵 Music" : "🔇 Music";
+}
+$("#music-btn").addEventListener("click", toggleMusic);
+$("#music-btn").textContent = Sfx.on ? "🎵 Music" : "🔇 Music";
 
 // Players who join mid-game wait for the next question; the host greets them, and the TV says when they're in.
 function announceLateJoiners(s) {
@@ -468,6 +536,7 @@ function renderIntro(s, changed) {
 }
 
 function renderLobby(s, changed) {
+  if (!changed && prev && s.players.length > prev.players.length) Sfx.play("join");
   const url = joinBase.replace(/^https?:\/\//, "");
   $("#join-url").textContent = url;
   $("#room-code").textContent = s.code;
@@ -648,6 +717,9 @@ function renderReveal(s, changed) {
     $("#r-art").classList.toggle("hidden", !song.artwork_url);
     $("#r-title").textContent = song.title;
     $("#r-artist").textContent = `${song.artist} · ${song.year}`;
+    $("#r-credit").textContent = song.from_library
+      ? `From your music library${song.album ? ` · ${song.album}` : ""}`
+      : "Song preview courtesy of Apple Music";
   }
   const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
   $("#r-choices").replaceChildren(...s.question.choices.map((text, i) => {
@@ -846,7 +918,7 @@ function primaryAction() {
 }
 
 $("#sound-btn").addEventListener("click", () => tune.unlock());
-document.addEventListener("pointerdown", () => { tune.unlock(); soundHint(); });
+document.addEventListener("pointerdown", () => { Sfx.unlock(); Bgm.unlock(); tune.unlock(); soundHint(); });
 
 // Browsers keep a page silent until someone clicks it once, so say so until that happens.
 function soundHint() {
@@ -888,6 +960,8 @@ document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
+    Sfx.unlock();
+    Bgm.unlock();
     // If the browser blocked the clip, this press turns sound on instead of skipping.
     if (tune.unlock()) return;
     // During a cutscene, the first press just ends the scene.
@@ -896,6 +970,7 @@ document.addEventListener("keydown", (e) => {
   } else if ((e.key === "r" || e.key === "R") && state && state.phase === "question") {
     tune.replay();
   } else if (e.key === "m" || e.key === "M") toggleVoice();
+  else if (e.key === "b" || e.key === "B") toggleMusic();
   else if (e.key === "f" || e.key === "F") toggleFullscreen();
   else if (e.key === "v" || e.key === "V") nextVoice();
   soundHint();

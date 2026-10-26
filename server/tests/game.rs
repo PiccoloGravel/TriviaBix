@@ -38,6 +38,7 @@ async fn start_server_with(tts_url: Option<String>) -> (String, String) {
         itunes_url: FakeItunes::start().await.url,
         music_country: "US".into(),
         music_warmup: false,
+        library: Default::default(),
         timing: Timing {
             question: Duration::from_secs(5),
             song_question: Duration::from_secs(5),
@@ -624,9 +625,14 @@ async fn name_that_tune_plays_clips_on_the_tv_only() {
 #[tokio::test]
 async fn song_rounds_respect_ratings_and_cache_tracks() {
     use triviabix::db::{Db, Rating};
-    use triviabix::music::{Itunes, build_round};
+    use triviabix::music::{Itunes, Music, build_round};
+    use triviabix::protocol::SongSource::Hits;
     let fake = FakeItunes::start().await;
-    let itunes = Itunes::new(&fake.url, "US");
+    let itunes = Music {
+        itunes: Itunes::new(&fake.url, "US"),
+        library: triviabix::library::Library::new(Default::default()),
+        media: Default::default(),
+    };
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
     let db = Db::connect(&format!("sqlite://{}", path.display()))
         .await
@@ -636,7 +642,9 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
     let all_songs = db.songs(Rating::Nc17).await.unwrap();
     assert!(pg_songs.len() >= 50 && all_songs.len() > pg_songs.len());
 
-    let round = build_round(&db, &itunes, 5, Rating::Pg, &[]).await.unwrap();
+    let round = build_round(&db, &itunes, 5, Rating::Pg, &[], Hits)
+        .await
+        .unwrap();
     assert_eq!(round.len(), 5);
     for q in &round {
         assert!(pg_songs.iter().any(|s| s.id == q.id));
@@ -660,7 +668,7 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
         .map(|s| s.id)
         .filter(|id| !round.iter().any(|q| q.id == *id))
         .collect();
-    let again = build_round(&db, &itunes, 5, Rating::Pg, &ids)
+    let again = build_round(&db, &itunes, 5, Rating::Pg, &ids, Hits)
         .await
         .unwrap();
     assert_eq!(again.len(), 5);
@@ -671,7 +679,7 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
     // Searches are capped per game, so it takes a few games to find everything.
     let mut everything = Vec::new();
     for _ in 0..6 {
-        everything = build_round(&db, &itunes, 100, Rating::Ma, &[])
+        everything = build_round(&db, &itunes, 100, Rating::Ma, &[], Hits)
             .await
             .unwrap();
     }

@@ -4,6 +4,7 @@ pub mod content;
 pub mod db;
 pub mod hangman;
 pub mod host;
+pub mod library;
 pub mod music;
 pub mod pregen;
 pub mod protocol;
@@ -31,6 +32,8 @@ pub struct Config {
     pub music_country: String,
     /// Look up every song in the background at startup so the first music game starts fast.
     pub music_warmup: bool,
+    /// The music library in Lidarr, for Name That Tune and background music.
+    pub library: library::LibraryConfig,
     pub timing: room::Timing,
     /// The question bank folder (categories.toml, packs/, scripts/), loaded into the database at
     /// startup. Skipped if it doesn't exist.
@@ -56,6 +59,7 @@ impl Config {
                 .unwrap_or(default)
         }
         let secs = |key, default| Duration::from_secs(var(key, default));
+        let nonempty = |key: &str| std::env::var(key).ok().filter(|v| !v.trim().is_empty());
         Config {
             database_url: var("DATABASE_URL", "sqlite://data/triviabix.db".to_string()),
             static_dir: var("STATIC_DIR", PathBuf::from("web")),
@@ -65,6 +69,16 @@ impl Config {
             itunes_url: var("ITUNES_API_URL", "https://itunes.apple.com".to_string()),
             music_country: var("MUSIC_COUNTRY", "US".to_string()),
             music_warmup: var("MUSIC_WARMUP", true),
+            library: library::LibraryConfig {
+                lidarr_url: nonempty("LIDARR_URL"),
+                api_key: nonempty("LIDARR_API_KEY"),
+                music_dir: var("MUSIC_DIR", PathBuf::from("/music")),
+                lidarr_music_path: nonempty("LIDARR_MUSIC_PATH"),
+                rating: nonempty("LIBRARY_RATING")
+                    .and_then(|r| db::Rating::parse(&r.to_ascii_uppercase()))
+                    .unwrap_or(db::Rating::Pg13),
+                sync_every: Duration::from_secs(var("LIDARR_SYNC_HOURS", 6u64) * 60 * 60),
+            },
             timing: room::Timing {
                 question: secs("QUESTION_SECS", 20),
                 hangman: secs("HANGMAN_SECS", 45),

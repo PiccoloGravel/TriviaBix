@@ -83,6 +83,8 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         )
         .route("/api/admin/content/reload", post(reload_content))
         .route("/api/admin/voice", get(voice_status).put(set_voice_server))
+        .route("/api/admin/music", get(music_status))
+        .route("/api/admin/music/sync", post(music_sync))
         .route_layer(middleware::from_fn_with_state(state, require_login));
     Router::new()
         .route("/api/admin/session", get(session))
@@ -249,6 +251,22 @@ async fn reload_content(State(app): State<AppState>) -> Response {
         )
             .into_response(),
     }
+}
+
+/// The music library: whether Lidarr is set up, how many songs it gave us, and what went wrong.
+async fn music_status(State(app): State<AppState>) -> Json<crate::library::LibraryStatus> {
+    Json(app.music.library.status(&app.db).await)
+}
+
+/// Syncs the music library from Lidarr now, e.g. after adding albums. Runs in the background;
+/// poll `GET /api/admin/music` until `syncing` is false.
+async fn music_sync(State(app): State<AppState>) -> Response {
+    if !app.music.library.configured() {
+        let error = "Set LIDARR_URL and LIDARR_API_KEY on the server to use your music library.";
+        return (StatusCode::CONFLICT, Json(json!({ "error": error }))).into_response();
+    }
+    tracing::info!("admin started a music library sync");
+    Json(app.music.library.start_sync(&app.db).await).into_response()
 }
 
 fn session_cookie(headers: &HeaderMap) -> Option<&str> {

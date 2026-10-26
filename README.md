@@ -49,8 +49,9 @@ each, and only placeholders that event fills in). Reveals and scoreboards stretc
 Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
 line (a joke, anecdote, or fun fact) right after the answer, before his usual reactions and roasts. They're rated too, so a PG room
 hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
-script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
-them in the admin panel.
+script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more (by hand, or with
+`triviabix-questions scripts generate`, which has Claude write them if you set an Anthropic API key), or edit them in the
+admin panel.
 
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
@@ -94,7 +95,15 @@ phones. Wrong answers are songs from around the same year. At the reveal the TV 
 **R** replays the clip. If the TV browser blocked sound (for example after reopening the page), the first press of
 **Enter** turns sound on instead of skipping.
 
-The songs are a list of titles and artists in `server/migrations/0004_songs.sql`, rated like the questions. The audio is
+**Your own music.** With Lidarr set up (`LIDARR_URL`, `LIDARR_API_KEY`, and your music folder mounted at `MUSIC_DIR`),
+the server syncs every track that has a file and the TV streams clips straight from those files, so library songs need no
+internet. Each room's **Songs from** setting picks the library, the built-in hits, or half of each (the default). Library
+songs take `LIBRARY_RATING` (explicit tracks are at least MA), and wrong answers come from the same genre and era. Built-in
+hits that are also in the library play from your file. The TV also plays library songs quietly in the lobby and between
+rounds, with a thinking bed and sound effects during trivia; **B** or the 🎵 button turns that off. Setup for Unraid is in
+[deploy/unraid](deploy/unraid/README.md#your-music-library-lidarr).
+
+The built-in songs are a list of titles and artists in `server/migrations/0004_songs.sql`, rated like the questions. The audio is
 Apple's 30-second preview from the [iTunes Search API](https://performance-partners.apple.com/search-api), streamed by the
 TV straight from Apple; nothing is downloaded or stored. Apple allows previews to be streamed this way to promote the music,
 provided they're played as-is and link back to the store, so the reveal credits Apple Music and phones get a link to the
@@ -171,6 +180,11 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MUSIC_COUNTRY` | `US` | Store country for song previews |
 | `MUSIC_WARMUP` | `true` | Look up every song at startup |
 | `ITUNES_API_URL` | `https://itunes.apple.com` | |
+| `LIDARR_URL` / `LIDARR_API_KEY` | | Your Lidarr, for songs from your own library |
+| `MUSIC_DIR` | `/music` | Where the music folder is mounted (read-only is fine) |
+| `LIDARR_MUSIC_PATH` | Lidarr's root folder | The same folder as Lidarr sees it, to map file paths |
+| `LIBRARY_RATING` | `PG-13` | Rating for library songs; explicit tracks are at least `MA` |
+| `LIDARR_SYNC_HOURS` | `6` | How often to sync the library again; `0` only at startup and from the admin panel |
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
 | `PUID` / `PGID` | `10001` | Docker only: who owns the files in `/data` (Unraid: `99` / `100`) |
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
@@ -185,7 +199,8 @@ No GPU at home? [gpu/README.md](gpu/README.md) rents one on vast.ai for a few ce
 
 - `server/` is the Rust game server (axum + WebSockets + SQLite via sqlx). Each room is its own task that owns the game state.
   - `src/room.rs` holds the game rules, `src/host.rs` the host, `src/protocol.rs` the JSON messages, `src/db.rs` the database,
-    `src/music.rs` the song lookups for Name That Tune, `src/voice.rs` the cache in front of the voice service.
+    `src/music.rs` the song lookups for Name That Tune, `src/library.rs` the Lidarr sync and `/media/` links,
+    `src/voice.rs` the cache in front of the voice service.
 - `gpu/` rents vast.ai GPUs for voice and art generation (`vast.py`) and holds the asset store's helper (`assets.py`).
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
@@ -205,9 +220,10 @@ The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`)
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
 Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`,
 `play_again`, `profile {name, character}` and `team {team}` (phones, lobby only), and from the TV
-`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round}` and `kick {player_id}`.
+`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round, song_source}` and `kick {player_id}`.
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
+Library clips are `/media/<token>` links that only work for files the server handed out; the TV's `playlist` (background music) works the same way.
 The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `round_intro`, `question`, `reveal`,
 `scoreboard`, `recap` and `final`. Trivia goes `round_intro`, then question and reveal for each question in the round, then
 `recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. Other modes

@@ -22,8 +22,9 @@ use tower_http::trace::TraceLayer;
 use crate::Config;
 use crate::admin::{self, Admin};
 use crate::db::{Db, Rating};
-use crate::music::{self, Itunes};
-use crate::protocol::{ClientMsg, GameMode, ServerMsg};
+use crate::library::Library;
+use crate::music::{self, Itunes, Music};
+use crate::protocol::{ClientMsg, GameMode, ServerMsg, SongSource};
 use crate::room::{
     Join, MAX_CLIP_MS, MAX_ROUNDS, MIN_CLIP_MS, MIN_ROUNDS, RoomCmd, RoomHandle, Settings,
     clamp_teams,
@@ -39,6 +40,7 @@ pub(crate) struct AppState {
     pub content_dir: std::path::PathBuf,
     pub public_url: Option<String>,
     pub admin: Admin,
+    pub music: Music,
     pub voice: Voice,
     /// What `{host}` reads as in question lines.
     pub host_name: std::sync::Arc<str>,
@@ -75,10 +77,17 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
     if config.music_warmup {
         tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
     }
+    let library = Library::new(config.library.clone());
+    tokio::spawn(library.clone().run(db.clone()));
+    let music = Music {
+        itunes,
+        library,
+        media: Default::default(),
+    };
     let rooms = Rooms::new(
         db.clone(),
         script.clone(),
-        itunes,
+        music.clone(),
         voice.clone(),
         config.timing.clone(),
         config.max_players,
@@ -93,6 +102,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         content_dir: config.content_dir.clone(),
         public_url: config.public_url.clone(),
         admin: Admin::new(config.admin_password.clone()),
+        music,
         voice,
         host_name,
         script,
@@ -111,6 +121,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route("/api/voice/{hash}", get(voice_line))
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{code}", get(room_info))
+        .route("/media/{token}", get(media))
         .route("/ws/host", get(ws_host))
         .route("/ws/play", get(ws_play))
         .merge(admin::routes(state.clone()))
@@ -227,6 +238,7 @@ pub(crate) struct CreateRoom {
     late_join: Option<bool>,
     trivia_rounds: Option<u8>,
     per_round: Option<usize>,
+    song_source: Option<SongSource>,
     /// Admin panel only; the public endpoint ignores it.
     pub(crate) max_players: Option<usize>,
 }
@@ -251,6 +263,7 @@ impl CreateRoom {
                 .per_round
                 .unwrap_or(5)
                 .clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND),
+            song_source: self.song_source.unwrap_or_default(),
         }
     }
 }
@@ -277,6 +290,23 @@ async fn room_info(State(app): State<AppState>, Path(code): Path<String>) -> Res
             Json(json!({ "error": "No game with that code." })),
         )
             .into_response(),
+    }
+}
+
+/// Streams a music library file to the TV. Links come from [`crate::library::Media`]; range
+/// requests work, so the TV can jump straight to the clip.
+async fn media(
+    State(app): State<AppState>,
+    Path(token): Path<String>,
+    req: axum::extract::Request,
+) -> Response {
+    use tower::ServiceExt;
+    let Some(path) = app.music.media.path(&token) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match ServeFile::new(path).oneshot(req).await {
+        Ok(res) => res.into_response(),
+        Err(e) => match e {},
     }
 }
 

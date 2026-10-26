@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use triviabix_questions::generate::{self, GenerateError, Generator, Usage, Wanted};
 use triviabix_questions::import::{self, OpenTdbQuery, TriviaApiQuery};
 use triviabix_questions::*;
 
@@ -70,6 +71,30 @@ enum ScriptsAction {
     },
     /// Load a filled-in brief (JSON or TOML) into content/scripts, next to each question's pack.
     Add { file: PathBuf },
+    /// Have Claude write the missing lines and save them to content/scripts. Uses the paid
+    /// Anthropic API, so it needs ANTHROPIC_API_KEY.
+    Generate {
+        /// Which lines to write: lead-in, reveal, or either (both, where missing).
+        #[arg(long, default_value = "either", value_parser = ["lead-in", "reveal", "either"])]
+        missing: String,
+        /// Category slugs or tags.
+        #[arg(long = "topic")]
+        topics: Vec<String>,
+        /// The most questions to write lines for in this run.
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Questions per API call.
+        #[arg(long, default_value_t = 10)]
+        batch: usize,
+        #[arg(long, default_value = generate::DEFAULT_MODEL)]
+        model: String,
+        /// How hard Claude thinks: low, medium, high, xhigh, or max. Higher costs more.
+        #[arg(long, default_value = "medium", value_parser = ["low", "medium", "high", "xhigh", "max"])]
+        effort: String,
+        /// Show what would be sent without calling the API.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -388,26 +413,9 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
             limit,
             out,
         } => {
-            let filter = Filter {
-                topics: topics.clone(),
-                max_rating: Rating::Nc17,
-                ..Default::default()
-            };
-            let needs = |q: &Question| {
-                let (lead, reveal) = (
-                    q.has_lines(ScriptSlot::LeadIn),
-                    q.has_lines(ScriptSlot::Reveal),
-                );
-                match missing.as_str() {
-                    "lead-in" => !lead,
-                    "reveal" => !reveal,
-                    _ => !lead || !reveal,
-                }
-            };
-            let todo: Vec<&Question> = bank
-                .questions()
-                .iter()
-                .filter(|q| filter.matches(q) && needs(q))
+            let todo: Vec<&Question> = needing_lines(&bank, wanted(missing), topics)
+                .into_iter()
+                .map(|(q, _)| q)
                 .collect();
             let briefs: Vec<Brief> = todo
                 .iter()
@@ -450,8 +458,109 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
             println!("Added scripts for {added} questions and replaced {updated}.");
             println!("Check them with `triviabix-questions sample`, then restart the server to load them.");
         }
+        ScriptsAction::Generate {
+            missing,
+            topics,
+            limit,
+            batch,
+            model,
+            effort,
+            dry_run,
+        } => {
+            let todo = needing_lines(&bank, wanted(missing), topics);
+            let total = todo.len();
+            let todo: Vec<_> = todo.into_iter().take(*limit).collect();
+            if todo.is_empty() {
+                println!("Every matching question already has lines.");
+                return Ok(());
+            }
+            let batches: Vec<_> = todo.chunks((*batch).max(1)).collect();
+            if *dry_run {
+                let gen = Generator::new("", model, effort);
+                let json = serde_json::to_string_pretty(&gen.request(batches[0]))
+                    .map_err(|e| e.to_string())?;
+                println!("{json}");
+                eprintln!(
+                    "Would write lines for {} of {total} questions with {model}, {} per request. Above is the first request.",
+                    todo.len(),
+                    batch.max(&1)
+                );
+                return Ok(());
+            }
+            let key = std::env::var("ANTHROPIC_API_KEY")
+                .ok()
+                .filter(|k| !k.trim().is_empty())
+                .ok_or("set ANTHROPIC_API_KEY to an Anthropic API key (console.anthropic.com) first. Calls are billed to that account.")?;
+            let gen = Generator::new(key.trim(), model, effort);
+            eprintln!(
+                "Writing lines for {} of {total} questions with {model}, {} per request...",
+                todo.len(),
+                batch.max(&1)
+            );
+            let (mut written, mut skipped) = (0, 0);
+            let mut usage = Usage::default();
+            for (i, chunk) in batches.iter().enumerate() {
+                match gen.write(chunk) {
+                    Ok((entries, used)) => {
+                        usage.input_tokens += used.input_tokens;
+                        usage.output_tokens += used.output_tokens;
+                        skipped += chunk.len() - entries.len();
+                        // Save as we go, so a failure later doesn't waste what's paid for.
+                        let (added, updated) = add_scripts(content, &bank, entries)?;
+                        written += added + updated;
+                        eprintln!(
+                            "  batch {}/{}: {} questions",
+                            i + 1,
+                            batches.len(),
+                            added + updated
+                        );
+                    }
+                    Err(e @ (GenerateError::Api { .. } | GenerateError::Http(_))) => {
+                        return Err(format!(
+                            "{e}. Saved lines for {written} questions before this."
+                        ));
+                    }
+                    Err(e) => {
+                        skipped += chunk.len();
+                        eprintln!("  batch {}/{}: skipped, {e}", i + 1, batches.len());
+                    }
+                }
+            }
+            println!(
+                "Wrote lines for {written} questions ({skipped} skipped). Used {} input and {} output tokens.",
+                usage.input_tokens, usage.output_tokens
+            );
+            println!("Skim them in content/scripts or with `triviabix-questions sample`, then hit Reload packs in the admin panel.");
+        }
     }
     Ok(())
+}
+
+fn wanted(missing: &str) -> Wanted {
+    match missing {
+        "lead-in" => Wanted::LeadIn,
+        "reveal" => Wanted::Reveal,
+        _ => Wanted::Either,
+    }
+}
+
+/// Questions matching `topics` that still need lines, with the slots each one needs.
+fn needing_lines<'a>(
+    bank: &'a QuestionBank,
+    wanted: Wanted,
+    topics: &[String],
+) -> Vec<(&'a Question, Vec<ScriptSlot>)> {
+    let filter = Filter {
+        topics: topics.to_vec(),
+        max_rating: Rating::Nc17,
+        ..Default::default()
+    };
+    bank.questions()
+        .iter()
+        .filter(|q| filter.matches(q))
+        .map(|q| (q, wanted.slots_for(q)))
+        .filter(|(_, slots)| !slots.is_empty())
+        .collect()
 }
 
 /// Files script entries under `content/scripts`, in a file named after each question's pack.

@@ -375,7 +375,9 @@ mod tests {
         let script = std::sync::Arc::new(Script::builtin());
         let mut host = Host::new(script.clone());
         let vars = [("name", "Zelda")];
-        let made: Vec<String> = (0..3).map(|_| host.say("join", Rating::Pg, &vars)).collect();
+        let made: Vec<String> = (0..3)
+            .map(|_| host.say("join", Rating::Pg, &vars))
+            .collect();
         let mut host = Host::new(script);
         for _ in 0..10 {
             let line = host.say_voiced("join", Rating::Pg, &vars, |t| made.iter().any(|m| m == t));
