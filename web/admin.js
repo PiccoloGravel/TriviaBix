@@ -3,6 +3,7 @@
 
 const { $, el, show } = TBX;
 const POLL_MS = 1500;
+const PLAYER_SIZES = [2, 4, 6, 8, 10, 12, 16, 20, 24];
 const RATINGS = ["PG", "PG-13", "MA", "NC-17"];
 const PHASES = {
   lobby: "Lobby", intro: "Intro", round_intro: "Round intro", question: "Question", reveal: "Reveal",
@@ -153,8 +154,12 @@ function roomCard(r) {
 
   const lateJoin = el("input", { type: "checkbox", style: "width:auto", onchange: (e) => act(r.code, "settings", { late_join: e.target.checked }) });
   lateJoin.checked = r.settings.late_join;
+  const sizes = [...new Set([...PLAYER_SIZES, r.max_players])].sort((a, b) => a - b)
+    .filter((n) => n >= r.players.length);
   const settings = el("div", { class: "settings" },
     el("label", { class: "inline" }, lateJoin, "Late joins"),
+    el("label", { class: "inline" }, "Max players",
+      select(sizes.map((n) => [n, n]), r.max_players, (v) => act(r.code, "settings", { max_players: Number(v) }))),
     lobby ? el("label", { class: "inline" }, "Game",
       select([["trivia", "Trivia"], ["hangman", "Speed Hangman"], ["songs", "Name That Tune"]], r.settings.mode, (v) => act(r.code, "settings", { mode: v }))) : null,
     lobby && r.settings.mode === "songs" ? el("label", { class: "inline" }, "Clip",
@@ -219,6 +224,7 @@ $("#new-room").addEventListener("submit", async (e) => {
       max_rating: f.max_rating.value,
       teams: Number(f.teams.value),
       late_join: f.late_join.checked,
+      max_players: Number(f.max_players.value),
     });
     toast(`Room ${room.code} is open. Use "Open TV" to put it on a screen.`);
     await refresh();

@@ -11,13 +11,14 @@ Everything is played from phones. The TV is display only.
    clicked once, so click the TV page once if you want the host's voice and Name That Tune clips.
 2. Players open `http://<server>:8080` on their phones (or scan the QR code on the TV), type the 4-letter room code and a name.
    Each player picks a character (24 to choose from, one per player per room) and can change their name or character in the lobby.
-   Up to 12 players per room by default (`MAX_PLAYERS`).
+   Up to 12 players per room by default (`MAX_PLAYERS`); the admin panel can change it per room.
 3. The first player to join is the VIP. On their phone the VIP picks the game (Trivia, Speed Hangman or Name That Tune)
    and starts it. The TV shows the choice as it changes.
 4. During the game the VIP's phone has **Next** to skip ahead and **End game** to go back to the lobby. After the final
    scores the VIP taps **Pick the next game** to return to the lobby with everyone still in. The VIP can also remove a
    player from the lobby.
-5. Only the admin changes a room's settings: rating (PG, PG-13, MA, NC-17), length, teams, clip length and late joins.
+5. Only the admin changes a room's settings: rating (PG, PG-13, MA, NC-17), length, teams, clip length, late joins and
+   the maximum number of players (up to 24, one per character).
    Rooms start at PG. Sign in to the [admin panel](#admin-panel) at `/admin`, on a phone if you like. The lobby on every
    phone links to it, and that room is listed first.
 
@@ -153,7 +154,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `DATABASE_URL` | `sqlite://data/triviabix.db` | SQLite file; created and migrated on startup |
 | `STATIC_DIR` | `web` | The TV and phone pages |
 | `PUBLIC_URL` | | Join address shown on the TV |
-| `MAX_PLAYERS` | `12` | Per room |
+| `MAX_PLAYERS` | `12` | Default room size; the admin panel can set each room from 1 to 24 |
 | `MAX_ROOMS` | `500` | |
 | `QUESTION_SECS` / `REVEAL_SECS` / `SCOREBOARD_SECS` | `20` / `7` / `6` | Minimums; the host's lines can stretch them |
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
