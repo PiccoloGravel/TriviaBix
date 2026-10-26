@@ -239,7 +239,7 @@ let musicTimer = null;
 function showMusic(m) {
   const parts = [];
   if (!m.configured) {
-    parts.push("Off. Set LIDARR_URL and LIDARR_API_KEY on the server to use your own music.");
+    parts.push("Off. Add Lidarr's address and API key in Settings to use your own music.");
   } else {
     parts.push(`${m.songs.toLocaleString()} songs ready`);
     if (m.syncing) parts.push("syncing with Lidarr…");
