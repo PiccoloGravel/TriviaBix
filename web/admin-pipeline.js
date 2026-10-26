@@ -1,21 +1,37 @@
-// Run the rendering jobs (Bix's voice, cutscene art, host lines) from the admin panel: see what's
-// missing, check the price with a dry run, confirm, then follow the log until the GPU is given back.
+// The content pipeline: import trivia, then have Claude write Bix's lines, voice them and make any
+// new art. Each paid step shows what's missing, checks the price with a dry run, waits for a
+// confirm, then follows the log until the GPU is given back. Each import is tracked through the steps.
 
 const { $, el, show } = TBX;
 
 const KINDS = {
-  voice: { title: "🎙️ Bix's voice", what: "voice lines waiting", gpu: true },
-  art: { title: "🎨 Cutscene art", what: "pieces of art the TV doesn't have yet", gpu: true },
-  lines: { title: "✍️ Host lines (Claude)", what: "questions without a lead-in or reveal line", gpu: false },
+  import: { title: "📥 Import trivia", step: 1 },
+  lines: { title: "✍️ Bix's lines", what: "questions without a lead-in or reveal line", gpu: false, step: 2 },
+  voice: { title: "🎙️ Bix's voice", what: "voice lines waiting", gpu: true, step: 3 },
+  art: { title: "🎨 Art", what: "pieces of art the TV doesn't have yet", gpu: true, step: 4 },
   cleanup: { title: "🧹 Destroy leftover GPUs" },
 };
+const OPENTDB = [[9, "General Knowledge"], [10, "Books"], [11, "Film"], [12, "Music"], [13, "Musicals & Theatres"],
+  [14, "Television"], [15, "Video Games"], [16, "Board Games"], [17, "Science & Nature"], [18, "Computers"],
+  [19, "Mathematics"], [20, "Mythology"], [21, "Sports"], [22, "Geography"], [23, "History"], [24, "Politics"],
+  [25, "Art"], [26, "Celebrities"], [27, "Animals"], [28, "Vehicles"], [29, "Comics"], [30, "Gadgets"],
+  [31, "Anime & Manga"], [32, "Cartoons & Animations"]];
+const TRIVIA_API = [["music", "Music"], ["film_and_tv", "Film & TV"], ["sport_and_leisure", "Sport & Leisure"],
+  ["history", "History"], ["geography", "Geography"], ["science", "Science"], ["food_and_drink", "Food & Drink"],
+  ["society_and_culture", "Society & Culture"], ["arts_and_literature", "Arts & Literature"],
+  ["general_knowledge", "General Knowledge"]];
+const SOURCES = { opentdb: "Open Trivia DB", "trivia-api": "The Trivia API", upload: "Uploaded pack" };
 const STATES = { running: "Running", done: "Done", failed: "Failed", cancelled: "Cancelled", interrupted: "Interrupted by a restart" };
 
 let status = null;
 /** kind -> the last dry run's answer. */
 const quotes = {};
 /** kind -> the options picked on its card. */
-const picked = { voice: { max_hours: 3 }, art: { kinds: "all" }, lines: { limit: 50, missing: "either" } };
+const picked = {
+  import: { source: "opentdb", amount: 20, category: "any", difficulty: "any" },
+  voice: { max_hours: 3 }, art: { kinds: "all" }, lines: { limit: 50, missing: "either" },
+};
+let pipeline = { batches: [], questions: null };
 let checking = null;
 /** The job shown in the panel, and how much of its log is on screen. */
 let shown = null;
@@ -68,7 +84,7 @@ function select(options, value, onchange) {
 
 async function load(refresh = false) {
   try {
-    status = await api(`render${refresh ? "?refresh=true" : ""}`);
+    [status, pipeline] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline")]);
   } catch (e) {
     if (refresh) toast(e.message);
     return;
@@ -81,7 +97,9 @@ async function load(refresh = false) {
 function schedule() {
   clearTimeout(timer);
   const running = status && status.job && status.job.state === "running";
-  timer = setTimeout(tick, running ? 2000 : 15000);
+  // A finished import shows up in the game a moment later, once the server has reloaded the packs.
+  const loading = pipeline && pipeline.batches.some((b) => nextStep(b) === "Waiting to load" && Date.now() - b.started_at < 120000);
+  timer = setTimeout(tick, running || loading ? 2000 : 15000);
 }
 
 async function tick() {
@@ -118,6 +136,7 @@ function renderSetup() {
 
 function canRun(kind) {
   const r = status.ready;
+  if (kind === "import") return r.line_writer;
   if (kind === "lines") return r.line_writer && r.anthropic_key;
   return r.python && r.gpu_tools && r.vast_key && (kind !== "art" || r.art_tools);
 }
@@ -130,6 +149,22 @@ function missingCount(kind) {
 function options(kind) {
   const set = (key, cast = String) => (v) => { picked[kind][key] = cast(v); delete quotes[kind]; renderCards(); };
   const o = picked[kind];
+  if (kind === "import") {
+    const cats = o.source === "opentdb" ? OPENTDB : TRIVIA_API;
+    return [
+      el("label", { class: "inline" }, "From",
+        select([["opentdb", "Open Trivia DB"], ["trivia-api", "The Trivia API"]], o.source, (v) => {
+          o.source = v;
+          o.category = "any";
+          renderCards();
+        })),
+      el("label", { class: "inline" }, "How many",
+        select([[10, "10"], [20, "20"], [50, "50"]], o.amount, set("amount", Number))),
+      el("label", { class: "inline" }, "Category", select([["any", "Any"], ...cats], o.category, set("category"))),
+      el("label", { class: "inline" }, "Difficulty",
+        select([["any", "Any"], ["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], o.difficulty, set("difficulty"))),
+    ];
+  }
   if (kind === "voice") {
     return el("label", { class: "inline" }, "GPU for at most",
       select([[0.5, "30 minutes"], [1, "1 hour"], [2, "2 hours"], [3, "3 hours"]], o.max_hours, set("max_hours", Number)));
@@ -176,19 +211,98 @@ function quoteBox(kind) {
 
 function card(kind) {
   const k = KINDS[kind];
-  const n = missingCount(kind);
   const running = status.job && status.job.state === "running";
+  if (kind === "import") {
+    const go = el("button", { onclick: importNow }, "Import");
+    go.disabled = running || !canRun(kind);
+    const file = el("input", { type: "file", accept: ".toml,text/plain", class: "hidden", onchange: (e) => uploadPack(e.target) });
+    return el("div", { class: "card" },
+      el("h2", {}, el("span", { class: "step" }, k.step), k.title),
+      el("div", {}, el("span", { class: "count" }, pipeline.questions == null ? "?" : pipeline.questions.toLocaleString()), " ",
+        el("span", { class: "what" }, "questions in the game. Duplicates are skipped.")),
+      el("div", { class: "opts" }, options(kind)),
+      el("div", { class: "row" }, go,
+        el("button", { class: "secondary", onclick: () => file.click() }, "Upload a pack…"), file));
+  }
+  const n = missingCount(kind);
   const btn = el("button", { class: "secondary", onclick: () => check(kind) }, k.gpu ? "Check the price" : "Check what it'd write");
   btn.disabled = running || !!checking || !canRun(kind);
   return el("div", { class: "card" },
-    el("h2", {}, k.title),
+    el("h2", {}, el("span", { class: "step" }, k.step), k.title),
     el("div", {}, el("span", { class: "count" }, n == null ? "?" : n.toLocaleString()), " ", el("span", { class: "what" }, k.what)),
     el("div", { class: "opts" }, options(kind)),
     quoteBox(kind) || btn);
 }
 
 function renderCards() {
-  $("#cards").replaceChildren(...["voice", "art", "lines"].map(card));
+  $("#cards").replaceChildren(...["import", "lines", "voice", "art"].map(card));
+}
+
+// ---------- Importing ----------
+
+async function importNow() {
+  try {
+    const job = await api("render/import", picked.import);
+    shown = null;
+    follow(job);
+    await load();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function uploadPack(input) {
+  const f = input.files[0];
+  input.value = "";
+  if (!f) return;
+  const name = prompt("Name for this pack (saved as content/packs/mine/<name>.toml):", f.name.replace(/\.toml$/i, ""));
+  if (!name) return;
+  try {
+    const res = await api("pipeline/pack", { name, toml: await f.text() });
+    toast(res.message + (res.warnings ? ` (${res.warnings} warnings in the question bank)` : ""), true);
+    await load();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+// ---------- Batches ----------
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function stage(done, total) {
+  if (!total) return el("span", { class: "muted" }, "–");
+  const pct = Math.round((done / total) * 100);
+  return el("div", { class: "stage", title: `${done} of ${total}` },
+    el("div", { class: "bar" }, el("div", { style: `width:${pct}%` + (done === total ? "" : ";background:var(--accent)") })),
+    el("span", {}, done === total ? "✓ all" : `${done}/${total}`));
+}
+
+function nextStep(b) {
+  if (b.state === "running") return "Importing…";
+  if (b.state !== "done") return STATES[b.state] || b.state;
+  if (!b.in_game) return b.imported && b.imported.added === 0 ? "Nothing new" : "Waiting to load";
+  if (b.with_lines < b.in_game) return "Next: write lines (2)";
+  if (b.voiced < b.in_game) return "Next: voice (3)";
+  return "✓ Ready to play";
+}
+
+function renderBatches() {
+  const rows = pipeline.batches.map((b) => {
+    const i = b.imported || {};
+    const src = SOURCES[(b.options && b.options.source) || i.source] || "Import";
+    const got = i.fetched != null
+      ? `${i.added} new` + (i.skipped ? `, ${plural(i.skipped, "duplicate")} skipped` : "") + (i.flagged ? `, ${i.flagged} to check` : "")
+      : "–";
+    return el("tr", { class: "pick", title: "Show the log", onclick: () => openJob(b.id) },
+      el("td", {}, time(b.started_at)),
+      el("td", {}, src, i.pack ? el("div", { class: "muted small" }, i.pack) : null),
+      el("td", {}, got),
+      el("td", {}, stage(b.with_lines, b.in_game)),
+      el("td", {}, stage(b.voiced, b.in_game)),
+      el("td", {}, nextStep(b)));
+  });
+  $("#batches").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: 6, class: "muted" }, "No imports yet. Start with step 1."))]));
 }
 
 async function check(kind) {
@@ -248,6 +362,10 @@ function progress(job) {
       `${d.progress.written} questions written · ${d.progress.input_tokens.toLocaleString()} tokens in, ${d.progress.output_tokens.toLocaleString()} out`];
   }
   if (job.kind === "art" && d.todo) return [null, `${d.todo.count} pieces to make`];
+  if (job.kind === "import" && d.imported) {
+    const i = d.imported;
+    return [null, plural(i.added, "new question") + (i.skipped ? `, ${plural(i.skipped, "duplicate")} skipped` : "") + (i.pack ? ` → ${i.pack}` : "")];
+  }
   return [null, null];
 }
 
@@ -304,6 +422,7 @@ function renderHistory() {
     if (j.kind === "lines" && d.progress) what.push(`${d.progress.written} questions`);
     if (j.kind === "voice" && d.backlog_start != null) what.push(`${(d.backlog_start - (d.backlog ?? d.backlog_start)).toLocaleString()} lines`);
     if (j.kind === "art" && d.todo) what.push(`${d.todo.count} pieces`);
+    if (j.kind === "import" && d.imported) what.push(plural(d.imported.added, "new question"));
     const cost = j.kind === "lines" && d.progress
       ? `${Math.round((d.progress.input_tokens + d.progress.output_tokens) / 1000)}k tokens`
       : money(j.cost);
@@ -333,6 +452,7 @@ function render() {
   $("#spent-total").textContent = money(status.spent.total);
   renderSetup();
   renderCards();
+  renderBatches();
   renderHistory();
   $("#cleanup").disabled = !status.ready.vast_key || (status.job && status.job.state === "running");
   if (status.missing.errors.length) console.warn("counting what's missing:", status.missing.errors);
@@ -360,6 +480,6 @@ $("#cleanup").addEventListener("click", async () => {
     show("login");
     return;
   }
-  show("render");
+  show("pipeline");
   await load();
 })();

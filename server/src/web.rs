@@ -118,15 +118,20 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         voice_names: config.voice_names.clone().into(),
         render: render.clone(),
     };
-    // New host lines from Claude are loaded and queued for the voice as soon as they're written.
+    // New questions and Claude's host lines are loaded and queued for the voice as soon as
+    // they're written.
     tokio::spawn({
         let app = state.clone();
         async move {
             let mut done = render.finished();
             while let Ok(kind) = done.recv().await {
-                if kind == crate::render::Kind::Lines {
+                if matches!(
+                    kind,
+                    crate::render::Kind::Lines | crate::render::Kind::Import
+                ) {
                     load_content(&app.db, &app.content_dir).await;
                     warm_questions(&app.voice, &app.db, &app.host_name).await;
+                    warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
                 }
             }
         }
@@ -159,8 +164,13 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             ServeFile::new(dir.join("admin-duplicates.html")),
         )
         .route_service(
+            "/admin/pipeline",
+            ServeFile::new(dir.join("admin-pipeline.html")),
+        )
+        // The old address of the Pipeline page, from before it imported trivia.
+        .route_service(
             "/admin/render",
-            ServeFile::new(dir.join("admin-render.html")),
+            ServeFile::new(dir.join("admin-pipeline.html")),
         )
         // Art made from the admin panel lives in appdata; the art the server ships is the fallback.
         .nest_service(

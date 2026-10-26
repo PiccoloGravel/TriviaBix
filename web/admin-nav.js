@@ -5,9 +5,10 @@
     ["/admin", "🎮 Rooms"],
     ["/admin/questions", "💬 Bix's lines"],
     ["/admin/duplicates", "🔁 Duplicates"],
-    ["/admin/render", "🎨 Rendering"],
+    ["/admin/pipeline", "🏭 Pipeline"],
   ];
-  const here = location.pathname.replace(/\/$/, "") || "/admin";
+  const path = location.pathname.replace(/\/$/, "") || "/admin";
+  const here = path === "/admin/render" ? "/admin/pipeline" : path;
 
   const style = document.createElement("style");
   style.textContent = `

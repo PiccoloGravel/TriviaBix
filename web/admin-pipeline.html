@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>TriviaBix · Rendering</title>
+  <title>TriviaBix · Pipeline</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
   <link rel="stylesheet" href="/style.css">
@@ -26,7 +26,13 @@
     .setup { background: rgba(255,80,80,.15); border: 1px solid var(--bad); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
     .setup ul { margin: 6px 0 0; padding-left: 20px; }
     code { background: rgba(0,0,0,.3); border-radius: 6px; padding: 1px 6px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .step { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #1a0b3d; font-size: 14px; margin-right: 8px; vertical-align: 2px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stage { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+    .stage .bar { flex: 1; height: 8px; }
+    .small { font-size: 12px; }
+    .section { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; margin-bottom: 20px; }
     .card { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
     .card .count { font-size: 30px; font-family: "Bungee", sans-serif; color: var(--accent); }
     .card .what { color: var(--muted); font-size: 14px; }
@@ -68,9 +74,9 @@
     <p class="muted"><a href="/admin">Log in on the admin page</a> first, then come back here.</p>
   </section>
 
-  <section id="render" class="wrap hidden" data-screen>
+  <section id="pipeline" class="wrap hidden" data-screen>
     <header>
-      <h1>Rendering</h1>
+      <h1>Pipeline</h1>
       <span class="stat" title="GPU time on vast.ai">GPUs: <b id="spent-month">$0.00</b> in 30 days</span>
       <span class="stat hide-narrow"><b id="spent-total">$0.00</b> all time</span>
     </header>
@@ -80,6 +86,14 @@
     <div id="job"></div>
 
     <div class="cards" id="cards"></div>
+
+    <div class="section">
+      <h2 style="margin-bottom:8px">Imports</h2>
+      <table>
+        <thead><tr><th>When</th><th>From</th><th>Questions</th><th>Lines</th><th>Voiced</th><th>Status</th></tr></thead>
+        <tbody id="batches"></tbody>
+      </table>
+    </div>
 
     <p class="muted" style="margin-top:0;font-size:14px">
       GPU jobs rent the cheapest suitable card on vast.ai, never above the price limit, and always give it back when
@@ -102,6 +116,6 @@
 
   <script src="/common.js"></script>
   <script src="/admin-nav.js"></script>
-  <script src="/admin-render.js"></script>
+  <script src="/admin-pipeline.js"></script>
 </body>
 </html>
