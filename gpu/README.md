@@ -152,6 +152,10 @@ the way into the container.
   the instance is running (`VAST_UNREACHABLE_MINUTES`), it's destroyed. If it never answered at all, the
   next GPU on a different machine is tried (up to 3); if it answered and then went quiet, the job fails.
   The wait is logged about once a minute.
+- **Stuck starts are given back:** what vast.ai says while an instance starts (its image pull progress)
+  goes in the log. An instance whose status doesn't change for 5 minutes (`VAST_STALL_MINUTES`), or that
+  isn't running within the boot limit (`--boot-minutes`: 12 for jobs, 10 for art, 15 for voice), is
+  destroyed and the next GPU on a different machine is tried, up to 3 in all.
 - **One of each kind at a time:** it won't rent a second instance for the same kind of job (voice, design,
   or art with `run --kind art`) while one is running (`--another` to override). Different kinds, like
   voice and art, run side by side, each on its own GPU.

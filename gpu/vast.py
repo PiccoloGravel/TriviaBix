@@ -54,6 +54,9 @@ PORT = 8000
 # next GPU tried if it never answered at all), and how often the wait is logged meanwhile.
 UNREACHABLE_MINUTES = float(os.environ.get("VAST_UNREACHABLE_MINUTES") or 5)
 WAIT_NOTE_SECONDS = 60
+# How long a starting instance may sit with the same status (usually stuck pulling its image) before it's
+# given back and the next GPU tried.
+STALL_MINUTES = float(os.environ.get("VAST_STALL_MINUTES") or 5)
 # How often, in seconds, a job's results so far are fetched while it works.
 PARTIAL_EVERY = 60
 # The exit code a job uses to say its host downloads too slowly, so another GPU is tried (art/generate.py).
@@ -98,6 +101,10 @@ class Gone(Abort):
 
 class Unreachable(Abort):
     """Nothing answers at a rented instance's address, though vast.ai says it's running."""
+
+
+class NotStarted(Unreachable):
+    """A rented instance never got its container running (stuck pulling the image, or too slow to)."""
 
 
 class Taken(Abort):
@@ -540,28 +547,34 @@ class Rental:
             say(f"[gpu] {line}")
 
     def address(self, boot_minutes: float = 20) -> str:
-        """Waits for the instance to run and returns http://ip:port for the container's port."""
-        give_up = min(time.time() + boot_minutes * 60, self.deadline)
-        last = None
+        """Waits for the instance to run and returns http://ip:port for the container's port. One that doesn't
+        start within `boot_minutes`, or whose status doesn't move for STALL_MINUTES, raises NotStarted so the
+        next GPU can be tried."""
+        start = time.time()
+        give_up = min(start + boot_minutes * 60, self.deadline)
+        last, changed = None, start
         while time.time() < give_up:
             info = self.vast.instance(self.id) or {}
-            status = info.get("actual_status") or info.get("status_msg") or "starting"
-            if status != last:
-                say(f"instance {self.id}: {status}")
-                last = status
-            if info.get("actual_status") in ("exited", "offline"):
-                raise Abort(f"the instance stopped while starting ({info.get('status_msg') or status})")
-            msg = str(info.get("status_msg") or "")
-            if info.get("actual_status") != "running" and PULL_FAILED.search(msg):
-                raise Abort(f"the GPU couldn't download {self.image}: {msg.strip()[:300]}. If the image is private, "
+            actual = info.get("actual_status") or "starting"
+            msg = " ".join(str(info.get("status_msg") or "").split())
+            if (actual, msg) != last:
+                say(f"instance {self.id}: {actual}" + (f" ({msg[:200]})" if msg else ""))
+                last, changed = (actual, msg), time.time()
+            if actual in ("exited", "offline"):
+                raise Abort(f"the instance stopped while starting ({msg or actual})")
+            if actual != "running" and PULL_FAILED.search(msg):
+                raise Abort(f"the GPU couldn't download {self.image}: {msg[:300]}. If the image is private, "
                             "set the image registry login on the Settings page (or make the package public)")
             mapping = (info.get("ports") or {}).get(f"{self.port}/tcp") or []
-            if info.get("actual_status") == "running" and info.get("public_ipaddr") and mapping:
+            if actual == "running" and info.get("public_ipaddr") and mapping:
                 self.up_at = time.time()
                 return f"http://{info['public_ipaddr'].strip()}:{mapping[0]['HostPort']}"
+            if time.time() - changed > STALL_MINUTES * 60:
+                raise NotStarted(f"instance {self.id} sat at \"{actual}\" for {STALL_MINUTES:g} minutes without "
+                                 "change (probably stuck pulling the image)")
             time.sleep(10)
-        raise Abort(f"the instance didn't start within {boot_minutes:g} minutes (pulling the image can be slow; "
-                    "try again, or raise --boot-minutes)")
+        raise NotStarted(f"instance {self.id} didn't start within {(time.time() - start) / 60:.0f} minutes "
+                         "(pulling the image was too slow)")
 
     def reached(self):
         """The job's address answered."""
@@ -986,7 +999,7 @@ def send_clip(r: Rental, base: str, clip: tuple[bytes, str, str], ready_by: floa
 
 def design(description: str, texts: list[str] | str, count: int = 4, mode: str = "freeform", library: str | None = None,
            max_minutes: float = 40, min_vram: float = 16, max_price: float = 0.5, disk: float = 40,
-           image: str = TTS_IMAGE, login: str | None = None, boot_minutes: float = 25, yes: bool = False,
+           image: str = TTS_IMAGE, login: str | None = None, boot_minutes: float = 15, yes: bool = False,
            dry_run: bool = False, another: bool = False, vast: Vast | None = None) -> int:
     """Makes `count` candidate voices for Bix from a description (tts/make_voice.py) on a rented GPU and keeps
     them in the asset store. Candidate n says texts[n-1] in its clip (round the list again if it's short), so
@@ -1101,7 +1114,7 @@ class Uploader:
 
 def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
           min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
-          login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
+          login: str | None = None, boot_minutes: float = 15, yes: bool = False, dry_run: bool = False,
           another: bool = False, vast: Vast | None = None, library: str | None = None):
     """Makes every line waiting for Bix's voice in one batch job: the whole backlog goes up to a rented GPU,
     which runs several copies of the model at once (tts/batch.py), and the audio comes back while it works.
@@ -1162,7 +1175,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
 
 def serve_voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
                 min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
-                login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
+                login: str | None = None, boot_minutes: float = 15, yes: bool = False, dry_run: bool = False,
                 another: bool = False, vast: Vast | None = None):
     """Rents a GPU running Bix's voice service and points the game server at it for `hours`, to voice live
     lines during a game (and any backlog meanwhile), then points it back and destroys the instance."""
@@ -1263,7 +1276,7 @@ def main(argv=None) -> int:
                    help="keep a voice service up this long for live lines (default: voice the backlog in one batch)")
     v.add_argument("--max-hours", type=float, default=3, help="hard limit (default 3)")
     v.add_argument("--image", default=TTS_IMAGE)
-    v.add_argument("--boot-minutes", type=float, default=25)
+    v.add_argument("--boot-minutes", type=float, default=15)
     v.add_argument("--library", help="the asset store, where measured speeds are kept (default $ASSETS_DIR)")
     renting(v, 16, 0.5)
 
@@ -1276,7 +1289,7 @@ def main(argv=None) -> int:
     g.add_argument("--library", help="the asset store (default $ASSETS_DIR)")
     g.add_argument("--max-minutes", type=float, default=40, help="hard limit (default 40)")
     g.add_argument("--image", default=TTS_IMAGE)
-    g.add_argument("--boot-minutes", type=float, default=25)
+    g.add_argument("--boot-minutes", type=float, default=15)
     renting(g, 16, 0.5)
 
     r = sub.add_parser("run", help="run a generation job on a rented GPU and copy its output back")
@@ -1285,7 +1298,7 @@ def main(argv=None) -> int:
     r.add_argument("--out", default="/out", help="folder in the container to copy back (default /out)")
     r.add_argument("--to", required=True, help="local folder to copy it into")
     r.add_argument("--max-minutes", type=float, default=60, help="hard limit (default 60)")
-    r.add_argument("--boot-minutes", type=float, default=20)
+    r.add_argument("--boot-minutes", type=float, default=12)
     r.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     r.add_argument("--work-minutes", type=float,
                    help="how long the job takes on an RTX 4090, to pick the GPU by the whole job's cost and show it")

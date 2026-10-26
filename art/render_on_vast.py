@@ -37,6 +37,8 @@ IMAGE = os.environ.get("ART_IMAGE", "ghcr.io/piccologravel/triviabix-art:latest"
 # FLUX.1-schnell pictures a few seconds each (drawn in batches), and Wan2.2 clips in minutes. A card with
 # less than OFFLOAD_GB has to move the models in and out, which gpu/vast.py counts in when picking one.
 BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 5, 0.15, 7
+# How long a GPU gets to pull the art image and start; one slower than that is given back for the next.
+BOOT_LIMIT_MIN = 10
 # What a run downloads, in GB, before it starts drawing: the image (unless the host has it) and each model
 # the work needs. Counted at each host's speed when picking one, so a fast connection wins.
 IMAGE_GB, PICTURE_MODEL_GB, CUTOUT_MODEL_GB, CLIP_MODEL_GB = 10, 34, 1, 24
@@ -167,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
                "--input", code, "--keep-partial",
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
                "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
-               "--offload-below", str(OFFLOAD_GB), "--kind", "art", "--download-gb", str(download)]
+               "--offload-below", str(OFFLOAD_GB), "--kind", "art", "--download-gb", str(download),
+               "--boot-minutes", str(BOOT_LIMIT_MIN)]
         # The token and the models picked on the admin panel's Settings page go to the GPU too.
         for key in ("HF_TOKEN", "ART_IMAGE_MODEL", "ART_CUTOUT_MODEL", "ART_VIDEO_MODEL"):
             if os.environ.get(key):

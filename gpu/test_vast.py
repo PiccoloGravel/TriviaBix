@@ -42,6 +42,8 @@ class FakeVast:
         self.taken, self.status_msg, self.stopped = set(), None, None
         # Offer ids whose instance runs but never answers at its address (instance 9).
         self.unreachable = set()
+        # Offer ids whose instance never gets past pulling its image (instance 8).
+        self.stuck = set()
         self.logs = tempfile.mkdtemp(prefix="fake-vast-logs-")
         self.offers = [{"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.31,
                         "geolocation": "Testland"}]
@@ -83,6 +85,10 @@ class FakeVast:
                     fake.procs[9] = (subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]),
                                      free_port())
                     return self.reply({"success": True, "new_contract": 9})
+                if ask in fake.stuck:
+                    fake.procs[8] = (subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]),
+                                     free_port())
+                    return self.reply({"success": True, "new_contract": 8})
                 port = free_port()
                 env = {k: v for k, v in b["env"].items() if not k.startswith("-p ")}
                 env["TBX_PORT"] = str(port)
@@ -102,7 +108,11 @@ class FakeVast:
                     self.send_header("Content-Length", str(len(data)))
                     self.end_headers()
                     return self.wfile.write(data)
-                iid = 9 if self.path.split("?")[0].rstrip("/").endswith("/9") else 7
+                iid = int(self.path.split("?")[0].rstrip("/").rsplit("/", 1)[1])
+                iid = iid if iid in (8, 9) else 7
+                if iid == 8:
+                    return self.reply({"instances": {"actual_status": "loading",
+                                                     "status_msg": "abc123: Pulling fs layer"}})
                 proc, port = fake.procs[iid]
                 if fake.stopped:
                     return self.reply({"instances": {"actual_status": "exited", "status_msg": fake.stopped}})
@@ -198,6 +208,41 @@ class VastTest(Base):
         # Offer 6 is on the same machine, so it was skipped too.
         self.assertEqual([c["image"] for c in self.fake.created[-2:]], ["img", "img"])
         self.assertNotIn("offer 6", log)
+
+    def test_a_gpu_stuck_pulling_its_image_is_given_back_and_the_next_tried(self):
+        cheap = dict(self.fake.offers[0])
+        self.fake.offers = [{**cheap, "id": 5, "dph_total": 0.20, "machine_id": 50}, cheap]
+        self.fake.stuck = {5}
+        err = io.StringIO()
+        self.vast.STALL_MINUTES = 0.01
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to, \
+                    unittest.mock.patch("sys.stderr", err):
+                code = self.vast.run_job("img", "true", to, out=box, yes=True, max_minutes=2, another=True)
+        finally:
+            self.vast.STALL_MINUTES = 5
+            self.fake.offers, self.fake.stuck = [cheap], set()
+        self.assertEqual(code, 0)
+        log = err.getvalue()
+        # What vast.ai says while it starts is in the log, so a slow pull shows.
+        self.assertIn("instance 8: loading (abc123: Pulling fs layer)", log)
+        self.assertRegex(log, r'instance 8 sat at "loading" for .* minutes without change .*; gave it back, '
+                              r"trying the next GPU")
+        self.assertIn(8, self.fake.destroyed)
+
+    def test_a_gpu_that_never_starts_fails_the_job_after_the_last_try(self):
+        cheap = dict(self.fake.offers[0])
+        self.fake.offers = [{**cheap, "id": 5, "dph_total": 0.20}]
+        self.fake.stuck = {5}
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to, \
+                    unittest.mock.patch("sys.stderr", io.StringIO()):
+                with self.assertRaisesRegex(self.vast.Abort, "didn't start within 0 minutes"):
+                    self.vast.run_job("img", "true", to, out=box, yes=True, max_minutes=2, another=True,
+                                      boot_minutes=0.005)
+        finally:
+            self.fake.offers, self.fake.stuck = [cheap], set()
+        self.assertIn(8, self.fake.destroyed)
 
     def test_a_job_that_runs_out_of_time_still_hands_back_what_it_made(self):
         self.vast.PARTIAL_EVERY = 0.5
