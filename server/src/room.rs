@@ -976,7 +976,11 @@ impl Room {
                 late_join,
                 trivia_rounds,
                 per_round,
+                max_players,
             } => {
+                if let Some(n) = max_players {
+                    self.max_players = crate::rooms::clamp_players(n.max(self.players.len()));
+                }
                 self.change_settings(SettingsChange {
                     rounds,
                     max_rating,

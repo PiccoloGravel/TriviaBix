@@ -1442,3 +1442,55 @@ async fn the_vip_runs_the_whole_game_from_their_phone() {
     .await;
     next_error(&mut vip).await;
 }
+
+#[tokio::test]
+async fn admin_sets_each_rooms_size() {
+    let addr = start_server().await;
+    let cookie = admin_login(&addr).await;
+    let (status, room) = admin(&addr, &cookie, "rooms", Some(json!({ "max_players": 3 }))).await;
+    assert_eq!(status, 200);
+    let code = room["code"].as_str().unwrap().to_string();
+    let host_token = room["host_token"].as_str().unwrap().to_string();
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    assert_eq!(wait_state(&mut host, |_| true).await["max_players"], 3);
+
+    // Phones can't pick the size: the public endpoint ignores it.
+    let (other, _) = create_room_with(&addr, json!({ "max_players": 2 })).await;
+    let info: Value = reqwest::get(format!("http://{addr}/api/rooms/{other}"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_ne!(info["max_players"], 2);
+
+    let mut players = Vec::new();
+    for name in ["A", "B"] {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut ws).await;
+        players.push(ws);
+    }
+    // Shrinking stops at the players already in.
+    let path = format!("rooms/{code}");
+    admin(
+        &addr,
+        &cookie,
+        &path,
+        Some(json!({ "action": "settings", "max_players": 1 })),
+    )
+    .await;
+    wait_state(&mut host, |s| s["max_players"] == 2).await;
+    let mut c = open(&addr, &format!("/ws/play?code={code}&name=C")).await;
+    assert_eq!(next_error(&mut c).await["fatal"], true);
+
+    admin(
+        &addr,
+        &cookie,
+        &path,
+        Some(json!({ "action": "settings", "max_players": 99 })),
+    )
+    .await;
+    wait_state(&mut host, |s| s["max_players"] == 24).await;
+    let mut c = open(&addr, &format!("/ws/play?code={code}&name=C")).await;
+    assert_eq!(recv(&mut c).await["type"], "welcome");
+}

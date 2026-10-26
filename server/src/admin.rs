@@ -168,7 +168,7 @@ async fn list_rooms(State(app): State<AppState>) -> Json<serde_json::Value> {
 }
 
 async fn create_room(State(app): State<AppState>, Json(body): Json<CreateRoom>) -> Response {
-    match app.rooms.create(body.settings()) {
+    match app.rooms.create(body.settings(), body.max_players) {
         Ok((code, host_token)) => {
             Json(json!({ "code": code, "host_token": host_token })).into_response()
         }
