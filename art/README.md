@@ -56,6 +56,11 @@ copies into `ART_DIR` (`appdata/triviabix/art` on Unraid), which the server serv
 `/cutscenes/assets/gen/` in place of the art it ships with, so new art shows up on the TV without a
 commit or an image rebuild.
 
+The GPU runs the game server's own copy of `generate.py`, `library.py`, `backends/`, the catalog and the
+categories, uploaded with the job, so a fix to them takes effect once the server is redeployed. The art
+image only supplies PyTorch and the models' libraries; rebuild it only when `requirements.txt` or the base
+image changes.
+
 **On a rented GPU (vast.ai) from the command line.** Needs `gpu/vast.py` from the vast.ai runner and `VAST_API_KEY`.
 
 ```bash
