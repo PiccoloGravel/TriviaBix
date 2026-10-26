@@ -874,3 +874,128 @@ async fn the_host_persona_reaches_the_line_writer() {
         s.calls()
     );
 }
+
+#[tokio::test]
+async fn personas_keep_their_own_lines() {
+    let s = start().await;
+    let (code, list) = s.call("personas", None).await;
+    assert_eq!(code, 200, "{list}");
+    let original = &list["personas"][0];
+    assert_eq!(original["name"], "Original Bix");
+    assert_eq!(original["active"], true);
+    assert_eq!(original["folder"], "generated");
+    assert!(original["lines"].as_u64().unwrap() > 100, "{list}");
+    let original = original["id"].as_i64().unwrap();
+
+    let (code, err) = s
+        .call(
+            "personas",
+            Some(json!({ "name": "Pirate Bix", "persona": "  " })),
+        )
+        .await;
+    assert_eq!(code, 400, "{err}");
+    let (code, list) = s
+        .call(
+            "personas",
+            Some(json!({ "name": "Pirate Bix", "persona": "Bix is a pirate who lost his ship." })),
+        )
+        .await;
+    assert_eq!(code, 200, "{list}");
+    let pirate = list["personas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Pirate Bix")
+        .unwrap()
+        .clone();
+    assert_eq!(pirate["folder"], "personas/pirate-bix");
+    assert_eq!(pirate["lines"], 0);
+    assert_eq!(pirate["active"], false);
+    let pirate = pirate["id"].as_i64().unwrap();
+
+    // Lines written for the pirate, as the line writer files them.
+    let starter =
+        std::fs::read_to_string(s.tmp.join("content/scripts/starter/science.toml")).unwrap();
+    let question = starter
+        .lines()
+        .find_map(|l| l.strip_prefix("question = \""))
+        .unwrap()
+        .trim_end_matches('"')
+        .to_string();
+    let dir = s.tmp.join("content/scripts/personas/pirate-bix");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("science.toml"),
+        format!("[[script]]\nquestion = \"{question}\"\nlead_in = \"Arr, a science one.\"\n"),
+    )
+    .unwrap();
+    let pirate_heard = || async {
+        let (_, found) = s.call("questions?q=Arr%2C%20a%20science", None).await;
+        found.to_string().contains("Arr, a science one.")
+    };
+    assert!(!pirate_heard().await, "only the persona in use is heard");
+
+    let (code, list) = s
+        .call(&format!("personas/{pirate}/use"), Some(json!({})))
+        .await;
+    assert_eq!(code, 200, "{list}");
+    assert_eq!(list["personas"][0]["id"], pirate);
+    assert_eq!(list["personas"][0]["lines"], 1);
+    assert!(pirate_heard().await);
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(
+        setting(&view, "HOST_PERSONA")["value"],
+        "Bix is a pirate who lost his ship."
+    );
+    // The line writer writes the pirate's missing lines into his own folder.
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "limit": 5 } })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    let calls = s.calls();
+    let last = calls.lines().last().unwrap();
+    assert!(last.contains("--into personas/pirate-bix"), "{calls}");
+    assert!(last.contains("[scripts personas/pirate-bix]"), "{calls}");
+    assert!(
+        last.contains("[persona Bix is a pirate who lost his ship.]"),
+        "{calls}"
+    );
+
+    // Editing who he is on the Settings page edits the persona in use.
+    let (code, _) = s
+        .put(
+            "settings",
+            json!({ "key": "HOST_PERSONA", "value": "Bix is a pirate with a parrot." }),
+        )
+        .await;
+    assert_eq!(code, 200);
+    let (_, list) = s.call("personas", None).await;
+    assert_eq!(
+        list["personas"][0]["persona"],
+        "Bix is a pirate with a parrot."
+    );
+
+    // Back to the original: the shared lines play again, and the pirate's are kept.
+    let (code, list) = s
+        .call(&format!("personas/{original}/use"), Some(json!({})))
+        .await;
+    assert_eq!(code, 200, "{list}");
+    assert!(!pirate_heard().await);
+    assert!(dir.join("science.toml").is_file());
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "HOST_PERSONA")["source"], "unset");
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "limit": 5 } })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    let calls = s.calls();
+    let last = calls.lines().last().unwrap();
+    assert!(last.contains("--into generated"), "{calls}");
+    assert!(!last.contains("[scripts"), "{calls}");
+}

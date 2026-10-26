@@ -9,7 +9,8 @@ args = sys.argv[1:]
 # Which persona it was given, on one line, so the tests can tell the Settings page's reached it.
 persona = os.environ.get("HOST_PERSONA", "").replace("\n", "|")
 (Path(__file__).resolve().parent / "calls.log").open("a").write(
-    " ".join(["lines", *args]) + (f" [persona {persona}]" if persona else "") + "\n")
+    " ".join(["lines", *args]) + (f" [persona {persona}]" if persona else "")
+    + (f" [scripts {os.environ['SCRIPTS_PERSONA']}]" if os.environ.get("SCRIPTS_PERSONA") else "") + "\n")
 if "import" in args:
     # Writes a pack like the real importer and reports which questions it added.
     content = Path(args[args.index("--content") + 1])

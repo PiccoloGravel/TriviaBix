@@ -182,6 +182,15 @@ impl Voice {
         inner.queued.lock().unwrap().clear();
     }
 
+    /// Forgets what's waiting and what the game wants, before queueing it all again, such as
+    /// after switching personas, whose lines are different.
+    pub fn clear_queue(&self) {
+        let Some(inner) = &self.0 else { return };
+        inner.queue.lock().unwrap().clear();
+        inner.queued.lock().unwrap().clear();
+        inner.wanted.lock().unwrap().clear();
+    }
+
     /// How many lines are made in `key`'s folder, and how many of the lines the game wants ahead
     /// of time it still lacks.
     pub fn counts(&self, key: &str) -> (usize, usize) {

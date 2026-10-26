@@ -336,8 +336,9 @@ fn run(cli: &Cli) -> Result<(), String> {
     Ok(())
 }
 
+/// The bank with the host lines of the persona in SCRIPTS_PERSONA, if any.
 fn load(dir: &Path) -> Result<QuestionBank, String> {
-    QuestionBank::load_dir(dir).map_err(|e| e.to_string())
+    QuestionBank::load_dir_as(dir, &Persona::from_env()).map_err(|e| e.to_string())
 }
 
 fn import_cmd(content: &Path, source: &ImportSource, strict: bool) -> Result<(), String> {
@@ -498,7 +499,10 @@ struct Brief<'a> {
 }
 
 fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
-    let bank = load(content)?;
+    // A persona needs lines wherever it hasn't written its own, whatever the others have.
+    let persona = Persona::from_env();
+    let bank =
+        QuestionBank::load_dir_as(content, &persona.own_only()).map_err(|e| e.to_string())?;
     match action {
         ScriptsAction::Todo {
             missing,
@@ -577,7 +581,7 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                 println!("Every matching question already has lines.");
                 return Ok(());
             }
-            let into = into.clone().or_else(|| {
+            let into = into.clone().or_else(|| persona.folder.clone()).or_else(|| {
                 std::env::var_os("SCRIPTS_INTO")
                     .filter(|v| !v.is_empty())
                     .map(PathBuf::from)

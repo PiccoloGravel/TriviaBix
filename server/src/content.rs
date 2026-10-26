@@ -24,10 +24,12 @@ pub struct SyncReport {
     pub warnings: Vec<String>,
 }
 
-/// Reads the content folder and loads it into the database.
+/// Reads the content folder and loads it into the database, with the host lines of the persona
+/// in use (crate::personas).
 pub async fn load(db: &Db, dir: &Path) -> anyhow::Result<SyncReport> {
     let owned = dir.to_path_buf();
-    let bank = tokio::task::spawn_blocking(move || QuestionBank::load_dir(&owned))
+    let persona = crate::personas::active(db).await;
+    let bank = tokio::task::spawn_blocking(move || QuestionBank::load_dir_as(&owned, &persona))
         .await?
         .with_context(|| format!("loading questions from {}", dir.display()))?;
     db.sync_bank(&bank).await

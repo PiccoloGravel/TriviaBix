@@ -153,7 +153,7 @@ pub const FIELDS: &[Field] = &[
             max: triviabix_questions::MAX_PERSONA_CHARS,
         },
         default: Some(triviabix_questions::DEFAULT_PERSONA),
-        help: "Who Bix is: his character, history and sense of humour, in a paragraph. Claude writes every new line in this voice. Lines already written stay as they are.",
+        help: "Who Bix is: his character, history and sense of humour, in a paragraph. Claude writes every new line in this voice. Lines already written stay as they are. This is the persona in use; Pipeline → Personas keeps others, each with its own lines, to switch between.",
     },
     Field {
         key: "TTS_URL",

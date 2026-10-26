@@ -37,6 +37,8 @@ const picked = {
 let voices = { voices: [], bix_voice: null };
 /** Bix's voice packs, the one in use first. */
 let packs = { packs: [], built_in: [], speeds: [], voice_running: false };
+/** Bix's personas, the one in use first. */
+let personas = { personas: [], busy: false, max_chars: 2000 };
 let pipeline = { batches: [], questions: null };
 let checking = null;
 /** The job shown in the panel, and how much of its log is on screen. */
@@ -90,7 +92,7 @@ function select(options, value, onchange) {
 
 async function load(refresh = false) {
   try {
-    [status, pipeline, voices, packs] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline"), api("voices"), api("packs")]);
+    [status, pipeline, voices, packs, personas] = await Promise.all([api(`render${refresh ? "?refresh=true" : ""}`), api("pipeline"), api("voices"), api("packs"), api("personas")]);
   } catch (e) {
     if (refresh) toast(e.message);
     return;
@@ -272,8 +274,101 @@ function renderCards() {
   const active = packs.packs.find((p) => p.active);
   KINDS.voice.what = active ? `voice lines the “${active.name}” pack still needs` : "voice lines waiting";
   $("#cards").replaceChildren(...["import", "lines", "voice", "art"].map(card));
+  renderPersonas();
   renderPacks();
   renderDesign();
+}
+
+// ---------- Personas ----------
+
+/** Undoes the page's full-width text box style for a checkbox. */
+const CHECKBOX = "width:auto;margin:0 6px 0 0;padding:0;vertical-align:middle";
+
+/** The persona whose text is being edited, if any. */
+let editingPersona = null;
+
+function renderPersonas() {
+  // Redrawn only when something changes, so a box being typed in keeps its text.
+  const drawn = JSON.stringify([personas, editingPersona]);
+  if (drawn === renderPersonas.drawn) return;
+  renderPersonas.drawn = drawn;
+  const name = el("input", { type: "text", placeholder: "Name, e.g. Pirate Bix", maxlength: "40", style: "width:auto;flex:1;min-width:180px;max-width:320px" });
+  const text = el("textarea", { rows: "4", maxlength: String(personas.max_chars), placeholder: "Who Bix is in this persona: his character, history and sense of humour, in a paragraph." });
+  const fill = el("input", { type: "checkbox", checked: "", style: CHECKBOX });
+  $("#personas").replaceChildren(
+    el("p", { class: "muted small", style: "margin-top:0" },
+      "A persona is who Bix is when Claude writes his lines (step 2). Each persona keeps the lines written for it, so you can switch to another and come back ",
+      "without losing or paying for anything again. Voice lines are kept by their words, so every voice pack keeps working with every persona."),
+    ...(personas.busy ? [el("p", { class: "meta" }, "A run is writing or voicing lines for the persona in use. You can switch personas when it's done.")] : []),
+    el("div", { class: "voices" }, personas.personas.map(personaCard)),
+    el("div", { class: "design-form", style: "margin-top:12px" },
+      el("div", { class: "opts" }, el("b", {}, "New persona"), name),
+      text,
+      el("div", { class: "opts" },
+        el("label", { class: "inline muted small" }, fill, " Where it has no line of its own yet, use the original lines"),
+        el("button", { class: "secondary small", onclick: () => newPersona(name.value, text.value, fill.checked) }, "Add persona"))));
+}
+
+function personaCard(p) {
+  const use = p.active
+    ? el("span", { class: "badge done" }, "✓ In use")
+    : el("button", { class: "small", onclick: () => usePersona(p) }, "Switch to this persona");
+  use.disabled = !p.active && personas.busy;
+  const body = [];
+  if (editingPersona === p.id) {
+    const box = el("textarea", { rows: "6", maxlength: String(personas.max_chars) });
+    box.value = p.persona;
+    body.push(box, el("div", { class: "row" },
+      el("button", { class: "small", onclick: () => changePersona(p, { persona: box.value }, "Saved. New lines are written this way; lines already written stay.") }, "Save"),
+      el("button", { class: "secondary small", onclick: () => { editingPersona = null; renderPersonas(); } }, "Cancel")));
+  } else {
+    body.push(el("div", { class: "muted small", title: p.persona }, p.default_persona ? `(The built-in persona) ${p.persona}` : p.persona));
+  }
+  let fill = null;
+  if (!p.original) {
+    const box = el("input", { type: "checkbox", style: CHECKBOX, onchange: (e) => changePersona(p, { fill_gaps: e.target.checked }) });
+    box.checked = p.fill_gaps;
+    fill = el("label", { class: "inline muted small" }, box, " Use the original lines where it has none");
+  }
+  return el("div", { class: `voice${p.active ? " current" : ""}` },
+    el("div", { class: "row" }, el("b", {}, p.name), el("span", { style: "flex:1" }), use),
+    ...body,
+    el("div", {}, el("b", {}, p.lines.toLocaleString()), ` question${p.lines === 1 ? "" : "s"} with lines written for it`),
+    fill,
+    el("div", { class: "row" }, el("span", { style: "flex:1" }),
+      editingPersona === p.id ? null : el("button", { class: "secondary small", onclick: () => { editingPersona = p.id; renderPersonas(); } }, "Edit who he is"),
+      el("button", { class: "secondary small", onclick: () => renamePersona(p) }, "Rename")));
+}
+
+async function personaCall(path, body, method, done) {
+  try {
+    personas = await api(path, body, method);
+    editingPersona = null;
+    if (done) toast(done, true);
+    await load(true);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function newPersona(name, text, fill) {
+  if (!name.trim()) return toast("Give the persona a name.");
+  if (!text.trim()) return toast("Say who Bix is in this persona.");
+  return personaCall("personas", { name, persona: text, fill_gaps: fill }, "POST", "Persona added. Switch to it, then write its lines in step 2.");
+}
+
+function changePersona(p, change, done) {
+  return personaCall(`personas/${p.id}`, change, "PUT", done);
+}
+
+function renamePersona(p) {
+  const name = prompt("New name for this persona:", p.name);
+  if (name && name.trim() !== p.name) changePersona(p, { name });
+}
+
+function usePersona(p) {
+  if (!confirm(`Switch Bix to “${p.name}”? His lines change from the next question. Step 2 then writes the lines this persona is missing, and step 3 voices them. The persona in use now keeps all its lines for when you come back.`)) return;
+  return personaCall(`personas/${p.id}/use`, {}, "POST", `Bix is now “${p.name}”.`);
 }
 
 // ---------- Voice packs ----------
