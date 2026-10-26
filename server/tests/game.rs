@@ -1371,20 +1371,36 @@ async fn the_vip_runs_the_whole_game_from_their_phone() {
     send(&mut bob, json!({ "type": "kick", "player_id": ghost_id })).await;
     next_error(&mut bob).await;
 
+    // The VIP picks the game, but the rating, length and teams are for the admin only.
     send(
         &mut vip,
-        json!({ "type": "settings", "mode": "hangman", "rounds": 5, "max_rating": "PG-13", "teams": 2 }),
+        json!({ "type": "settings", "mode": "hangman", "max_rating": "NC-17" }),
     )
     .await;
+    assert!(
+        next_error(&mut vip).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("admin")
+    );
+    for setting in [
+        json!({ "rounds": 5 }),
+        json!({ "teams": 2 }),
+        json!({ "late_join": false }),
+        json!({ "per_round": 3 }),
+        json!({ "clip_ms": 1000 }),
+    ] {
+        let mut msg = setting;
+        msg["type"] = json!("settings");
+        send(&mut vip, msg).await;
+        next_error(&mut vip).await;
+    }
+    send(&mut vip, json!({ "type": "settings", "mode": "hangman" })).await;
     let s = wait_state(&mut host, |s| s["settings"]["mode"] == "hangman").await;
-    assert_eq!(s["settings"]["rounds"], 5);
-    assert_eq!(s["settings"]["max_rating"], "PG-13");
-    assert_eq!(s["settings"]["teams"], 2);
-    send(
-        &mut vip,
-        json!({ "type": "settings", "mode": "trivia", "trivia_rounds": 3, "per_round": 3 }),
-    )
-    .await;
+    assert_eq!(s["settings"]["max_rating"], "PG");
+    assert_eq!(s["settings"]["teams"], 0);
+    send(&mut vip, json!({ "type": "settings", "mode": "trivia" })).await;
+    send(&mut host, json!({ "type": "settings", "per_round": 3 })).await;
     wait_state(&mut host, |s| {
         s["settings"]["mode"] == "trivia" && s["settings"]["per_round"] == 3
     })

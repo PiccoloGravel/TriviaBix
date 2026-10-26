@@ -96,7 +96,10 @@ function render() {
     box.replaceChildren(el("div", { class: "empty" }, "No games running. Create a room above, or start one from a TV."));
     return;
   }
-  box.replaceChildren(...rooms.map(roomCard));
+  // Opened from a phone in a room's lobby: that room comes first.
+  const mine = new URLSearchParams(location.search).get("room");
+  const ordered = [...rooms].sort((a, b) => (b.code === mine) - (a.code === mine));
+  box.replaceChildren(...ordered.map(roomCard));
 }
 
 function select(options, value, onchange) {
@@ -152,6 +155,10 @@ function roomCard(r) {
   lateJoin.checked = r.settings.late_join;
   const settings = el("div", { class: "settings" },
     el("label", { class: "inline" }, lateJoin, "Late joins"),
+    lobby ? el("label", { class: "inline" }, "Game",
+      select([["trivia", "Trivia"], ["hangman", "Speed Hangman"], ["songs", "Name That Tune"]], r.settings.mode, (v) => act(r.code, "settings", { mode: v }))) : null,
+    lobby && r.settings.mode === "songs" ? el("label", { class: "inline" }, "Clip",
+      select([[1000, "1 sec"], [2000, "2 sec"], [3000, "3 sec"]], r.settings.clip_ms, (v) => act(r.code, "settings", { clip_ms: Number(v) }))) : null,
     lobby && trivia ? el("label", { class: "inline" }, "Rounds",
       select([3, 4].map((n) => [n, n]), r.settings.trivia_rounds, (v) => act(r.code, "settings", { trivia_rounds: Number(v) }))) : null,
     lobby && trivia ? el("label", { class: "inline" }, "Per round",

@@ -22,7 +22,8 @@ pub enum ClientMsg {
     PlayAgain,
     /// Host or VIP: abandon the game in progress and go back to the lobby to pick another.
     Lobby,
-    /// Host or VIP: change settings while in the lobby (late joins can change any time).
+    /// Host: change settings while in the lobby (late joins can change any time).
+    /// The VIP may only change `mode`; everything else is for the admin panel.
     Settings {
         rounds: Option<usize>,
         max_rating: Option<Rating>,

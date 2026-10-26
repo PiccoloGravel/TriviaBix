@@ -97,7 +97,7 @@
       <div class="status">You're in! 🎉</div>
       <div class="muted" id="lobby-count"></div>
       <div class="vip hidden" id="vip-box">
-        <div>You're the <b>VIP</b> 👑 Pick the game, then start when everyone's in.</div>
+        <div>You're the <b>VIP</b> 👑 Pick a game, then start when everyone's in.</div>
         <div class="pick-group">
           <label>Game</label>
           <div class="pick modes">
@@ -106,53 +106,7 @@
             <button data-opt="mode" data-val="songs">🎵 Name That Tune<small>Guess the song from a clip</small></button>
           </div>
         </div>
-        <div class="pick-group" id="pick-trivia">
-          <label>Rounds</label>
-          <div class="pick">
-            <button data-opt="trivia_rounds" data-val="3">3</button>
-            <button data-opt="trivia_rounds" data-val="4">4 + final</button>
-          </div>
-          <label>Questions per round</label>
-          <div class="pick">
-            <button data-opt="per_round" data-val="3">3</button>
-            <button data-opt="per_round" data-val="5">5</button>
-            <button data-opt="per_round" data-val="7">7</button>
-          </div>
-        </div>
-        <div class="pick-group" id="pick-rounds">
-          <label id="pick-rounds-label">Puzzles</label>
-          <div class="pick">
-            <button data-opt="rounds" data-val="5">5</button>
-            <button data-opt="rounds" data-val="10">10</button>
-            <button data-opt="rounds" data-val="15">15</button>
-          </div>
-        </div>
-        <div class="pick-group" id="pick-clip">
-          <label>Clip length</label>
-          <div class="pick">
-            <button data-opt="clip_ms" data-val="1000">1 sec</button>
-            <button data-opt="clip_ms" data-val="2000">2 sec</button>
-            <button data-opt="clip_ms" data-val="3000">3 sec</button>
-          </div>
-        </div>
-        <div class="pick-group">
-          <label>Rated</label>
-          <div class="pick">
-            <button data-opt="max_rating" data-val="PG">PG</button>
-            <button data-opt="max_rating" data-val="PG-13">PG-13</button>
-            <button data-opt="max_rating" data-val="MA">MA</button>
-            <button data-opt="max_rating" data-val="NC-17">NC-17</button>
-          </div>
-        </div>
-        <div class="pick-group">
-          <label>Teams</label>
-          <div class="pick">
-            <button data-opt="teams" data-val="0">Off</button>
-            <button data-opt="teams" data-val="2">2</button>
-            <button data-opt="teams" data-val="3">3</button>
-            <button data-opt="teams" data-val="4">4</button>
-          </div>
-        </div>
+        <div class="muted" id="pick-summary" style="font-size:14px"></div>
         <button class="big" id="start-btn">Everybody's in! Start</button>
         <div class="pick-group hidden" id="kick-box">
           <label>Remove a player</label>
@@ -173,6 +127,7 @@
         </form>
         <p class="error" id="lobby-error" style="margin:0;font-size:14px"></p>
       </div>
+      <a class="muted" id="admin-link" href="/admin" style="font-size:14px">Admin? Change the rating, length and teams here ↗</a>
     </div>
   </section>
 

@@ -102,6 +102,7 @@ function render(s) {
     $("#lobby-wait").classList.toggle("hidden", you.is_vip);
     const vip = s.players.find((p) => p.id === s.vip);
     $("#lobby-wait").textContent = `Up next: ${gameSummary(s.settings)}. ${vip ? vip.name : "The VIP"} picks the game and starts it.`;
+    $("#admin-link").href = `/admin?room=${s.code}`;
     if (you.is_vip) renderPicker(s);
     $("#lobby-error").textContent = "";
     const taken = s.players.map((p) => p.character);
@@ -180,10 +181,7 @@ function renderPicker(s) {
   document.querySelectorAll("#vip-box [data-opt]").forEach((b) => {
     b.classList.toggle("picked", String(st[b.dataset.opt]) === b.dataset.val);
   });
-  $("#pick-trivia").classList.toggle("hidden", st.mode !== "trivia");
-  $("#pick-rounds").classList.toggle("hidden", st.mode === "trivia");
-  $("#pick-clip").classList.toggle("hidden", st.mode !== "songs");
-  $("#pick-rounds-label").textContent = st.mode === "songs" ? "Songs" : "Puzzles";
+  $("#pick-summary").textContent = `${gameSummary(st)}. The admin sets the rating, length and teams.`;
   // Phones that dropped out can be cleared from the lobby, now that the TV has no controls.
   const others = s.players.filter((p) => p.id !== s.you.player_id);
   $("#kick-box").classList.toggle("hidden", !others.length);
@@ -195,7 +193,7 @@ function renderPicker(s) {
 
 document.querySelectorAll("#vip-box [data-opt]").forEach((b) => b.addEventListener("click", () => {
   const { opt, val } = b.dataset;
-  send({ type: "settings", [opt]: opt === "mode" || opt === "max_rating" ? val : Number(val) });
+  send({ type: "settings", [opt]: val });
 }));
 
 function renderQuestion(s, fresh) {

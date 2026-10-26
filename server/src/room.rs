@@ -830,6 +830,18 @@ impl Room {
                 if !is_leader {
                     return Err("Only the VIP can change the game.".into());
                 }
+                // Players only choose which game to play. Rating, length, teams and late joins
+                // are for the admin panel, so nobody can flip a room to NC-17 from a phone.
+                let admin_only = rounds.is_some()
+                    || max_rating.is_some()
+                    || clip_ms.is_some()
+                    || teams.is_some()
+                    || late_join.is_some()
+                    || trivia_rounds.is_some()
+                    || per_round.is_some();
+                if !is_host && admin_only {
+                    return Err("Only the admin can change the game's settings.".into());
+                }
                 self.change_settings(SettingsChange {
                     rounds,
                     max_rating,
