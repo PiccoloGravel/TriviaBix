@@ -5,6 +5,19 @@ from pathlib import Path
 
 args = sys.argv[1:]
 (Path(__file__).resolve().parent / "calls.log").open("a").write(" ".join(["lines", *args]) + "\n")
+if "import" in args:
+    # Writes a pack like the real importer and reports which questions it added.
+    content = Path(args[args.index("--content") + 1])
+    out = content / "packs/imported/opentdb-test.toml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text('[pack]\nname = "Imported"\ncategory = "general"\n\n'
+                   '[[question]]\nid = "opentdb-fake1"\ntype = "true_false"\n'
+                   'prompt = "The fake importer wrote this."\nanswer = true\n')
+    print("@tbx " + json.dumps({"event": "imported", "fetched": 2, "added": 1, "skipped": 1,
+                                "flagged": 0, "invalid": 0, "pack": "packs/imported/opentdb-test.toml",
+                                "ids": ["opentdb-fake1"]}), file=sys.stderr)
+    print("Added 1 question (1 already in the bank).")
+    sys.exit(0)
 print("@tbx " + json.dumps({"event": "todo", "count": 1, "total": 7}), file=sys.stderr)
 if "--dry-run" not in args:
     print("@tbx " + json.dumps({"event": "progress", "batch": 1, "batches": 1, "written": 1,

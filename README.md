@@ -141,7 +141,10 @@ questions missing a lead-in or reveal, and edit, add, or mute lines per rating. 
 the pack's lines for that question, and survive restarts; "Use pack lines" undoes them. **Reload packs** loads the content
 folder again without a restart, e.g. after an import.
 
-**Rendering** (`/admin/render`) makes Bix's voice lines and the cutscene art on a rented vast.ai GPU, and has Claude
+**Pipeline** (`/admin/pipeline`) brings in new trivia and follows it until it's ready to play. Step 1 imports
+questions from OpenTDB or The Trivia API (skipping ones already in the bank, reworded or not) or takes an uploaded
+pack file, which is checked before it's saved to `content/packs/mine`. Each import is listed with how many of its
+questions are in the game, have host lines, and are voiced, and what to run next. The other steps make Bix's voice lines and the cutscene art on a rented vast.ai GPU, and has Claude
 write host lines for questions that have none. It shows what's missing, prices each job with a dry run (the GPU, its
 hourly price and the most the job can cost), starts only after you confirm, then shows the log and progress with a
 Cancel button that gives the GPU back. Past jobs are listed with their cost. It needs `VAST_API_KEY` and/or

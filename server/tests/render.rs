@@ -34,6 +34,12 @@ async fn start() -> Server {
         Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake-tools")),
         &tools,
     );
+    // A copy, so uploads and imports don't touch the repo's packs.
+    let content = tmp.join("content");
+    copy_dir(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../content")),
+        &content,
+    );
     let config = Config {
         database_url: format!("sqlite://{}", tmp.join("test.db").display()),
         static_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../web").into(),
@@ -58,7 +64,7 @@ async fn start() -> Server {
         },
         admin_password: Some(PASSWORD.into()),
         host_script: None,
-        content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
+        content_dir: content,
         tts_url: None,
         voice_names: Vec::new(),
         tts_cache_dir: tmp.join("assets/voice"),
@@ -336,4 +342,90 @@ async fn art_and_lines_jobs() {
         "{}",
         s.calls()
     );
+}
+
+#[tokio::test]
+async fn importing_and_uploading_trivia() {
+    let s = start().await;
+    let (code, _) = s
+        .call(
+            "render/import",
+            Some(json!({ "source": "opentdb", "amount": 500 })),
+        )
+        .await;
+    assert_eq!(code, 409, "too many at once");
+    let (code, _) = s
+        .call(
+            "render/import",
+            Some(json!({ "source": "opentdb", "category": "nonsense" })),
+        )
+        .await;
+    assert_eq!(code, 409);
+
+    let (code, job) = s
+        .call(
+            "render/import",
+            Some(
+                json!({ "source": "opentdb", "amount": 10, "category": "9", "difficulty": "easy" }),
+            ),
+        )
+        .await;
+    assert_eq!(code, 200, "{job}");
+    let job = s.finish(job["id"].as_i64().unwrap()).await;
+    assert_eq!(job["state"], "done", "{job}");
+    assert_eq!(job["details"]["imported"]["added"], 1);
+    assert!(
+        s.calls()
+            .contains("import opentdb --amount 10 --category 9 --difficulty easy"),
+        "{}",
+        s.calls()
+    );
+
+    // A pack with a broken question is refused and not left behind.
+    let (code, res) = s
+        .call(
+            "pipeline/pack",
+            Some(json!({ "name": "Bad", "toml": "[pack]\nname = \"Bad\"\n\n[[question]]\ntype = \"multiple_choice\"\nprompt = \"Which?\"\nchoices = [\"A\", \"B\"]\nanswer = \"C\"\n" })),
+        )
+        .await;
+    assert_eq!(code, 400, "{res}");
+    assert!(
+        res["error"]
+            .as_str()
+            .unwrap()
+            .contains("not one of the choices")
+    );
+
+    let pack = "[pack]\nname = \"Office quiz\"\ncategory = \"general\"\n\n\
+                [[question]]\ntype = \"true_false\"\nprompt = \"Our office has a ping-pong table.\"\nanswer = true\n\n\
+                [[question]]\ntype = \"type_answer\"\nprompt = \"What floor is the kitchen on?\"\nanswers = [\"3\", \"third\"]\n";
+    let (code, res) = s
+        .call(
+            "pipeline/pack",
+            Some(json!({ "name": "Office Quiz.toml", "toml": pack })),
+        )
+        .await;
+    assert_eq!(code, 200, "{res}");
+    assert!(
+        res["message"]
+            .as_str()
+            .unwrap()
+            .contains("packs/mine/office-quiz.toml")
+    );
+
+    // Both batches are listed, newest first, with how far they've got.
+    let mut batches = Value::Null;
+    for _ in 0..100 {
+        let (_, pipeline) = s.call("pipeline", None).await;
+        batches = pipeline["batches"].clone();
+        if batches[0]["in_game"] == 2 && batches[1]["in_game"] == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(batches.as_array().unwrap().len(), 2, "{batches}");
+    assert_eq!(batches[0]["imported"]["added"], 2, "{batches}");
+    assert_eq!(batches[0]["in_game"], 2, "{batches}");
+    assert_eq!(batches[0]["with_lines"], 0);
+    assert_eq!(batches[1]["in_game"], 1, "{batches}");
 }

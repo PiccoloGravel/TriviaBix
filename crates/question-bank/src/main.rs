@@ -452,6 +452,12 @@ fn import_cmd(content: &Path, source: &ImportSource, strict: bool) -> Result<(),
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     std::fs::write(&default_out, pack.to_toml()?).map_err(|e| e.to_string())?;
+    event(serde_json::json!({
+        "event": "imported", "fetched": fetched, "added": added,
+        "skipped": checked.skipped.len(), "flagged": checked.flagged.len(),
+        "invalid": checked.invalid, "pack": default_out.strip_prefix(content).unwrap_or(&default_out),
+        "ids": checked.fresh.iter().map(|q| &q.id).collect::<Vec<_>>(),
+    }));
     println!(
         "Fetched {fetched}, added {added} new questions to {}. Skipped {} duplicates and {} invalid.",
         default_out.display(),

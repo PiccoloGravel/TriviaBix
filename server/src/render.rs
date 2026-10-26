@@ -51,6 +51,20 @@ const LINES_MAX: usize = 500;
 /// container restart doesn't replace it.
 const LINES_FOLDER: &str = "generated";
 const ART_KINDS: &[&str] = &["backdrop", "sticker", "category", "clip"];
+/// The most questions one import may fetch (Open Trivia DB's own limit per request).
+const IMPORT_MAX: usize = 50;
+const TRIVIA_API_CATEGORIES: &[&str] = &[
+    "music",
+    "film_and_tv",
+    "sport_and_leisure",
+    "history",
+    "geography",
+    "science",
+    "food_and_drink",
+    "society_and_culture",
+    "arts_and_literature",
+    "general_knowledge",
+];
 
 #[derive(Debug, Clone)]
 pub struct RenderConfig {
@@ -88,6 +102,8 @@ pub enum Kind {
     Lines,
     /// Destroys every TriviaBix instance on the vast.ai account. Costs nothing, so no preview.
     Cleanup,
+    /// Pulls questions from a trivia site into a pack, skipping duplicates. Free, so no preview.
+    Import,
 }
 
 impl Kind {
@@ -97,6 +113,7 @@ impl Kind {
             Kind::Art => "art",
             Kind::Lines => "lines",
             Kind::Cleanup => "cleanup",
+            Kind::Import => "import",
         }
     }
 
@@ -120,6 +137,18 @@ pub struct Options {
     /// Lines: which lines count as missing (either, lead-in or reveal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
+    /// Import: opentdb or trivia-api.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Import: how many questions to fetch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount: Option<usize>,
+    /// Import: the site's category (an Open Trivia DB number, or a Trivia API name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Import: easy, medium or hard.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
 }
 
 impl Options {
@@ -171,6 +200,39 @@ impl Options {
                 }
             }
             Kind::Cleanup => Options::default(),
+            Kind::Import => {
+                let source = self.source.unwrap_or_else(|| "opentdb".into());
+                let amount = self.amount.unwrap_or(20);
+                if !(1..=IMPORT_MAX).contains(&amount) {
+                    return Err(format!("Import 1 to {IMPORT_MAX} questions at a time."));
+                }
+                let category = self.category.filter(|c| !c.is_empty() && c != "any");
+                match (source.as_str(), &category) {
+                    ("opentdb", Some(c))
+                        if !c.parse::<u32>().is_ok_and(|n| (9..=32).contains(&n)) =>
+                    {
+                        return Err("Pick an Open Trivia DB category from the list.".into());
+                    }
+                    ("trivia-api", Some(c)) if !TRIVIA_API_CATEGORIES.contains(&c.as_str()) => {
+                        return Err("Pick a Trivia API category from the list.".into());
+                    }
+                    ("opentdb" | "trivia-api", _) => {}
+                    _ => return Err("Import from opentdb or trivia-api.".into()),
+                }
+                let difficulty = self.difficulty.filter(|d| !d.is_empty() && d != "any");
+                if let Some(d) = &difficulty
+                    && !["easy", "medium", "hard"].contains(&d.as_str())
+                {
+                    return Err("Difficulty should be easy, medium or hard.".into());
+                }
+                Options {
+                    source: Some(source),
+                    amount: Some(amount),
+                    category,
+                    difficulty,
+                    ..Default::default()
+                }
+            }
         })
     }
 }
@@ -269,6 +331,7 @@ impl Job {
             }
             Some("todo") => d["todo"] = ev.clone(),
             Some("progress") => d["progress"] = ev.clone(),
+            Some("imported") => d["imported"] = ev.clone(),
             _ => {}
         }
     }
@@ -599,8 +662,8 @@ impl Render {
 
     /// Runs the job's dry run, which rents nothing, and returns the price with a token to start it.
     pub async fn preview(&self, kind: Kind, options: Options) -> Result<PreviewView, String> {
-        if kind == Kind::Cleanup {
-            return Err("Cleaning up needs no preview.".into());
+        if matches!(kind, Kind::Cleanup | Kind::Import) {
+            return Err("That job is free, so it needs no price check.".into());
         }
         let options = options.check(kind)?;
         if self.running() {
@@ -708,6 +771,177 @@ impl Render {
             details,
         )
         .await
+    }
+
+    /// Imports questions from a trivia site. Free, so it starts straight away.
+    pub async fn import(&self, options: Options) -> Result<JobView, String> {
+        let options = options.check(Kind::Import)?;
+        self.launch(Kind::Import, options, Mode::Run(None), None, json!({}))
+            .await
+    }
+
+    /// Saves an uploaded pack under content/packs/mine, if the question bank still loads with it,
+    /// and records it as an import batch so the pipeline can follow it.
+    pub async fn upload_pack(&self, name: &str, text: &str) -> Result<Value, String> {
+        let slug = triviabix_questions::slugify(name.trim_end_matches(".toml"));
+        if slug.is_empty() || slug.len() > 60 {
+            return Err("Give the pack a short name.".into());
+        }
+        let pack = triviabix_questions::PackFile::from_toml(text)
+            .map_err(|e| format!("That isn't a pack file: {e}"))?;
+        if pack.questions.is_empty() {
+            return Err("The pack has no questions.".into());
+        }
+        let rel = PathBuf::from(format!("mine/{slug}.toml"));
+        let path = self.0.content_dir.join("packs").join(&rel);
+        let old = std::fs::read(&path).ok();
+        let write = |bytes: &[u8]| -> std::io::Result<()> {
+            std::fs::create_dir_all(path.parent().unwrap())?;
+            std::fs::write(&path, bytes)
+        };
+        write(text.as_bytes()).map_err(|e| format!("Couldn't save the pack: {e}"))?;
+        // The whole bank has to load with it, or the server would stop seeing new questions.
+        let bank = match triviabix_questions::QuestionBank::load_dir(&self.0.content_dir) {
+            Ok(bank) => bank,
+            Err(e) => {
+                match &old {
+                    Some(bytes) => {
+                        let _ = write(bytes);
+                    }
+                    None => {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
+                return Err(format!("Not saved: {e}"));
+            }
+        };
+        let ids: Vec<&str> = bank
+            .questions()
+            .iter()
+            .filter(|q| bank.pack_of(&q.id) == Some(rel.as_path()))
+            .map(|q| q.id.as_str())
+            .collect();
+        let imported = json!({
+            "event": "imported", "source": "upload", "fetched": pack.questions.len(),
+            "added": ids.len(), "pack": Path::new("packs").join(&rel), "ids": ids,
+            "replaced": old.is_some(),
+        });
+        let now = now_ms() as i64;
+        let log = format!(
+            "Saved {} questions to packs/{}{}",
+            ids.len(),
+            rel.display(),
+            if old.is_some() {
+                ", replacing the old file"
+            } else {
+                ""
+            }
+        );
+        sqlx::query(
+            "INSERT INTO render_jobs (kind, options, state, started_at, finished_at, exit_code, details, log)
+             VALUES ('import', '{\"source\":\"upload\"}', 'done', ?, ?, 0, ?, ?)",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(json!({ "imported": imported }).to_string())
+        .bind(&log)
+        .execute(&self.0.db.pool)
+        .await
+        .map_err(|e| format!("Saved, but couldn't record it: {e}"))?;
+        tracing::info!("admin uploaded a pack: {log}");
+        *self.0.missing.lock().await = None;
+        let _ = self.0.finished.send(Kind::Import);
+        Ok(json!({ "ok": true, "message": log, "warnings": bank.warnings().len() }))
+    }
+
+    /// The recent imports, each with how far its questions have got: in the game, with host
+    /// lines, and voiced (the question and all its lines).
+    pub async fn batches(&self, host_name: &str) -> Vec<Value> {
+        let rows = sqlx::query(
+            "SELECT id, started_at, state, options, details FROM render_jobs
+             WHERE kind = 'import' ORDER BY id DESC LIMIT 20",
+        )
+        .fetch_all(&self.0.db.pool)
+        .await
+        .unwrap_or_default();
+        let mut out = Vec::new();
+        for row in rows {
+            let details: Option<String> = row.get("details");
+            let details: Value = details
+                .and_then(|d| serde_json::from_str(&d).ok())
+                .unwrap_or_default();
+            let options: String = row.get("options");
+            let imported = &details["imported"];
+            let ids: Vec<String> = imported["ids"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let progress = self.progress_of(&ids, host_name).await;
+            out.push(json!({
+                "id": row.get::<i64, _>("id"),
+                "started_at": row.get::<i64, _>("started_at"),
+                "state": row.get::<String, _>("state"),
+                "options": serde_json::from_str::<Value>(&options).unwrap_or_default(),
+                "imported": imported,
+                "in_game": progress.0,
+                "with_lines": progress.1,
+                "voiced": progress.2,
+            }));
+        }
+        out
+    }
+
+    /// Of these questions (bank ids): how many the game has, how many have both a lead-in and a
+    /// reveal line, and how many have audio for the question and every line.
+    async fn progress_of(&self, ids: &[String], host_name: &str) -> (usize, usize, usize) {
+        if ids.is_empty() {
+            return (0, 0, 0);
+        }
+        let marks = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT q.id, q.prompt,
+                    EXISTS (SELECT 1 FROM question_lines l WHERE l.question_id = q.id
+                            AND l.slot = 'lead_in' AND l.text != '') AS lead_in,
+                    EXISTS (SELECT 1 FROM question_lines l WHERE l.question_id = q.id
+                            AND l.slot = 'reveal' AND l.text != '') AS reveal
+             FROM questions q WHERE q.active = 1 AND q.bank_id IN ({marks})"
+        );
+        // Only "?" placeholders are formatted in; the ids are bound.
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
+        for id in ids {
+            query = query.bind(id);
+        }
+        let Ok(rows) = query.fetch_all(&self.0.db.pool).await else {
+            return (0, 0, 0);
+        };
+        let voice = &self.0.voice;
+        let (mut lines, mut voiced) = (0, 0);
+        for row in &rows {
+            let qid: i64 = row.get("id");
+            if row.get::<bool, _>("lead_in") && row.get::<bool, _>("reveal") {
+                lines += 1;
+            }
+            let texts: Vec<String> = sqlx::query_scalar(
+                "SELECT text FROM question_lines WHERE question_id = ? AND text != ''",
+            )
+            .bind(qid)
+            .fetch_all(&self.0.db.pool)
+            .await
+            .unwrap_or_default();
+            let prompt: String = row.get("prompt");
+            if voice.is_ready(&prompt)
+                && texts
+                    .iter()
+                    .all(|t| voice.is_ready(&t.replace("{host}", host_name)))
+            {
+                voiced += 1;
+            }
+        }
+        (rows.len(), lines, voiced)
     }
 
     /// Destroys every TriviaBix instance on the vast.ai account.
@@ -1025,6 +1259,21 @@ impl Render {
             Kind::Cleanup => {
                 let mut cmd = tool("gpu/vast.py");
                 cmd.arg("cleanup");
+                cmd
+            }
+            Kind::Import => {
+                let mut cmd = Command::new(&c.questions_bin);
+                cmd.arg("--content").arg(&self.0.content_dir).arg("import");
+                let opentdb = o.source.as_deref() != Some("trivia-api");
+                cmd.arg(if opentdb { "opentdb" } else { "trivia-api" })
+                    .arg("--amount")
+                    .arg(o.amount.unwrap_or(20).to_string());
+                if let Some(c) = &o.category {
+                    cmd.args(["--category", c]);
+                }
+                if let Some(d) = &o.difficulty {
+                    cmd.args(["--difficulty", d]);
+                }
                 cmd
             }
         };

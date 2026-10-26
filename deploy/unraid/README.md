@@ -65,7 +65,7 @@ plugin like any other container.
 |---|---|---|
 | Players, scores, game history, admin edits to Bix's lines, the music library from Lidarr, rendering jobs and their costs | `triviabix.db` | SQLite database |
 | Question packs | `content/packs/` | TOML files you can edit |
-| Host lines Claude wrote (from the Rendering page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
+| Host lines Claude wrote (from the Pipeline page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
 | Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)) |
 | Generated art originals (pictures, cut-outs, clips) | `assets/image/`, `assets/clip/` | files plus a `.json` each with prompt, seed, model, tags and rating |
 | The TV's copies of the art | `art/` | small WebP/MP4 files and `manifest.json` |
@@ -79,7 +79,7 @@ under `content/packs` and `content/scripts` are refreshed from the image on ever
 them; put your own packs in `content/packs/mine/` (any folder name other than `starter` works) and restart
 the container, or press reload in the admin panel. See `content/README.md` for the pack format.
 
-Not kept across restarts, on purpose: live rooms, admin logins, and a voice server the Rendering page
+Not kept across restarts, on purpose: live rooms, admin logins, and a voice server the Pipeline page
 pointed at a rented GPU (it goes back to `TTS_URL`). API keys and addresses are container settings.
 
 ## Updating
@@ -160,7 +160,7 @@ to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.
 ## Rendering from the admin panel
 
 Bix's voice lines, the cutscene art and the host's per-question lines can all be made from the website:
-open **`/admin` → Rendering** (it works from a phone). Each job shows how much is missing, then
+open **`/admin` → Pipeline** (it works from a phone). Each job shows how much is missing, then
 **Check the price** does a dry run that rents nothing and shows the GPU, its price per hour, the time
 limit and the most the job can cost. Nothing starts until you press **Start** and confirm. While it runs
 you see the log and the progress, and **Cancel** stops it and gives the GPU back. Past jobs and what they
@@ -173,7 +173,7 @@ cost are listed underneath.
    - **Anthropic API key** (`ANTHROPIC_API_KEY`) for host lines written by Claude, billed to that account.
 2. Make the `triviabix-tts` and `triviabix-art` packages on GitHub public (see
    [gpu/README.md](../../gpu/README.md)), or fill in **Private image login**.
-3. **Apply**, then open the Rendering page.
+3. **Apply**, then open the Pipeline page.
 
 The limits are the scripts' own: at most $0.50/hr for voice and $0.60/hr for art, a voice run stops
 after 3 hours at most, an art run after its estimate plus half, and only one GPU at a time. A job

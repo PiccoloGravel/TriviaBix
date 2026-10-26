@@ -92,6 +92,9 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/render/preview", post(render_preview))
         .route("/api/admin/render/start", post(render_start))
         .route("/api/admin/render/cleanup", post(render_cleanup))
+        .route("/api/admin/render/import", post(render_import))
+        .route("/api/admin/pipeline", get(pipeline))
+        .route("/api/admin/pipeline/pack", post(upload_pack))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -515,5 +518,38 @@ async fn render_cancel(State(app): State<AppState>, Path(id): Path<i64>) -> Resp
     match app.render.cancel(id) {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
         Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Starts an import from a trivia site. It's free, so there's no price check.
+async fn render_import(
+    State(app): State<AppState>,
+    Json(options): Json<crate::render::Options>,
+) -> Response {
+    match app.render.import(options).await {
+        Ok(job) => Json(job).into_response(),
+        Err(e) => (StatusCode::CONFLICT, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Each recent import and how far its questions have got through lines and voice.
+async fn pipeline(State(app): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "batches": app.render.batches(&app.host_name).await,
+        "questions": app.db.question_count().await.unwrap_or(0),
+    }))
+}
+
+#[derive(Deserialize)]
+struct PackUpload {
+    name: String,
+    toml: String,
+}
+
+/// Saves a pack file someone uploaded into content/packs/mine.
+async fn upload_pack(State(app): State<AppState>, Json(body): Json<PackUpload>) -> Response {
+    match app.render.upload_pack(&body.name, &body.toml).await {
+        Ok(res) => Json(res).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
     }
 }

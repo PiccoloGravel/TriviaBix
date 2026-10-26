@@ -61,12 +61,6 @@ $("#login-form").addEventListener("submit", async (e) => {
   }
 });
 
-$("#logout").addEventListener("click", async () => {
-  await api("logout", {}).catch(() => {});
-  stopPolling();
-  show("login");
-});
-
 // ---------- Dashboard ----------
 
 function startDashboard() {
