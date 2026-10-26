@@ -132,6 +132,24 @@ cargo run -p triviabix-questions --features cli -- scripts todo --out todo.json
 cargo run -p triviabix-questions --features cli -- scripts add todo.json
 ```
 
+Or let Claude write them. This uses the paid Anthropic API, so it only runs with an API key from
+[console.anthropic.com](https://console.anthropic.com):
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+# See what it would send, without calling the API.
+cargo run -p triviabix-questions --features cli -- scripts generate --limit 20 --dry-run
+# Write lines for up to 50 questions that are missing them, 10 per request.
+cargo run -p triviabix-questions --features cli -- scripts generate --topic 80s
+```
+
+It only fills slots a question doesn't have yet, writes a few lines per slot (including spicier MA ones for tamer
+questions), and saves after every request into the same `scripts/` files `scripts add` uses. Options: `--missing`,
+`--topic`, `--limit` (default 50), `--batch` (default 10), `--model` (default `claude-opus-5-5`), and `--effort`
+(`low` to `max`, default `medium`). It prints the tokens used at the end; at Opus 5.5 prices ($4 in, $20 out per million
+tokens) a batch of 10 questions costs roughly 10 to 20 cents, mostly for Claude's thinking. Read what it wrote before a party: it's good, but it's a comedian, not
+an encyclopedia.
+
 `scripts todo` takes `--missing lead-in|reveal|either`, `--topic`, and `--limit`. `stats` shows how many questions have
 lines. The server loads packs and scripts into its database at startup (or on **Reload packs** in the admin panel), and
 lines edited in the admin panel override the files for that question.
