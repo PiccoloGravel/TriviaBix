@@ -56,7 +56,9 @@ UNREACHABLE_MINUTES = float(os.environ.get("VAST_UNREACHABLE_MINUTES") or 5)
 WAIT_NOTE_SECONDS = 60
 # How often, in seconds, a job's results so far are fetched while it works.
 PARTIAL_EVERY = 60
-# How many GPUs a job tries when the one it rented can't be reached.
+# The exit code a job uses to say its host downloads too slowly, so another GPU is tried (art/generate.py).
+SLOW_HOST = 75
+# How many GPUs a job tries when the one it rented can't be reached (or downloads too slowly).
 UNREACHABLE_TRIES = 3
 # How the voice image starts its service, with the rental's token so only the game server can use it.
 VOICE_CMD = "cd /app && TTS_TOKEN=$TBX_TOKEN exec python server.py"
@@ -73,7 +75,9 @@ DESIGN_OUT = "/out"
 BATCH_CMD = f"cd /app && {INLINE_PY}"
 JOB_IN = "/in"
 # Minutes from renting to the first line: pulling the image, downloading and loading the model.
-VOICE_BOOT_MIN = 8
+VOICE_BOOT_MIN = 4
+# GB a voice run downloads before it starts (the image, unless the host has it, and the model).
+VOICE_DOWNLOAD_GB = 12
 # Lines a minute the batch job makes on an RTX 4090 until a run has measured it (a few copies of the model,
 # each voicing 24 lines side by side). Two copies on an RTX 4060 Ti made 142 a minute, about 400 on a 4090;
 # a guess below that. Saved runs' measurements go in the asset store's SPEEDS file, under VOICE_SPEED_KEY.
@@ -180,7 +184,7 @@ class Vast:
             "rented": {"eq": False}, "num_gpus": {"eq": 1},
             "gpu_ram": {"gte": min_vram_gb * 1000}, "compute_cap": {"gte": 800, "lte": max_compute_cap()},
             "cuda_max_good": {"gte": min_cuda()}, "reliability": {"gte": 0.98},
-            "inet_down": {"gte": 200}, "direct_port_count": {"gte": 1},
+            "inet_down": {"gte": min_inet()}, "direct_port_count": {"gte": 1},
             "disk_space": {"gte": disk_gb}, "dph_total": {"lte": max_price},
             "order": [["dph_total", "asc"]], "type": "on-demand", "limit": limit,
             "allocated_storage": disk_gb,
@@ -612,14 +616,27 @@ def speed(offer: dict, offload_below_gb: float = 0) -> float:
     return s
 
 
-def estimate(offer: dict, work_minutes: float, boot_minutes: float, offload_below_gb: float = 0) -> tuple[float, float]:
-    """Minutes and dollars `offer` would take for a job of `work_minutes` on an RTX 4090, plus starting up."""
-    minutes = boot_minutes + work_minutes / speed(offer, offload_below_gb)
+def download_minutes(offer: dict, gb: float) -> float:
+    """How long `offer`'s host takes to download `gb`, at about half the speed it advertises."""
+    mbps = float(offer.get("inet_down") or 200)
+    return gb * 8000 / (mbps * DOWNLOAD_EFFICIENCY) / 60
+
+
+# The share of a host's advertised download speed a model download actually gets.
+DOWNLOAD_EFFICIENCY = 0.5
+
+
+def estimate(offer: dict, work_minutes: float, boot_minutes: float, offload_below_gb: float = 0,
+             download_gb: float = 0) -> tuple[float, float]:
+    """Minutes and dollars `offer` would take for a job of `work_minutes` on an RTX 4090, plus starting up
+    and downloading `download_gb` of models at its connection's speed."""
+    minutes = boot_minutes + download_minutes(offer, download_gb) + work_minutes / speed(offer, offload_below_gb)
     return minutes, offer.get("dph_total", 0) * minutes / 60
 
 
 def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float, work_minutes: float | None = None,
-                boot_minutes: float = 0, max_minutes: float | None = None, offload_below_gb: float = 0) -> list:
+                boot_minutes: float = 0, max_minutes: float | None = None, offload_below_gb: float = 0,
+                download_gb: float = 0) -> list:
     """The suitable offers under `max_price`. The first is the one quoted; the rest are fallbacks. Given the
     job's size (`work_minutes` on an RTX 4090), they're ordered by what the whole job is expected to cost,
     so a faster card that finishes sooner wins over a cheaper one that takes longer, and cards that wouldn't
@@ -632,7 +649,7 @@ def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float, work
     if work_minutes is None:
         return offers
     for o in offers:
-        o["est_minutes"], o["est_cost"] = estimate(o, work_minutes, boot_minutes, offload_below_gb)
+        o["est_minutes"], o["est_cost"] = estimate(o, work_minutes, boot_minutes, offload_below_gb, download_gb)
     late = lambda o: bool(max_minutes) and o["est_minutes"] > max_minutes  # noqa: E731
     return sorted(offers, key=lambda o: (late(o), round(o["est_cost"], 3), o["est_minutes"]))
 
@@ -683,14 +700,15 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
             boot_minutes: float = 20, yes: bool = False, dry_run: bool = False, another: bool = False,
             vast: Vast | None = None, work_minutes: float | None = None, boot_estimate: float = 0,
             offload_below_gb: float = 0, kind: str = "job", inputs: Path | None = None,
-            keep_partial: bool = False) -> int:
+            keep_partial: bool = False, download_gb: float = 0) -> int:
     """Runs `cmd` in `image` on a rented GPU, copies the container's `out` folder into `to`, and destroys the
     instance. Returns the command's exit code. `inputs`, a folder, is uploaded to /in before `cmd` starts. With `work_minutes` (the job's length on an RTX 4090), the GPU
     is picked by the expected cost of the whole job and the estimate is shown with the price. With
     `keep_partial`, what the job has written comes into `to` every minute too, so a job that fails or runs
     out of time still hands back what it made."""
     vast = vast or Vast()
-    offers = pick_offers(vast, min_vram, max_price, disk, work_minutes, boot_estimate, max_minutes, offload_below_gb)
+    offers = pick_offers(vast, min_vram, max_price, disk, work_minutes, boot_estimate, max_minutes, offload_below_gb,
+                         download_gb)
     confirm(offers[0], max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
     if dry_run:
         return 0
@@ -716,7 +734,16 @@ def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str
                         kind=kind, inputs=job_inputs)
         try:
             with rental as r:
-                return run_on(r, max_minutes, boot_minutes, to, out, inputs, partial, partial_every)
+                code = run_on(r, max_minutes, boot_minutes, to, out, inputs, partial, partial_every)
+            if code != SLOW_HOST or attempt == UNREACHABLE_TRIES:
+                return code
+            # The job found the host's download too slow to be worth paying for; try another machine.
+            machine = rental.offer.get("machine_id")
+            left = [o for o in left if o["id"] != rental.offer["id"]
+                    and (machine is None or o.get("machine_id") != machine)]
+            if not left:
+                return code
+            say("that GPU's download was too slow; gave it back, trying the next GPU")
         except Unreachable as e:
             # One that never answered did no work, so another GPU can start afresh. The bad host's other
             # offers go too.
@@ -868,6 +895,15 @@ class Game:
 MAX_COMPUTE_CAP = 900
 # Blackwell cards by name, in case an offer's compute_cap is missing or wrong.
 BLACKWELL = re.compile(r"RTX 50\d0|RTX PRO \d+|\bB\d{3}\b|\bGB\d{3}\b|Blackwell", re.I)
+
+
+def min_inet() -> float:
+    """The slowest download, in Mbit/s, a host may have (VAST_MIN_INET; art runs, which fetch about 50 GB of
+    models, ask for more)."""
+    try:
+        return float(os.environ.get("VAST_MIN_INET") or 200)
+    except ValueError:
+        return 200.0
 
 
 def min_cuda() -> float:
@@ -1086,7 +1122,8 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
         return
     minutes = max_hours * 60
     rate = voice_rate(store)
-    offers = pick_offers(vast, min_vram, max_price, disk, len(lines) / rate, VOICE_BOOT_MIN, minutes)
+    offers = pick_offers(vast, min_vram, max_price, disk, len(lines) / rate, VOICE_BOOT_MIN, minutes,
+                         download_gb=VOICE_DOWNLOAD_GB)
     confirm(offers[0], minutes, yes or dry_run, "would voice lines" if dry_run else "voicing lines")
     if dry_run:
         return
@@ -1253,6 +1290,8 @@ def main(argv=None) -> int:
     r.add_argument("--work-minutes", type=float,
                    help="how long the job takes on an RTX 4090, to pick the GPU by the whole job's cost and show it")
     r.add_argument("--boot-estimate", type=float, default=0, help="minutes to start up, for the estimate")
+    r.add_argument("--download-gb", type=float, default=0,
+                   help="GB the job downloads before it starts, counted at each host's speed for the estimate")
     r.add_argument("--offload-below", type=float, default=0,
                    help="GB of GPU memory under which the job runs slower (models moved in and out), for the estimate")
     r.add_argument("--input", type=Path, help=f"a folder to upload to {JOB_IN} before --cmd starts")
@@ -1295,7 +1334,7 @@ def main(argv=None) -> int:
                            args.max_minutes, args.disk, env, args.login, args.boot_minutes, args.yes,
                            args.dry_run, args.another, work_minutes=args.work_minutes,
                            boot_estimate=args.boot_estimate, offload_below_gb=args.offload_below, kind=args.kind,
-                           inputs=args.input, keep_partial=args.keep_partial)
+                           inputs=args.input, keep_partial=args.keep_partial, download_gb=args.download_gb)
         elif args.command == "list":
             for i in Vast().ours():
                 up = (time.time() - (i.get("start_date") or time.time())) / 3600
