@@ -12,7 +12,7 @@ use crate::characters::{self, CHARACTERS};
 use crate::db::{Db, Difficulty, Question, Rating, Standing};
 use crate::hangman::{self, Guess, Puzzle};
 use crate::host::{self, Host, Script};
-use crate::music::{self, Itunes};
+use crate::music::{self, Music};
 use crate::protocol::*;
 use crate::rounds;
 
@@ -32,6 +32,8 @@ const TEAMS: [(&str, &str); 4] = [
 ];
 
 pub const MIN_ROUNDS: usize = 3;
+/// Library songs a room keeps for background music.
+const PLAYLIST_LEN: usize = 30;
 pub const MIN_CLIP_MS: u64 = 500;
 pub const MAX_CLIP_MS: u64 = 5_000;
 pub const MAX_ROUNDS: usize = 30;
@@ -87,6 +89,8 @@ pub struct Settings {
     pub trivia_rounds: u8,
     /// Trivia: questions per round.
     pub per_round: usize,
+    /// Name That Tune: the music library, the curated hits, or both.
+    pub song_source: SongSource,
 }
 
 impl Settings {
@@ -100,6 +104,7 @@ impl Settings {
             late_join: self.late_join,
             trivia_rounds: self.trivia_rounds,
             per_round: self.per_round,
+            song_source: self.song_source,
         }
     }
 }
@@ -119,6 +124,7 @@ pub struct SettingsChange {
     pub late_join: Option<bool>,
     pub trivia_rounds: Option<u8>,
     pub per_round: Option<usize>,
+    pub song_source: Option<SongSource>,
 }
 
 pub enum Join {
@@ -323,6 +329,14 @@ struct Stage {
     len: usize,
 }
 
+/// A library song for the TV's background music.
+struct Playlist {
+    url: String,
+    title: String,
+    artist: String,
+    start_ms: u64,
+}
+
 pub struct Room {
     code: String,
     host_token: String,
@@ -330,7 +344,9 @@ pub struct Room {
     timing: Timing,
     max_players: usize,
     db: Db,
-    itunes: Itunes,
+    music: Music,
+    /// Background music from the library for the TV, with each song's rating.
+    playlist: Vec<(Playlist, Rating)>,
     host: Host,
     host_line: Option<HostLine>,
     host_seq: u64,
@@ -381,7 +397,7 @@ impl Room {
         max_players: usize,
         db: Db,
         script: Arc<Script>,
-        itunes: Itunes,
+        music: Music,
         on_close: impl FnOnce() + Send + 'static,
     ) -> RoomHandle {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -392,7 +408,8 @@ impl Room {
             timing,
             max_players,
             db,
-            itunes,
+            music,
+            playlist: Vec::new(),
             host: Host::new(script),
             host_line: None,
             host_seq: 0,
@@ -442,6 +459,7 @@ impl Room {
     }
 
     async fn run(mut self, mut rx: mpsc::UnboundedReceiver<RoomCmd>) {
+        self.load_playlist().await;
         let mut idle_check = tokio::time::interval(Duration::from_secs(5));
         loop {
             let deadline = self.deadline;
@@ -826,6 +844,7 @@ impl Room {
                 late_join,
                 trivia_rounds,
                 per_round,
+                song_source,
             } => {
                 if !is_leader {
                     return Err("Only the VIP can change the game.".into());
@@ -838,7 +857,8 @@ impl Room {
                     || teams.is_some()
                     || late_join.is_some()
                     || trivia_rounds.is_some()
-                    || per_round.is_some();
+                    || per_round.is_some()
+                    || song_source.is_some();
                 if !is_host && admin_only {
                     return Err("Only the admin can change the game's settings.".into());
                 }
@@ -851,6 +871,7 @@ impl Room {
                     late_join,
                     trivia_rounds,
                     per_round,
+                    song_source,
                 })?;
             }
             ClientMsg::Team { team } => {
@@ -976,6 +997,7 @@ impl Room {
                 late_join,
                 trivia_rounds,
                 per_round,
+                song_source,
                 max_players,
             } => {
                 if let Some(n) = max_players {
@@ -990,6 +1012,7 @@ impl Room {
                     late_join,
                     trivia_rounds,
                     per_round,
+                    song_source,
                 })?;
             }
         }
@@ -1037,6 +1060,7 @@ impl Room {
             late_join,
             trivia_rounds,
             per_round,
+            song_source,
         } = change;
         let locked = rounds.is_some()
             || max_rating.is_some()
@@ -1044,7 +1068,8 @@ impl Room {
             || clip_ms.is_some()
             || teams.is_some()
             || trivia_rounds.is_some()
-            || per_round.is_some();
+            || per_round.is_some()
+            || song_source.is_some();
         if locked && self.phase != Phase::Lobby {
             return Err("Settings are locked once the game starts.".into());
         }
@@ -1071,6 +1096,9 @@ impl Room {
         }
         if let Some(r) = trivia_rounds {
             self.settings.trivia_rounds = r.clamp(rounds::MIN_ROUNDS, rounds::MAX_ROUNDS);
+        }
+        if let Some(s) = song_source {
+            self.settings.song_source = s;
         }
         if let Some(n) = per_round {
             self.settings.per_round = n.clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND);
@@ -1134,6 +1162,8 @@ impl Room {
         }
         self.right_answers.clear();
         self.stage_points.clear();
+        // New background music for the scoreboards, without this game's songs in it.
+        self.load_playlist().await;
         for p in &mut self.players {
             p.score = 0;
             p.streak = 0;
@@ -1231,13 +1261,50 @@ impl Room {
         Ok(())
     }
 
+    /// A fresh shuffle of library songs to play between rounds.
+    async fn load_playlist(&mut self) {
+        if !self.music.library.configured() {
+            return;
+        }
+        match self.db.library_playlist(PLAYLIST_LEN).await {
+            Ok(songs) => {
+                let quiz: HashSet<i64> = self.questions.iter().map(|q| q.id).collect();
+                let mut rng = rand::rng();
+                use rand::Rng;
+                self.playlist = songs
+                    .into_iter()
+                    .filter_map(|(song, rating)| {
+                        let path = std::path::PathBuf::from(song.file_path?);
+                        // A third of the way in skips quiet intros.
+                        let start_ms = song.duration_ms.map_or(0, |d| d.max(0) as u64 / 3);
+                        let start_ms = rng.random_range(start_ms / 2..=start_ms);
+                        if quiz.contains(&song.id) {
+                            return None;
+                        }
+                        Some((
+                            Playlist {
+                                url: self.music.media.url(&path),
+                                title: song.title,
+                                artist: song.artist,
+                                start_ms,
+                            },
+                            rating,
+                        ))
+                    })
+                    .collect();
+            }
+            Err(e) => tracing::warn!("loading the room's playlist: {e:#}"),
+        }
+    }
+
     async fn load_songs(&mut self) -> Result<(), String> {
         let questions = music::build_round(
             &self.db,
-            &self.itunes,
+            &self.music,
             self.settings.rounds,
             self.settings.max_rating,
             &self.used_song_ids,
+            self.settings.song_source,
         )
         .await
         .map_err(|e| {
@@ -2127,6 +2194,17 @@ impl Room {
             .and_then(|q| q.song.as_ref())
             .map(|s| s.preview_url.as_str());
 
+        let playlist: Vec<PlaylistView> = self
+            .playlist
+            .iter()
+            .filter(|(_, rating)| *rating <= self.settings.max_rating)
+            .map(|(p, _)| PlaylistView {
+                url: &p.url,
+                title: &p.title,
+                artist: &p.artist,
+                start_ms: p.start_ms,
+            })
+            .collect();
         let teams = self.team_views();
         let stages = self.stage_views();
         let stage = self.current_stage();
@@ -2223,9 +2301,16 @@ impl Room {
                             year: s.year,
                             artwork_url: s.artwork_url.as_deref(),
                             store_url: s.store_url.as_deref(),
+                            album: s.album.as_deref(),
+                            from_library: s.from_library,
                         }),
                     }),
                 next_clip: next_clip.filter(|_| is_host),
+                playlist: if is_host {
+                    playlist.clone()
+                } else {
+                    Vec::new()
+                },
                 hangman: puzzle.map(|p| HangmanView {
                     category: &p.category,
                     board: board.as_deref().unwrap_or_default(),

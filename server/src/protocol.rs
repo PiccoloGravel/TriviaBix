@@ -33,6 +33,7 @@ pub enum ClientMsg {
         late_join: Option<bool>,
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
+        song_source: Option<SongSource>,
     },
     /// Player: switch to another team while in the lobby.
     Team { team: u8 },
@@ -58,6 +59,19 @@ pub enum GameMode {
     Hangman,
     /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
     Songs,
+}
+
+/// Where Name That Tune's songs come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SongSource {
+    /// Half from the music library, half from the curated hits.
+    #[default]
+    Mix,
+    /// The music library only, topped up with hits if it runs short.
+    Library,
+    /// The curated hits only (played from the library when it has them, else Apple previews).
+    Hits,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +120,9 @@ pub struct StateView<'a> {
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
+    /// TV only: background music from the library for the lobby and scoreboards, within the
+    /// room's rating. Empty without a music library.
+    pub playlist: Vec<PlaylistView<'a>>,
     /// Only in speed hangman rounds.
     pub hangman: Option<HangmanView<'a>>,
     /// What the host is saying right now, with graphics for the TV to show alongside it.
@@ -142,6 +159,8 @@ pub struct SettingsView {
     pub trivia_rounds: u8,
     /// Trivia only: questions in each round.
     pub per_round: usize,
+    /// Name That Tune: where the songs come from.
+    pub song_source: SongSource,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -199,6 +218,14 @@ pub struct QuestionView<'a> {
     pub clip: Option<ClipView<'a>>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct PlaylistView<'a> {
+    pub url: &'a str,
+    pub title: &'a str,
+    pub artist: &'a str,
+    pub start_ms: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ClipView<'a> {
     pub preview_url: &'a str,
@@ -221,6 +248,9 @@ pub struct SongView<'a> {
     pub year: i64,
     pub artwork_url: Option<&'a str>,
     pub store_url: Option<&'a str>,
+    pub album: Option<&'a str>,
+    /// Played from the operator's music library rather than an Apple preview.
+    pub from_library: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -329,6 +359,7 @@ pub enum AdminCmd {
         late_join: Option<bool>,
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
+        song_source: Option<SongSource>,
         /// Room size, any time; never below the players already in the room.
         max_players: Option<usize>,
     },

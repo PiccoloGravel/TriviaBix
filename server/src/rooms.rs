@@ -7,7 +7,7 @@ use rand::Rng;
 
 use crate::db::Db;
 use crate::host::Script;
-use crate::music::Itunes;
+use crate::music::Music;
 use crate::room::{Room, RoomHandle, Settings, Timing};
 
 /// No vowels, so random codes can't spell anything rude, and no letters that
@@ -20,7 +20,7 @@ pub struct Rooms {
     inner: Arc<Mutex<HashMap<String, RoomHandle>>>,
     db: Db,
     script: Arc<Script>,
-    itunes: Itunes,
+    music: Music,
     timing: Timing,
     max_players: usize,
     max_rooms: usize,
@@ -30,7 +30,7 @@ impl Rooms {
     pub fn new(
         db: Db,
         script: Script,
-        itunes: Itunes,
+        music: Music,
         timing: Timing,
         max_players: usize,
         max_rooms: usize,
@@ -39,7 +39,7 @@ impl Rooms {
             inner: Default::default(),
             db,
             script: Arc::new(script),
-            itunes,
+            music,
             timing,
             max_players,
             max_rooms,
@@ -77,7 +77,7 @@ impl Rooms {
             clamp_players(max_players.unwrap_or(self.max_players)),
             self.db.clone(),
             self.script.clone(),
-            self.itunes.clone(),
+            self.music.clone(),
             move || {
                 registry.lock().unwrap().remove(&closing);
             },

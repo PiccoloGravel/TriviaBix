@@ -21,9 +21,17 @@ services:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
+      # Your music library through Lidarr (optional). See deploy/unraid/README.md.
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      # The music folder as Lidarr sees it; empty uses Lidarr's root folder.
+      LIDARR_MUSIC_PATH: ${LIDARR_MUSIC_PATH:-}
+      LIBRARY_RATING: ${LIBRARY_RATING:-PG-13}
     volumes:
       # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
       - /mnt/user/appdata/triviabix:/data
+      # The music share Lidarr manages, read-only. The TV streams clips from it.
+      - ${MUSIC_SHARE:-/mnt/user/data/media/music}:/music:ro
     restart: unless-stopped
 
   # Bix's self-hosted voice (optional). It needs an NVIDIA GPU (Nvidia Driver plugin on Unraid)

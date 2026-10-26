@@ -83,6 +83,36 @@ The game only needs your LAN. To let people join from elsewhere:
   Set Public URL to the public `https://` address. Use a strong admin password, or block `/admin`
   at the proxy, since anyone who finds the address can reach it.
 
+## Your music library (Lidarr)
+
+Name That Tune can play songs from your own library instead of (or as well as) Apple's previews,
+and the TV plays your music quietly in the lobby and between rounds. TriviaBix asks Lidarr which
+tracks have files, then streams them from your music share, which it only reads.
+
+1. In Lidarr: **Settings → General → Security**, copy the **API Key**. Note the root folder under
+   **Settings → Media Management → Root Folders** (e.g. `/music` or `/data/media/music`).
+2. In the TriviaBix template (or the stack's `.env`):
+   - **Music library**: the Unraid share holding your music, the same one mapped into Lidarr,
+     e.g. `/mnt/user/data/media/music`. It's mounted read-only at `/music`.
+   - **Lidarr URL**: `http://<your Unraid IP>:8686`.
+   - **Lidarr API key**: the key from step 1.
+   - **Lidarr music path** (advanced): only needed if Lidarr has more than one root folder, or the
+     share you mapped above is a parent of it. Put the folder *as Lidarr sees it* that matches the
+     share you mounted, e.g. `/data/media/music`.
+   - **Library rating** (advanced): rating for library songs, `PG-13` by default. Tracks marked
+     explicit are always at least `MA`, so a PG room skips your library unless you set this to `PG`.
+3. **Apply**. The library syncs at startup and every 6 hours (`LIDARR_SYNC_HOURS`). The admin
+   panel shows how many songs are ready and has **Sync from Lidarr** for after you add albums.
+
+Per room, the admin panel's **Songs from** picks **Library + hits** (half and half, the default),
+**Your library**, or **Hits** (the built-in list, played from your files when you have them and
+from Apple otherwise). Live albums, remixes, tracks under a minute and files TV browsers can't play
+(e.g. `.wma`, `.ape`) are left out. Wrong answers are songs of the same genre from around the same
+year. The **🎵 Music** button (or **B**) on the TV turns the background music and sound effects off.
+
+If the admin panel says files aren't found, the music share isn't mounted at `/music` or Lidarr
+sees it under a different path: set **Lidarr music path**.
+
 ## Bix's voice
 
 Bix currently speaks with the browser's built-in text-to-speech, so the TV laptop/phone does the
@@ -97,4 +127,7 @@ ready to uncomment; voice lines are cached in `appdata/triviabix/tts`.
   not `localhost`, and phones must be on the same Wi-Fi (not a guest network that isolates devices).
 - **Permission errors in the log:** the container fixes appdata ownership on start using PUID/PGID
   (99/100 by default on Unraid). Check those weren't changed.
+- **"Lidarr has N tracks with files, but none of them are under /music":** the **Music library**
+  path points at a different folder than Lidarr's root folder, or **Lidarr music path** is wrong.
+  Compare a file's path in Lidarr (an album → the file icon) with what's in your share.
 - **Logs:** Docker tab → TriviaBix icon → **Logs**.
