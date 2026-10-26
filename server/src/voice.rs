@@ -814,7 +814,11 @@ mod tests {
             .import(HELLO_KEY, "ip:US_James", Some("m"), "audio/wav", &wav)
             .await
             .unwrap();
-        assert!(dir.join(JAMES_SLUG).join(format!("{HELLO_KEY}.wav")).is_file());
+        assert!(
+            dir.join(JAMES_SLUG)
+                .join(format!("{HELLO_KEY}.wav"))
+                .is_file()
+        );
         assert_eq!(voice.current_voice().as_deref(), Some("ip:US_James"));
         assert!(voice.is_ready("Hello"));
         assert_eq!(voice.backlog_lines("ip:US_James").len(), 1);
