@@ -124,6 +124,78 @@ impl Script {
             .filter(|text| !text.contains('{'))
             .collect()
     }
+
+    /// Lines with placeholders filled in from `combos`, to be voiced ahead of time. `combos` gives
+    /// an event's likely values (all of its placeholders together, as they occur in a game). For
+    /// each event, rating and set of placeholders, every distinct filling gets `per_tier` of the
+    /// lines, chosen by a hash of the filling so the same ones come back every time. Lines with a
+    /// placeholder `combos` has no values for are left out.
+    pub fn expand(
+        &self,
+        combos: impl Fn(&str) -> Vec<Vec<(&'static str, String)>>,
+        per_tier: impl Fn(&str) -> usize,
+    ) -> Vec<String> {
+        use std::collections::BTreeSet;
+        let mut out = BTreeSet::new();
+        for (event, lines) in &self.lines {
+            let combos = combos(event);
+            if combos.is_empty() {
+                continue;
+            }
+            // (rating, placeholders) -> lines
+            let mut groups: BTreeMap<(Rating, Vec<&str>), Vec<&str>> = BTreeMap::new();
+            for (rating, text) in lines {
+                let vars = placeholders(text);
+                if vars.is_empty() || !vars.iter().all(|v| combos[0].iter().any(|(k, _)| k == v)) {
+                    continue;
+                }
+                groups.entry((*rating, vars)).or_default().push(text);
+            }
+            for ((_, vars), texts) in groups {
+                let fillings: BTreeSet<Vec<&str>> = combos
+                    .iter()
+                    .map(|c| {
+                        let get = |v: &&str| c.iter().find(|(k, _)| k == v).unwrap().1.as_str();
+                        vars.iter().map(get).collect()
+                    })
+                    .collect();
+                for filling in fillings {
+                    let mut ranked = texts.clone();
+                    let seed = filling.join("\u{1f}");
+                    ranked.sort_by_cached_key(|t| stable_hash(&format!("{seed}\u{1f}{t}")));
+                    for text in ranked.into_iter().take(per_tier(event)) {
+                        let mut line = text.replace("{host}", &self.host_name);
+                        for (var, value) in vars.iter().zip(&filling) {
+                            line = line.replace(&format!("{{{var}}}"), value);
+                        }
+                        out.insert(line);
+                    }
+                }
+            }
+        }
+        out.into_iter().collect()
+    }
+}
+
+/// The placeholders in `text` other than `{host}`, sorted.
+fn placeholders(text: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = text
+        .split('{')
+        .skip(1)
+        .filter_map(|rest| rest.split_once('}').map(|(name, _)| name))
+        .filter(|name| *name != "host")
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// A hash that's the same on every run and machine (unlike `std`'s), so pre-made lines are stable.
+fn stable_hash(text: &str) -> u64 {
+    // FNV-1a
+    text.bytes().fold(0xcbf29ce484222325, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    })
 }
 
 fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
@@ -165,8 +237,51 @@ impl Host {
     /// Spicier tiers are weighted heavier (1, 3, 9, 27), so an NC-17 room hears the NC-17 lines
     /// early and often, with tamer ones mixed in once those are used up.
     pub fn say(&mut self, event: &'static str, rating: Rating, vars: &[(&str, &str)]) -> String {
+        self.say_voiced(event, rating, vars, |_| false)
+    }
+
+    /// Like `say`, but prefers lines for which `voiced` says Bix's own voice is ready, so a game
+    /// sticks to pre-made audio wherever it can rather than falling back to the browser's voice.
+    pub fn say_voiced(
+        &mut self,
+        event: &'static str,
+        rating: Rating,
+        vars: &[(&str, &str)],
+        voiced: impl Fn(&str) -> bool,
+    ) -> String {
         let lines = &self.script.lines[event];
+        let render = |i: usize| {
+            let mut text = lines[i].1.replace("{host}", &self.script.host_name);
+            for (k, v) in vars {
+                text = text.replace(&format!("{{{k}}}"), v);
+            }
+            text
+        };
+        let ready: Vec<usize> = (0..lines.len())
+            .filter(|&i| lines[i].0 <= rating && voiced(&render(i)))
+            .collect();
         let used = self.used.entry(event).or_default();
+        if !ready.is_empty() {
+            // Fresh voiced lines first; once those are used up, any voiced line but the last one.
+            let fresh: Vec<usize> = ready
+                .iter()
+                .copied()
+                .filter(|i| !used.contains(i))
+                .collect();
+            let pool = if !fresh.is_empty() {
+                fresh
+            } else if ready.len() > 1 {
+                ready
+                    .into_iter()
+                    .filter(|i| used.last() != Some(i))
+                    .collect()
+            } else {
+                ready
+            };
+            let pick = weighted(lines, &pool).expect("pool isn't empty");
+            used.push(pick);
+            return render(pick);
+        }
         let pick = match pick_line(lines, rating, used) {
             Some(pick) => pick,
             None => {
@@ -180,12 +295,7 @@ impl Host {
             }
         };
         used.push(pick);
-
-        let mut text = lines[pick].1.replace("{host}", &self.script.host_name);
-        for (k, v) in vars {
-            text = text.replace(&format!("{{{k}}}"), v);
-        }
-        text
+        render(pick)
     }
 }
 
@@ -201,16 +311,21 @@ impl Host {
 /// Picks a line rated at most `rating` that isn't in `skip`, or `None` if there's none left.
 /// Spicier tiers are weighted heavier (1, 3, 9, 27).
 fn pick_line(lines: &[(Rating, String)], rating: Rating, skip: &[usize]) -> Option<usize> {
-    let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
     let pool: Vec<usize> = (0..lines.len())
         .filter(|&i| lines[i].0 <= rating && !skip.contains(&i))
         .collect();
+    weighted(lines, &pool)
+}
+
+/// One of `pool`, spicier lines weighted heavier (1, 3, 9, 27).
+fn weighted(lines: &[(Rating, String)], pool: &[usize]) -> Option<usize> {
+    let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
     let total: u32 = pool.iter().map(|&i| weight(i)).sum();
     if total == 0 {
         return None;
     }
     let mut roll = rand::rng().random_range(0..total);
-    for &i in &pool {
+    for &i in pool {
         if roll < weight(i) {
             return Some(i);
         }
@@ -253,6 +368,21 @@ mod tests {
             serde_json::from_str(include_str!("../host-script.json")).unwrap();
         change(&mut v["lines"]);
         v.to_string()
+    }
+
+    #[test]
+    fn lines_with_audio_come_first() {
+        let script = std::sync::Arc::new(Script::builtin());
+        let mut host = Host::new(script.clone());
+        let vars = [("name", "Zelda")];
+        let made: Vec<String> = (0..3)
+            .map(|_| host.say("join", Rating::Pg, &vars))
+            .collect();
+        let mut host = Host::new(script);
+        for _ in 0..10 {
+            let line = host.say_voiced("join", Rating::Pg, &vars, |t| made.iter().any(|m| m == t));
+            assert!(made.contains(&line), "{line}");
+        }
     }
 
     #[test]

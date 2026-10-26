@@ -1871,7 +1871,9 @@ impl Room {
     }
 
     fn line(&mut self, event: &'static str, vars: &[(&str, &str)]) -> String {
-        self.host.say(event, self.settings.max_rating, vars)
+        let voice = &self.voice;
+        self.host
+            .say_voiced(event, self.settings.max_rating, vars, |t| voice.is_ready(t))
     }
 
     /// Sets what the host is saying. An empty line clears it. `cue` names the moment so the TV can

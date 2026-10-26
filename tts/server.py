@@ -13,12 +13,14 @@ Settings (environment):
     TTS_DEVICE    cuda:0 (default) or cpu
     TTS_FORMAT    ogg (default), flac or wav
     BIX_VOICE     ip:US_James (default), clone:/voices/bix.wav, freeform:<instruction> or design:<style>
+    TTS_TOKEN     if set, /v1/speech needs "Authorization: Bearer <token>" (for a rented GPU on the internet)
     PORT          8000
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -195,6 +197,7 @@ class Service:
         self.backend = None
         self.error = None
         self.gate = Gate()
+        self.token = os.environ.get("TTS_TOKEN", "")
 
     def load(self):
         try:
@@ -207,7 +210,8 @@ class Service:
 
     def health(self) -> dict:
         return {"ok": self.error is None, "ready": self.backend is not None, "backend": self.backend_name,
-                "voice": self.voice.key, "format": self.fmt, "error": self.error}
+                "voice": self.voice.key, "format": self.fmt,
+                "model": os.environ.get("TTS_MODEL", "inclusionAI/Ming-3.0-tts-0.5b") if self.backend_name == "ming" else "stub", "error": self.error}
 
     def speak(self, text: str, live: bool) -> bytes:
         with self.gate(live):
@@ -245,6 +249,9 @@ def make_handler(service: Service):
         def do_POST(self):
             if self.path != "/v1/speech":
                 return self.json(404, {"error": "not found"})
+            if service.token and not hmac.compare_digest(
+                    self.headers.get("Authorization", "").encode(), f"Bearer {service.token}".encode()):
+                return self.json(401, {"error": "wrong or missing token"})
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
                 text = str(body.get("text", "")).strip()

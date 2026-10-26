@@ -255,6 +255,40 @@ impl Db {
         Ok(rows.iter().map(|r| r.get("text")).collect())
     }
 
+    /// What the host can be asked to say a value for, so lines with it can be voiced ahead of
+    /// time: every category a round or question can have, and every answer he can reveal.
+    pub async fn voice_values(&self) -> anyhow::Result<(Vec<String>, Vec<String>)> {
+        let col = |rows: Vec<sqlx::sqlite::SqliteRow>| -> Vec<String> {
+            rows.iter().map(|r| r.get::<String, _>(0)).collect()
+        };
+        let categories = col(sqlx::query(concat!(
+            "SELECT DISTINCT category FROM questions WHERE ",
+            playable!(),
+            " UNION SELECT DISTINCT category FROM hangman_phrases"
+        ))
+        .fetch_all(&self.pool)
+        .await?);
+        let answers = col(sqlx::query(concat!(
+            "SELECT correct FROM questions WHERE ",
+            playable!(),
+            " UNION SELECT phrase FROM hangman_phrases"
+        ))
+        .fetch_all(&self.pool)
+        .await?);
+        Ok((categories, answers))
+    }
+
+    /// The `n` names that have played the most finished games, for voicing lines about the regulars.
+    pub async fn regulars(&self, n: usize) -> anyhow::Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT name FROM game_players GROUP BY name ORDER BY COUNT(*) DESC, MAX(game_id) DESC LIMIT ?1",
+        )
+        .bind(n as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(|r| r.get("name")).collect())
+    }
+
     /// Picks up to `n` random questions rated at most `max_rating`, skipping ids in `exclude` so a
     /// "play again" in the same room does not repeat itself.
     pub async fn random_questions(

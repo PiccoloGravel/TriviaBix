@@ -44,6 +44,9 @@ pub(crate) struct AppState {
     pub voice: Voice,
     /// What `{host}` reads as in question lines.
     pub host_name: std::sync::Arc<str>,
+    pub script: std::sync::Arc<crate::host::Script>,
+    /// VOICE_NAMES
+    pub voice_names: std::sync::Arc<[String]>,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -57,17 +60,19 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         Some(path) => crate::host::Script::load(path)?,
         None => crate::host::Script::builtin(),
     };
+    let script = std::sync::Arc::new(script);
     let voice = Voice::new(config.tts_url.as_deref(), &config.tts_cache_dir);
     let host_name: std::sync::Arc<str> = script.host_name.as_str().into();
-    if voice.enabled() {
+    if let Some(url) = &config.tts_url {
         tracing::info!(
-            "host voice from {}, cached in {}",
-            config.tts_url.as_deref().unwrap_or_default(),
+            "host voice from {url}, cached in {}",
             config.tts_cache_dir.display()
         );
-        voice.warm(script.fixed_lines(), false);
-        warm_questions(&voice, &db, &host_name).await;
     }
+    // Queued even with no TTS service, for one set later (such as a rented GPU, see gpu/).
+    voice.warm(script.fixed_lines(), false);
+    warm_questions(&voice, &db, &host_name).await;
+    warm_expanded(&voice, &db, &script, &config.voice_names).await;
     let itunes = Itunes::new(&config.itunes_url, &config.music_country);
     if config.music_warmup {
         tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
@@ -81,7 +86,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
     };
     let rooms = Rooms::new(
         db.clone(),
-        script,
+        script.clone(),
         music.clone(),
         voice.clone(),
         config.timing.clone(),
@@ -100,6 +105,8 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         music,
         voice,
         host_name,
+        script,
+        voice_names: config.voice_names.clone().into(),
     };
 
     let dir = &config.static_dir;
@@ -168,11 +175,24 @@ async fn voice_line(State(app): State<AppState>, Path(hash): Path<String>) -> Re
     }
 }
 
+/// Queues the host's lines with categories, answers and regulars' names filled in, last, so a
+/// batch run leaves little for a game to need from a live TTS service.
+pub(crate) async fn warm_expanded(
+    voice: &Voice,
+    db: &Db,
+    script: &crate::host::Script,
+    names: &[String],
+) {
+    let lines = crate::pregen::lines(script, db, names).await;
+    tracing::info!(
+        "voice: {} lines with names, categories and answers to make ahead",
+        lines.len()
+    );
+    voice.warm(lines, false);
+}
+
 /// Queues every question and question line for the voice, behind anything already waiting.
 pub(crate) async fn warm_questions(voice: &Voice, db: &Db, host_name: &str) {
-    if !voice.enabled() {
-        return;
-    }
     match db.voice_texts().await {
         Ok(texts) => {
             voice.warm(

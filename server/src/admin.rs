@@ -82,6 +82,7 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
             axum::routing::put(set_lines),
         )
         .route("/api/admin/content/reload", post(reload_content))
+        .route("/api/admin/voice", get(voice_status).put(set_voice_server))
         .route("/api/admin/music", get(music_status))
         .route("/api/admin/music/sync", post(music_sync))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -241,6 +242,7 @@ async fn reload_content(State(app): State<AppState>) -> Response {
     match crate::web::load_content(&app.db, &app.content_dir).await {
         Some(report) => {
             crate::web::warm_questions(&app.voice, &app.db, &app.host_name).await;
+            crate::web::warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
             Json(report).into_response()
         }
         None => (
@@ -308,4 +310,42 @@ mod tests {
         h.insert(header::COOKIE, HeaderValue::from_static("tbx_admin_x=zzz"));
         assert_eq!(session_cookie(&h), None);
     }
+}
+
+/// Where Bix's new lines come from and how many are still waiting to be made.
+async fn voice_status(State(app): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "server": app.voice.server(),
+        "backlog": app.voice.backlog(),
+        "in_flight": app.voice.in_flight(),
+        "enabled": app.voice.enabled(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct VoiceServer {
+    /// `None` goes back to `TTS_URL`.
+    url: Option<String>,
+    token: Option<String>,
+}
+
+/// Points the voice at another TTS service, such as one on a rented GPU (`gpu/vast.py voice`).
+async fn set_voice_server(State(app): State<AppState>, Json(body): Json<VoiceServer>) -> Response {
+    let url = body.url.as_deref().map(str::trim).filter(|u| !u.is_empty());
+    if let Some(url) = url
+        && !(url.starts_with("http://") || url.starts_with("https://"))
+    {
+        let error = "The voice server address should start with http:// or https://.";
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response();
+    }
+    app.voice.set_server(url, body.token.as_deref());
+    if url.is_some() {
+        // New regulars since startup get their lines too.
+        crate::web::warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
+    }
+    tracing::info!(
+        "voice server is now {}",
+        app.voice.server().as_deref().unwrap_or("none")
+    );
+    voice_status(State(app)).await.into_response()
 }

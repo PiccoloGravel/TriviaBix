@@ -68,6 +68,18 @@ class ServiceTest(unittest.TestCase):
             t.join()
         self.assertEqual(order, ["warm-1", "live", "warm-2"])
 
+    def test_token(self):
+        self.service.token = "s3cret"
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.post({"text": "Hi"})
+            self.assertEqual(e.exception.code, 401)
+            req = urllib.request.Request(self.url + "/v1/speech", json.dumps({"text": "Hi"}).encode(),
+                                         {"Content-Type": "application/json", "Authorization": "Bearer s3cret"})
+            self.assertEqual(urllib.request.urlopen(req).status, 200)
+        finally:
+            self.service.token = ""
+
     def test_voices(self):
         self.assertEqual(server.Voice("ip:UK_George").kwargs("Hi [Laughter] there")["text"], "Hi there")
         self.assertEqual(server.Voice("freeform:Be cheeky").kwargs("x")["task"], "FREEFORM")
