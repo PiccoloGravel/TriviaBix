@@ -207,6 +207,8 @@ pub(crate) struct CreateRoom {
     late_join: Option<bool>,
     trivia_rounds: Option<u8>,
     per_round: Option<usize>,
+    /// Admin panel only; the public endpoint ignores it.
+    pub(crate) max_players: Option<usize>,
 }
 
 impl CreateRoom {
@@ -235,7 +237,7 @@ impl CreateRoom {
 
 async fn create_room(State(app): State<AppState>, body: Option<Json<CreateRoom>>) -> Response {
     let body = body.map(|b| b.0).unwrap_or_default();
-    match app.rooms.create(body.settings()) {
+    match app.rooms.create(body.settings(), None) {
         Ok((code, host_token)) => {
             Json(json!({ "code": code, "host_token": host_token })).into_response()
         }

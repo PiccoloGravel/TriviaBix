@@ -50,8 +50,13 @@ impl Rooms {
         }
     }
 
-    /// Creates a room and returns its code and the secret host token.
-    pub fn create(&self, settings: Settings) -> Result<(String, String), String> {
+    /// Creates a room and returns its code and the secret host token. `max_players` is set
+    /// from the admin panel; otherwise the room takes the server's `MAX_PLAYERS`.
+    pub fn create(
+        &self,
+        settings: Settings,
+        max_players: Option<usize>,
+    ) -> Result<(String, String), String> {
         let mut rooms = self.inner.lock().unwrap();
         if rooms.len() >= self.max_rooms {
             return Err("Too many games running right now. Try again in a bit.".into());
@@ -73,7 +78,7 @@ impl Rooms {
             host_token.clone(),
             settings,
             self.timing.clone(),
-            self.max_players,
+            clamp_players(max_players.unwrap_or(self.max_players)),
             self.db.clone(),
             self.script.clone(),
             self.itunes.clone(),
@@ -111,4 +116,9 @@ impl Rooms {
 
 pub fn normalize_code(code: &str) -> String {
     code.trim().to_ascii_uppercase()
+}
+
+/// One character each, so a room can't hold more players than there are characters.
+pub fn clamp_players(n: usize) -> usize {
+    n.clamp(1, crate::characters::CHARACTERS.len())
 }

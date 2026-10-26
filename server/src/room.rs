@@ -982,7 +982,11 @@ impl Room {
                 late_join,
                 trivia_rounds,
                 per_round,
+                max_players,
             } => {
+                if let Some(n) = max_players {
+                    self.max_players = crate::rooms::clamp_players(n.max(self.players.len()));
+                }
                 self.change_settings(SettingsChange {
                     rounds,
                     max_rating,
@@ -1506,13 +1510,11 @@ impl Room {
         let answer = q.choices[q.answer].clone();
         let n = self.players.len();
         let mut parts = vec![self.line("reveal_answer", &[("answer", &answer)])];
-        // The question's own joke or fun fact comes right after the answer. It takes the place of
-        // the generic roast, so the host doesn't ramble.
+        // The question's own joke or fun fact comes right after the answer, before the reactions.
         let own = self.host.say_own(
             &self.questions[self.round].lines.reveal,
             self.settings.max_rating,
         );
-        let has_own = own.is_some();
         parts.extend(own);
         let mut callouts = Vec::new();
         let mut call = |kind, player_id, label: &str| {
@@ -1523,6 +1525,7 @@ impl Room {
             })
         };
 
+        let who_at = parts.len();
         if right.is_empty() {
             parts.push(self.line("nobody", &[("answer", &answer)]));
             call("nobody", None, "NOBODY!");
@@ -1553,7 +1556,6 @@ impl Room {
                 &[("name", &self.name_of(id)), ("streak", &streak)],
             ));
             call("streak_broken", Some(id), "STREAK OVER");
-        } else if has_own {
         } else if !wrong.is_empty() {
             let (id, choice) = &wrong[rand::random_range(0..wrong.len())];
             parts.push(self.line("roast", &[("name", &self.name_of(*id)), ("wrong", choice)]));
@@ -1562,6 +1564,11 @@ impl Room {
             let id = silent[rand::random_range(0..silent.len())];
             parts.push(self.line("asleep", &[("name", &self.name_of(id))]));
             call("asleep", Some(id), "ASLEEP?");
+        }
+        // With a lot to say, sometimes skip who got it (the TV still shows the stamp), so reveals
+        // don't all follow the same four beats.
+        if parts.len() >= 4 && rand::random_bool(0.4) {
+            parts.remove(who_at);
         }
         let cue = headline(&callouts);
         self.speak(parts, callouts, cue);

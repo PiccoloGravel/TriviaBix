@@ -1,0 +1,50 @@
+# TriviaBix for Unraid with the Docker Compose Manager plugin.
+# Paste this into a new stack, then set the values in the stack's .env file (see .env.example).
+# The Community Applications template (triviabix.xml) is the alternative if you'd rather not use
+# compose.
+
+services:
+  triviabix:
+    image: ghcr.io/piccologravel/triviabix:latest
+    container_name: triviabix
+    ports:
+      - "${TRIVIABIX_PORT:-8080}:8080"
+    environment:
+      # The address phones open and the TV's QR code shows, e.g. http://192.168.1.20:8080.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Turns on the admin panel at /admin. Leave empty to keep it off.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MAX_PLAYERS: ${MAX_PLAYERS:-12}
+      # Keep question packs in appdata so you can add your own.
+      CONTENT_DIR: /data/content
+      # nobody:users, Unraid's usual appdata owner.
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      TZ: ${TZ:-America/New_York}
+      # Bix's voice server: http://tts:8000 with the voice profile, empty for the browser's voice.
+      TTS_URL: ${TTS_URL:-}
+    volumes:
+      # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
+      - /mnt/user/appdata/triviabix:/data
+    restart: unless-stopped
+
+  # Bix's self-hosted voice (optional). Needs an NVIDIA GPU and the Nvidia Driver plugin. Start the
+  # stack with the "voice" profile and set TTS_URL=http://tts:8000 in .env (see deploy/unraid/README.md).
+  # Spoken lines are cached under /data/tts in triviabix's appdata.
+  tts:
+    image: ghcr.io/piccologravel/triviabix-tts:latest
+    container_name: triviabix-tts
+    profiles: [voice]
+    runtime: nvidia
+    ports:
+      - "8000:8000"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      # ip:US_James, ip:US_Emma, ip:UK_George, ip:UK_Charlotte, or clone:/voices/bix.wav
+      BIX_VOICE: ${BIX_VOICE:-ip:US_James}
+    volumes:
+      # The model (about 3 GB) downloads here on first start.
+      - /mnt/user/appdata/triviabix-tts/models:/models
+      # Reference clips for a custom Bix voice (bix.wav + bix.txt).
+      - /mnt/user/appdata/triviabix-tts/voices:/voices
+    restart: unless-stopped

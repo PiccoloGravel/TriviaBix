@@ -141,17 +141,19 @@ fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A room's host. Remembers the last line used for each event so it doesn't repeat itself.
+/// A room's host. Remembers which lines it has used for each event and works through all of
+/// them before repeating any, so a long night doesn't get stale.
 pub struct Host {
     script: std::sync::Arc<Script>,
-    last: HashMap<&'static str, usize>,
+    /// Event -> lines said since the event last ran out of fresh material.
+    used: HashMap<&'static str, Vec<usize>>,
 }
 
 impl Host {
     pub fn new(script: std::sync::Arc<Script>) -> Self {
         Host {
             script,
-            last: HashMap::new(),
+            used: HashMap::new(),
         }
     }
 
@@ -159,13 +161,25 @@ impl Host {
         &self.script.host_name
     }
 
-    /// Picks a line for `event` rated at most `rating`. Spicier tiers are weighted heavier
-    /// (1, 3, 9, 27), so an NC-17 room mostly hears NC-17 lines with tamer ones mixed in.
+    /// Picks a line for `event` rated at most `rating` that the room hasn't heard lately.
+    /// Spicier tiers are weighted heavier (1, 3, 9, 27), so an NC-17 room hears the NC-17 lines
+    /// early and often, with tamer ones mixed in once those are used up.
     pub fn say(&mut self, event: &'static str, rating: Rating, vars: &[(&str, &str)]) -> String {
         let lines = &self.script.lines[event];
-        let pick = pick_line(lines, rating, self.last.get(event).copied())
-            .expect("every event has a PG line");
-        self.last.insert(event, pick);
+        let used = self.used.entry(event).or_default();
+        let pick = match pick_line(lines, rating, used) {
+            Some(pick) => pick,
+            None => {
+                // Everything's been said: start over, but not with the line just used.
+                let last = used.pop();
+                used.clear();
+                used.extend(last);
+                pick_line(lines, rating, used)
+                    .or(last)
+                    .expect("every event has a PG line")
+            }
+        };
+        used.push(pick);
 
         let mut text = lines[pick].1.replace("{host}", &self.script.host_name);
         for (k, v) in vars {
@@ -179,19 +193,18 @@ impl Host {
     /// One of a question's own lines for a room rated `rating`, or `None` if it has none, in
     /// which case the host sticks to his generic material.
     pub fn say_own(&self, lines: &[(Rating, String)], rating: Rating) -> Option<String> {
-        let pick = pick_line(lines, rating, None)?;
+        let pick = pick_line(lines, rating, &[])?;
         Some(lines[pick].1.replace("{host}", &self.script.host_name))
     }
 }
 
-/// Picks a line rated at most `rating`, avoiding `last` when there's a choice. Spicier tiers
-/// are weighted heavier (1, 3, 9, 27).
-fn pick_line(lines: &[(Rating, String)], rating: Rating, last: Option<usize>) -> Option<usize> {
+/// Picks a line rated at most `rating` that isn't in `skip`, or `None` if there's none left.
+/// Spicier tiers are weighted heavier (1, 3, 9, 27).
+fn pick_line(lines: &[(Rating, String)], rating: Rating, skip: &[usize]) -> Option<usize> {
     let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
-    let mut pool: Vec<usize> = (0..lines.len()).filter(|&i| lines[i].0 <= rating).collect();
-    if pool.len() > 1 {
-        pool.retain(|&i| last != Some(i));
-    }
+    let pool: Vec<usize> = (0..lines.len())
+        .filter(|&i| lines[i].0 <= rating && !skip.contains(&i))
+        .collect();
     let total: u32 = pool.iter().map(|&i| weight(i)).sum();
     if total == 0 {
         return None;
@@ -234,6 +247,14 @@ mod tests {
         assert_eq!(script.lines.len(), EVENTS.len());
     }
 
+    /// The built-in script with `change` applied, as JSON text.
+    fn edited(change: impl FnOnce(&mut serde_json::Value)) -> String {
+        let mut v: serde_json::Value =
+            serde_json::from_str(include_str!("../host-script.json")).unwrap();
+        change(&mut v["lines"]);
+        v.to_string()
+    }
+
     #[test]
     fn fixed_lines_have_no_placeholders() {
         let lines = Script::builtin().fixed_lines();
@@ -246,30 +267,58 @@ mod tests {
         let ok = include_str!("../host-script.json");
         assert!(Script::parse(&ok.replace("\"sign_off\"", "\"sign_of\"")).is_err());
         assert!(Script::parse(&ok.replace("{name} has entered", "{nmae} has entered")).is_err());
-        assert!(Script::parse(&ok.replace("\"PG-13\": [\"Rematch", "\"R\": [\"Rematch")).is_err());
+        let bad_rating = edited(|lines| {
+            let tiers = lines["rematch"].as_object_mut().unwrap();
+            let pg13 = tiers.remove("PG-13").unwrap();
+            tiers.insert("R".into(), pg13);
+        });
+        assert!(Script::parse(&bad_rating).is_err());
     }
 
     #[test]
     fn ratings_cap_the_lines() {
-        let script = std::sync::Arc::new(
-            Script::parse(
-                &include_str!("../host-script.json")
-                    .replace("\"NC-17\": [\"Round two, baby.", "\"NC-17\": [\"SPICY.")
-                    .replace("\"MA\": [\"Again?", "\"MA\": [\"SPICY. Again?"),
-            )
-            .unwrap(),
-        );
-        let mut host = Host::new(script);
+        let text = edited(|lines| {
+            for tier in ["MA", "NC-17"] {
+                for line in lines["rematch"][tier].as_array_mut().unwrap() {
+                    *line = format!("SPICY. {}", line.as_str().unwrap()).into();
+                }
+            }
+        });
+        let script = std::sync::Arc::new(Script::parse(&text).unwrap());
+        let mut host = Host::new(script.clone());
         for _ in 0..50 {
             assert!(!host.say("rematch", Rating::Pg13, &[]).contains("SPICY"));
         }
+        // A fresh NC-17 room usually opens with the spicy material.
         let spicy = (0..200)
-            .filter(|_| host.say("rematch", Rating::Nc17, &[]).contains("SPICY"))
+            .filter(|_| {
+                Host::new(script.clone())
+                    .say("rematch", Rating::Nc17, &[])
+                    .contains("SPICY")
+            })
             .count();
         assert!(
-            spicy > 100,
-            "spicy tiers should dominate an NC-17 room, got {spicy}/200"
+            spicy > 150,
+            "spicy tiers should come first in an NC-17 room, got {spicy}/200"
         );
+    }
+
+    #[test]
+    fn every_line_is_used_before_any_repeats() {
+        let script = std::sync::Arc::new(Script::builtin());
+        let available = script.lines["question"].len();
+        let mut host = Host::new(script);
+        let vars = [("round", "1"), ("total", "9"), ("category", "Music")];
+        let mut said: Vec<String> = (0..available)
+            .map(|_| host.say("question", Rating::Nc17, &vars))
+            .collect();
+        said.sort();
+        said.dedup();
+        assert_eq!(said.len(), available, "repeated a line too soon");
+        // And the next round of lines doesn't open with the one just said.
+        let last = host.say("question", Rating::Nc17, &vars);
+        let next = host.say("question", Rating::Nc17, &vars);
+        assert_ne!(last, next);
     }
 
     #[test]

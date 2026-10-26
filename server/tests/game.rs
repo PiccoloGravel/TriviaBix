@@ -418,18 +418,32 @@ async fn host_reads_each_questions_own_lines_within_the_room_rating() {
         "a PG room heard an MA line: {said}"
     );
 
-    // An MA room hears it, in place of the generic roast.
+    // An MA room hears it, and Bix still roasts a wrong answer.
     let (code, host_token) =
         create_room_with(&addr, json!({ "rounds": 1, "max_rating": "MA" })).await;
     let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
-    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Bo")).await;
-    recv(&mut phone).await;
+    let mut phones = Vec::new();
+    for name in ["Bo", "Cy"] {
+        let mut phone = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut phone).await;
+        phones.push(phone);
+    }
     send(&mut host, json!({ "type": "start" })).await;
     wait_state(&mut host, |s| s["phase"] == "question").await;
-    send(&mut host, json!({ "type": "skip" })).await;
+    // Different picks, so one of them is wrong.
+    for (i, phone) in phones.iter_mut().enumerate() {
+        send(phone, json!({ "type": "answer", "choice": i })).await;
+    }
     let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
     let said = reveal["host"]["text"].as_str().unwrap();
     assert!(said.contains("SPICY REVEAL"), "{said}");
+    let kinds: Vec<&str> = reveal["host"]["callouts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["kind"].as_str())
+        .collect();
+    assert!(kinds.contains(&"roast"), "{kinds:?}: {said}");
 }
 
 #[tokio::test]
@@ -1448,6 +1462,58 @@ async fn the_vip_runs_the_whole_game_from_their_phone() {
     )
     .await;
     next_error(&mut vip).await;
+}
+
+#[tokio::test]
+async fn admin_sets_each_rooms_size() {
+    let addr = start_server().await;
+    let cookie = admin_login(&addr).await;
+    let (status, room) = admin(&addr, &cookie, "rooms", Some(json!({ "max_players": 3 }))).await;
+    assert_eq!(status, 200);
+    let code = room["code"].as_str().unwrap().to_string();
+    let host_token = room["host_token"].as_str().unwrap().to_string();
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    assert_eq!(wait_state(&mut host, |_| true).await["max_players"], 3);
+
+    // Phones can't pick the size: the public endpoint ignores it.
+    let (other, _) = create_room_with(&addr, json!({ "max_players": 2 })).await;
+    let info: Value = reqwest::get(format!("http://{addr}/api/rooms/{other}"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_ne!(info["max_players"], 2);
+
+    let mut players = Vec::new();
+    for name in ["A", "B"] {
+        let mut ws = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut ws).await;
+        players.push(ws);
+    }
+    // Shrinking stops at the players already in.
+    let path = format!("rooms/{code}");
+    admin(
+        &addr,
+        &cookie,
+        &path,
+        Some(json!({ "action": "settings", "max_players": 1 })),
+    )
+    .await;
+    wait_state(&mut host, |s| s["max_players"] == 2).await;
+    let mut c = open(&addr, &format!("/ws/play?code={code}&name=C")).await;
+    assert_eq!(next_error(&mut c).await["fatal"], true);
+
+    admin(
+        &addr,
+        &cookie,
+        &path,
+        Some(json!({ "action": "settings", "max_players": 99 })),
+    )
+    .await;
+    wait_state(&mut host, |s| s["max_players"] == 24).await;
+    let mut c = open(&addr, &format!("/ws/play?code={code}&name=C")).await;
+    assert_eq!(recv(&mut c).await["type"], "welcome");
 }
 
 /// Stands in for the TTS service in tts/: "audio" is the text, and it counts what it's asked for.

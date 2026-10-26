@@ -342,6 +342,8 @@ pub enum AdminCmd {
         late_join: Option<bool>,
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
+        /// Room size, any time; never below the players already in the room.
+        max_players: Option<usize>,
     },
 }
 

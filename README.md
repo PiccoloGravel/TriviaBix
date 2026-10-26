@@ -11,13 +11,14 @@ Everything is played from phones. The TV is display only.
    clicked once, so click the TV page once if you want the host's voice and Name That Tune clips.
 2. Players open `http://<server>:8080` on their phones (or scan the QR code on the TV), type the 4-letter room code and a name.
    Each player picks a character (24 to choose from, one per player per room) and can change their name or character in the lobby.
-   Up to 12 players per room by default (`MAX_PLAYERS`).
+   Up to 12 players per room by default (`MAX_PLAYERS`); the admin panel can change it per room.
 3. The first player to join is the VIP. On their phone the VIP picks the game (Trivia, Speed Hangman or Name That Tune)
    and starts it. The TV shows the choice as it changes.
 4. During the game the VIP's phone has **Next** to skip ahead and **End game** to go back to the lobby. After the final
    scores the VIP taps **Pick the next game** to return to the lobby with everyone still in. The VIP can also remove a
    player from the lobby.
-5. Only the admin changes a room's settings: rating (PG, PG-13, MA, NC-17), length, teams, clip length and late joins.
+5. Only the admin changes a room's settings: rating (PG, PG-13, MA, NC-17), length, teams, clip length, late joins and
+   the maximum number of players (up to 24, one per character).
    Rooms start at PG. Sign in to the [admin panel](#admin-panel) at `/admin`, on a phone if you like. The lobby on every
    phone links to it, and that room is listed first.
 
@@ -46,7 +47,7 @@ it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the s
 each, and only placeholders that event fills in). Reveals and scoreboards stretch so the host can finish talking.
 
 Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
-line (a joke, anecdote, or fun fact) right after the answer, in place of his generic roast. They're rated too, so a PG room
+line (a joke, anecdote, or fun fact) right after the answer, before his usual reactions and roasts. They're rated too, so a PG room
 hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
 script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
 them in the admin panel.
@@ -140,6 +141,8 @@ PUBLIC_URL=http://192.168.1.20:8080 docker compose up --build
 `PUBLIC_URL` is the address phones should use for the join link and QR code. Leave it out if you open the TV page on that
 same address anyway (not `localhost`).
 
+On Unraid, use the published image `ghcr.io/piccologravel/triviabix`: see [deploy/unraid](deploy/unraid/README.md).
+
 Without Docker (needs a recent stable Rust):
 
 ```sh
@@ -155,7 +158,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `DATABASE_URL` | `sqlite://data/triviabix.db` | SQLite file; created and migrated on startup |
 | `STATIC_DIR` | `web` | The TV and phone pages |
 | `PUBLIC_URL` | | Join address shown on the TV |
-| `MAX_PLAYERS` | `12` | Per room |
+| `MAX_PLAYERS` | `12` | Default room size; the admin panel can set each room from 1 to 24 |
 | `MAX_ROOMS` | `500` | |
 | `QUESTION_SECS` / `REVEAL_SECS` / `SCOREBOARD_SECS` | `20` / `7` / `6` | Minimums; the host's lines can stretch them |
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
@@ -169,6 +172,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MUSIC_WARMUP` | `true` | Look up every song at startup |
 | `ITUNES_API_URL` | `https://itunes.apple.com` | |
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
+| `PUID` / `PGID` | `10001` | Docker only: who owns the files in `/data` (Unraid: `99` / `100`) |
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
 | `TTS_URL` | | Bix's voice service, e.g. `http://tts:8000` (see [tts/README.md](tts/README.md)); empty means browser text-to-speech |
 | `TTS_CACHE_DIR` | `data/tts` | Where his lines are cached (`/data/tts` in Docker) |

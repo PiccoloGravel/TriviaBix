@@ -1,5 +1,8 @@
 services:
   triviabix:
+    # `docker compose up --build` builds from source. To use the published image instead
+    # (what Unraid does), run `docker compose pull && docker compose up`.
+    image: ghcr.io/piccologravel/triviabix:latest
     build: .
     ports:
       - "8080:8080"
@@ -20,6 +23,7 @@ services:
   # Ming-3.0-tts for Bix's voice. Needs an NVIDIA GPU and the NVIDIA container toolkit.
   #   TTS_URL=http://tts:8000 docker compose --profile voice up --build
   tts:
+    image: ghcr.io/piccologravel/triviabix-tts:latest
     build: ./tts
     profiles: [voice]
     ports:
