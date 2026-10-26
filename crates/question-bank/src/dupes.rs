@@ -11,6 +11,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::bank::validate_question;
 use crate::judge::normalize;
 use crate::model::*;
 
@@ -403,6 +404,44 @@ impl DuplicateIndex {
         });
         out
     }
+}
+
+/// What [`screen`] made of a batch of imported questions.
+#[derive(Debug, Default)]
+pub struct Screened {
+    /// New questions to add, in the order fetched.
+    pub fresh: Vec<Question>,
+    /// Questions dropped because the bank (or an earlier one in the batch) already asks them.
+    pub skipped: Vec<(Question, Match)>,
+    /// Added questions that look a bit like one already there, for a person to check. With
+    /// `strict`, these are skipped instead and listed in `skipped`.
+    pub flagged: Vec<(Question, Match)>,
+    /// Questions dropped because they are broken, such as an answer missing from the choices.
+    pub invalid: usize,
+}
+
+/// Sorts imported questions into new ones and duplicates of what `index` already holds (the
+/// bank and the pack being added to), adding the new ones to `index` as it goes so a batch
+/// can't repeat itself either. With `strict`, possible duplicates are skipped too.
+pub fn screen(new: Vec<Question>, index: &mut DuplicateIndex, strict: bool) -> Screened {
+    let mut out = Screened::default();
+    for q in new {
+        if !validate_question(&q).is_empty() {
+            out.invalid += 1;
+            continue;
+        }
+        match index.check(&q) {
+            Some(m) if m.verdict == Verdict::Duplicate || strict => out.skipped.push((q, m)),
+            found => {
+                index.add(&q);
+                if let Some(m) = found {
+                    out.flagged.push((q.clone(), m));
+                }
+                out.fresh.push(q);
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]

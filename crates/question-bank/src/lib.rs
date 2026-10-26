@@ -20,7 +20,9 @@ pub mod import;
 pub use bank::{
     load_pack, validate_question, Filter, LoadError, Problem, QuestionBank, Stats, NOT_DUPLICATES,
 };
-pub use dupes::{DuplicateIndex, DuplicatePair, KeptPair, Match, NotDuplicates, Verdict};
+pub use dupes::{
+    screen, DuplicateIndex, DuplicatePair, KeptPair, Match, NotDuplicates, Screened, Verdict,
+};
 pub use judge::{normalize, text_matches};
 pub use model::*;
 pub use pack::{generated_id, slugify, PackFile, PackMeta, PackQuestion};

@@ -8,8 +8,7 @@ use std::time::Duration;
 use base64::Engine;
 use serde::Deserialize;
 
-use crate::bank::validate_question;
-use crate::dupes::{DuplicateIndex, Match, Verdict};
+pub use crate::dupes::{screen, Screened};
 use crate::model::*;
 use crate::pack::generated_id;
 
@@ -378,44 +377,6 @@ fn parse_difficulty(s: &str) -> Difficulty {
     }
 }
 
-/// What [`screen`] made of a batch of imported questions.
-#[derive(Debug, Default)]
-pub struct Screened {
-    /// New questions to add, in the order fetched.
-    pub fresh: Vec<Question>,
-    /// Questions dropped because the bank (or an earlier one in the batch) already asks them.
-    pub skipped: Vec<(Question, Match)>,
-    /// Added questions that look a bit like one already there, for a person to check. With
-    /// `strict`, these are skipped instead and listed in `skipped`.
-    pub flagged: Vec<(Question, Match)>,
-    /// Questions dropped because they are broken, such as an answer missing from the choices.
-    pub invalid: usize,
-}
-
-/// Sorts imported questions into new ones and duplicates of what `index` already holds (the
-/// bank and the pack being added to), adding the new ones to `index` as it goes so a batch
-/// can't repeat itself either. With `strict`, possible duplicates are skipped too.
-pub fn screen(new: Vec<Question>, index: &mut DuplicateIndex, strict: bool) -> Screened {
-    let mut out = Screened::default();
-    for q in new {
-        if !validate_question(&q).is_empty() {
-            out.invalid += 1;
-            continue;
-        }
-        match index.check(&q) {
-            Some(m) if m.verdict == Verdict::Duplicate || strict => out.skipped.push((q, m)),
-            found => {
-                index.add(&q);
-                if let Some(m) = found {
-                    out.flagged.push((q.clone(), m));
-                }
-                out.fresh.push(q);
-            }
-        }
-    }
-    out
-}
-
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(20))
@@ -511,7 +472,7 @@ mod tests {
 #[cfg(test)]
 mod pack_tests {
     use super::*;
-    use crate::{PackFile, PackMeta, PackQuestion};
+    use crate::{DuplicateIndex, Match, PackFile, PackMeta, PackQuestion};
 
     #[test]
     fn screening_skips_reworded_questions_already_in_the_bank() {
