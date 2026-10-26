@@ -138,6 +138,8 @@ PUBLIC_URL=http://192.168.1.20:8080 docker compose up --build
 `PUBLIC_URL` is the address phones should use for the join link and QR code. Leave it out if you open the TV page on that
 same address anyway (not `localhost`).
 
+On Unraid, use the published image `ghcr.io/piccologravel/triviabix`: see [deploy/unraid](deploy/unraid/README.md).
+
 Without Docker (needs a recent stable Rust):
 
 ```sh
@@ -167,6 +169,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `MUSIC_WARMUP` | `true` | Look up every song at startup |
 | `ITUNES_API_URL` | `https://itunes.apple.com` | |
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
+| `PUID` / `PGID` | `10001` | Docker only: who owns the files in `/data` (Unraid: `99` / `100`) |
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
 
 ## Layout

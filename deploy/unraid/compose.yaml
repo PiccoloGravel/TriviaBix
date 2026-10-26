@@ -1,0 +1,42 @@
+# TriviaBix for Unraid with the Docker Compose Manager plugin.
+# Paste this into a new stack, then set the values in the stack's .env file (see .env.example).
+# The Community Applications template (triviabix.xml) is the alternative if you'd rather not use
+# compose.
+
+services:
+  triviabix:
+    image: ghcr.io/piccologravel/triviabix:latest
+    container_name: triviabix
+    ports:
+      - "${TRIVIABIX_PORT:-8080}:8080"
+    environment:
+      # The address phones open and the TV's QR code shows, e.g. http://192.168.1.20:8080.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Turns on the admin panel at /admin. Leave empty to keep it off.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MAX_PLAYERS: ${MAX_PLAYERS:-12}
+      # Keep question packs in appdata so you can add your own.
+      CONTENT_DIR: /data/content
+      # nobody:users, Unraid's usual appdata owner.
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
+      - /mnt/user/appdata/triviabix:/data
+    restart: unless-stopped
+
+  # Room for Bix's self-hosted text-to-speech voice. It needs a GPU (Nvidia Driver plugin on
+  # Unraid) and is added with the TTS work; it will look roughly like this:
+  #
+  # triviabix-tts:
+  #   image: ghcr.io/piccologravel/triviabix-tts:latest
+  #   container_name: triviabix-tts
+  #   runtime: nvidia
+  #   environment:
+  #     NVIDIA_VISIBLE_DEVICES: all
+  #   volumes:
+  #     - /mnt/user/appdata/triviabix-tts:/models
+  #   restart: unless-stopped
+  #
+  # and triviabix would get an environment setting pointing at http://triviabix-tts:<port>.

@@ -1,5 +1,8 @@
 services:
   triviabix:
+    # `docker compose up --build` builds from source. To use the published image instead
+    # (what Unraid does), run `docker compose pull && docker compose up`.
+    image: ghcr.io/piccologravel/triviabix:latest
     build: .
     ports:
       - "8080:8080"
@@ -13,6 +16,9 @@ services:
     volumes:
       - triviabix-data:/data
     restart: unless-stopped
+
+  # Room for a self-hosted text-to-speech sidecar for Bix's voice (GPU). Its service and the
+  # TTS_* settings for triviabix will be added with the TTS work.
 
 volumes:
   triviabix-data:
