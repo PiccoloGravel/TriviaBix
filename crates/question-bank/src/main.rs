@@ -93,6 +93,9 @@ enum ScriptsAction {
         /// The most questions to write lines for in this run.
         #[arg(long, default_value_t = 50)]
         limit: usize,
+        /// Only these question ids (comma-separated), such as the ones one import added.
+        #[arg(long, value_delimiter = ',')]
+        ids: Vec<String>,
         /// Questions per API call.
         #[arg(long, default_value_t = 10)]
         batch: usize,
@@ -556,13 +559,17 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
             missing,
             topics,
             limit,
+            ids,
             batch,
             model,
             effort,
             dry_run,
             into,
         } => {
-            let todo = needing_lines(&bank, wanted(missing), topics);
+            let mut todo = needing_lines(&bank, wanted(missing), topics);
+            if !ids.is_empty() {
+                todo.retain(|(q, _)| ids.contains(&q.id));
+            }
             let total = todo.len();
             let todo: Vec<_> = todo.into_iter().take(*limit).collect();
             event(serde_json::json!({ "event": "todo", "count": todo.len(), "total": total }));

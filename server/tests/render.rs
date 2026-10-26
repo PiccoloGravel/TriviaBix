@@ -385,6 +385,27 @@ async fn importing_and_uploading_trivia() {
     let job = s.finish(job["id"].as_i64().unwrap()).await;
     assert_eq!(job["state"], "done", "{job}");
     assert_eq!(job["details"]["imported"]["added"], 1);
+
+    // Lines for just that import.
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "batch": job["id"] } })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    assert!(
+        s.calls().contains("--missing either --ids opentdb-fake1"),
+        "{}",
+        s.calls()
+    );
+    let (code, _) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "batch": 999 } })),
+        )
+        .await;
+    assert_eq!(code, 409, "an import that doesn't exist");
     assert!(
         s.calls()
             .contains("import opentdb --amount 10 --category 9 --difficulty easy"),
