@@ -105,6 +105,14 @@ Offers come and go fast. If the GPU that was priced is rented by someone else be
 rented or charged. If the GPU can't download the image (a private image without a login, say), the job
 stops at once with the reason, instead of waiting out the boot time, and the instance is destroyed.
 
+Whenever a rented instance fails (it stops while starting, its job crashes, it runs out of time), `vast.py`
+first fetches the last lines the instance logged from vast.ai and prints them, prefixed `[gpu]`, so the
+job log on the Pipeline page says why before the instance is destroyed.
+
+The job reaches the instance in a single env value, `TBX_JOB` (base64 of the command, its env and the
+small wrapper that runs it), and the boot command has no spaces or quotes, so neither gets mangled on
+the way into the container.
+
 ## Limits on spending
 
 - **Price:** `--max-price` is the most per hour, all in (default $0.50). Only verified, reliable machines
