@@ -113,6 +113,19 @@ impl Script {
     }
 }
 
+impl Script {
+    /// Every line that reads the same in any game (no names or scores in it), so its audio can be
+    /// made ahead of time.
+    pub fn fixed_lines(&self) -> Vec<String> {
+        self.lines
+            .values()
+            .flatten()
+            .map(|(_, text)| text.replace("{host}", &self.host_name))
+            .filter(|text| !text.contains('{'))
+            .collect()
+    }
+}
+
 fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
     let mut rest = text;
     while let Some(start) = rest.find('{') {
@@ -219,6 +232,13 @@ mod tests {
     fn builtin_script_is_valid() {
         let script = Script::builtin();
         assert_eq!(script.lines.len(), EVENTS.len());
+    }
+
+    #[test]
+    fn fixed_lines_have_no_placeholders() {
+        let lines = Script::builtin().fixed_lines();
+        assert!(!lines.is_empty());
+        assert!(lines.iter().all(|l| !l.contains('{')));
     }
 
     #[test]

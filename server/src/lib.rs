@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod room;
 pub mod rooms;
 pub mod rounds;
+pub mod voice;
 pub mod web;
 
 use std::path::PathBuf;
@@ -37,6 +38,10 @@ pub struct Config {
     pub host_script: Option<PathBuf>,
     /// Turns on the admin panel at /admin. Without it the panel stays locked.
     pub admin_password: Option<String>,
+    /// The TTS service that gives Bix his voice (see tts/). Without it the TV uses the browser's.
+    pub tts_url: Option<String>,
+    /// Where synthesized lines are kept.
+    pub tts_cache_dir: PathBuf,
 }
 
 impl Config {
@@ -77,6 +82,8 @@ impl Config {
             admin_password: std::env::var("ADMIN_PASSWORD")
                 .ok()
                 .filter(|p| !p.is_empty()),
+            tts_url: std::env::var("TTS_URL").ok().filter(|u| !u.is_empty()),
+            tts_cache_dir: var("TTS_CACHE_DIR", PathBuf::from("data/tts")),
         }
     }
 }

@@ -15,6 +15,7 @@ use crate::host::{self, Host, Script};
 use crate::music::{self, Itunes};
 use crate::protocol::*;
 use crate::rounds;
+use crate::voice::Voice;
 
 pub type ConnTx = mpsc::UnboundedSender<String>;
 
@@ -268,6 +269,8 @@ struct Conn {
 struct HostLine {
     id: u64,
     text: String,
+    /// The line piece by piece, with where the TV can fetch each piece's audio.
+    voice: Vec<VoicePart>,
     callouts: Vec<Callout>,
     cue: Option<&'static str>,
 }
@@ -331,6 +334,7 @@ pub struct Room {
     max_players: usize,
     db: Db,
     itunes: Itunes,
+    voice: Voice,
     host: Host,
     host_line: Option<HostLine>,
     host_seq: u64,
@@ -382,6 +386,7 @@ impl Room {
         db: Db,
         script: Arc<Script>,
         itunes: Itunes,
+        voice: Voice,
         on_close: impl FnOnce() + Send + 'static,
     ) -> RoomHandle {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -393,6 +398,7 @@ impl Room {
             max_players,
             db,
             itunes,
+            voice,
             host: Host::new(script),
             host_line: None,
             host_seq: 0,
@@ -1128,6 +1134,7 @@ impl Room {
                 self.stages.clear();
             }
         }
+        self.warm_voice();
         self.right_answers.clear();
         self.stage_points.clear();
         for p in &mut self.players {
@@ -1774,6 +1781,21 @@ impl Room {
         self.speak(parts, callouts, Some(cue));
     }
 
+    /// Puts this game's questions and their own lines at the front of the voice's queue, so
+    /// they're ready by the time the host reads them.
+    fn warm_voice(&self) {
+        let host = self.host.name();
+        let texts = self
+            .questions
+            .iter()
+            .filter(|q| q.song.is_none())
+            .flat_map(|q| {
+                let own = q.lines.lead_in.iter().chain(&q.lines.reveal);
+                std::iter::once(q.prompt.clone()).chain(own.map(|(_, t)| t.replace("{host}", host)))
+            });
+        self.voice.warm(texts.collect::<Vec<_>>(), true);
+    }
+
     fn line(&mut self, event: &'static str, vars: &[(&str, &str)]) -> String {
         self.host.say(event, self.settings.max_rating, vars)
     }
@@ -1782,9 +1804,17 @@ impl Room {
     /// play a cutscene and pick Bix's face for it.
     fn speak(&mut self, parts: Vec<String>, callouts: Vec<Callout>, cue: Option<&'static str>) {
         self.host_seq += 1;
+        let voice = parts
+            .iter()
+            .map(|text| VoicePart {
+                audio: self.voice.url(text),
+                text: text.clone(),
+            })
+            .collect();
         self.host_line = (!parts.is_empty()).then(|| HostLine {
             id: self.host_seq,
             text: parts.join(" "),
+            voice,
             callouts,
             cue,
         });
@@ -1793,7 +1823,7 @@ impl Room {
     /// How long the host's current line takes to say.
     fn talk(&self) -> Duration {
         self.host_line.as_ref().map_or(Duration::ZERO, |l| {
-            host::talk_time(&l.text, self.timing.talk_cps)
+            host::talk_time(&crate::voice::without_tags(&l.text), self.timing.talk_cps)
         })
     }
 
@@ -2186,6 +2216,9 @@ impl Room {
                     kind: if q.song.is_some() { "song" } else { "trivia" },
                     category: &q.category,
                     prompt: &q.prompt,
+                    prompt_audio: (is_host && q.song.is_none())
+                        .then(|| self.voice.url(&q.prompt))
+                        .flatten(),
                     choices: &q.choices,
                     clip: q.song.as_ref().filter(|_| is_host).map(|s| ClipView {
                         preview_url: &s.preview_url,
@@ -2243,6 +2276,11 @@ impl Room {
                     name: self.host.name(),
                     id: l.id,
                     text: &l.text,
+                    voice: if is_host && self.voice.enabled() {
+                        &l.voice
+                    } else {
+                        &[]
+                    },
                     callouts: &l.callouts,
                     cue: l.cue,
                 }),

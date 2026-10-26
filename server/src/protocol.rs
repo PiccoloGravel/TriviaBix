@@ -194,6 +194,9 @@ pub struct QuestionView<'a> {
     pub kind: &'static str,
     pub category: &'a str,
     pub prompt: &'a str,
+    /// TV only, with a TTS service: where to fetch the prompt read aloud.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_audio: Option<String>,
     pub choices: &'a [String],
     /// TV only: what to play. Phones never get the audio, so they have to listen.
     pub clip: Option<ClipView<'a>>,
@@ -236,10 +239,20 @@ pub struct HostView<'a> {
     /// Changes with every new line, so the TV speaks each one once.
     pub id: u64,
     pub text: &'a str,
+    /// TV only, with a TTS service: the line in pieces, each with where to fetch its audio.
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub voice: &'a [VoicePart],
     pub callouts: &'a [Callout],
     /// The moment this line is for, so the TV can play a cutscene and pick the host's face: intro,
     /// round, final_round, winner, finale_tie, or the biggest callout's kind. See web/cutscenes/.
     pub cue: Option<&'static str>,
+}
+
+/// One piece of a host line and its synthesized audio, if the TTS service can make it.
+#[derive(Debug, Serialize, Clone)]
+pub struct VoicePart {
+    pub text: String,
+    pub audio: Option<String>,
 }
 
 /// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
