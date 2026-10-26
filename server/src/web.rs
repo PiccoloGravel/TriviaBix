@@ -225,7 +225,20 @@ async fn health(State(app): State<AppState>) -> Response {
 /// Tells the TV which address phones should open. Behind a proxy or when the
 /// TV is on `localhost`, set PUBLIC_URL to the address phones can reach.
 async fn client_config(State(app): State<AppState>) -> Json<serde_json::Value> {
-    Json(json!({ "public_url": app.public_url, "voice": app.voice.enabled() }))
+    Json(json!({
+        "public_url": app.public_url,
+        "voice": app.voice.enabled(),
+        "voice_speed": voice_speed(&app.settings),
+    }))
+}
+
+/// How fast the TV plays Bix's lines (BIX_SPEED), 1 being as made.
+pub(crate) fn voice_speed(settings: &crate::settings::Settings) -> f64 {
+    settings
+        .get("BIX_SPEED")
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map_or(1.0, |v| v.clamp(0.5, 2.0))
 }
 
 /// One of the host's lines as audio, made by the TTS service the first time it's asked for.

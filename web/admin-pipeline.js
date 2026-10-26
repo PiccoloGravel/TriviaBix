@@ -308,7 +308,8 @@ function renderDesign() {
   const inUse = voices.voices.some((v) => v.current);
   $("#design-voices").replaceChildren(
     el("div", { class: "meta" }, "Bix speaks as ", el("b", {}, inUse ? "the voice marked below" : spec),
-      " on rented GPUs. ", el("a", { href: "/admin/settings" }, "Settings"), " has the built-in voices."),
+      " on rented GPUs", voices.speed && voices.speed !== 1 ? `, played at ${voices.speed}× speed` : "", ". ",
+      el("a", { href: "/admin/settings" }, "Settings"), " has the built-in voices and his speaking speed."),
     voices.voices.length
       ? el("div", { class: "voices" }, voices.voices.map(voiceCard))
       : el("p", { class: "muted" }, "No candidates yet. Describe the voice above, check the price and start."));
@@ -318,7 +319,12 @@ function renderDesign() {
 const players = new Map();
 
 function player(key) {
-  if (!players.has(key)) players.set(key, el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${key}/clip` }));
+  if (!players.has(key)) {
+    const a = el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${key}/clip` });
+    // At Bix's speaking speed, as the TV plays his lines.
+    a.addEventListener("play", () => { a.preservesPitch = true; a.playbackRate = voices.speed || 1; });
+    players.set(key, a);
+  }
   return players.get(key);
 }
 
