@@ -480,6 +480,7 @@ async fn start_server(library: LibraryConfig) -> String {
         host_script: None,
         content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
         tts_url: None,
+        voice_names: Vec::new(),
         tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
     };
     let app = triviabix::router(config).await.unwrap();

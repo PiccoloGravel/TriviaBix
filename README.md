@@ -194,7 +194,11 @@ cargo test                    # unit tests plus full games over WebSockets
 | `PUID` / `PGID` | `10001` | Docker only: who owns the files in `/data` (Unraid: `99` / `100`) |
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
 | `TTS_URL` | | Bix's voice service, e.g. `http://tts:8000` (see [tts/README.md](tts/README.md)); empty means browser text-to-speech |
-| `TTS_CACHE_DIR` | `data/tts` | Where his lines are cached (`/data/tts` in Docker) |
+| `ASSETS_DIR` | `data/assets` | Everything generated, kept for reuse: voice lines, images, clips (`/data/assets` in Docker; see [docs/assets.md](docs/assets.md)) |
+| `VOICE_NAMES` | | Comma-separated names to voice Bix's name lines for ahead of time, besides the 12 who've played most |
+| `TTS_CACHE_DIR` | `$ASSETS_DIR/voice` | Where his lines are kept |
+
+No GPU at home? [gpu/README.md](gpu/README.md) rents one on vast.ai for a few cents, makes the lines, and gives it back.
 
 ## Layout
 
@@ -202,6 +206,7 @@ cargo test                    # unit tests plus full games over WebSockets
   - `src/room.rs` holds the game rules, `src/host.rs` the host, `src/protocol.rs` the JSON messages, `src/db.rs` the database,
     `src/music.rs` the song lookups for Name That Tune, `src/library.rs` the Lidarr sync and `/media/` links,
     `src/voice.rs` the cache in front of the voice service.
+- `gpu/` rents vast.ai GPUs for voice and art generation (`vast.py`) and holds the asset store's helper (`assets.py`).
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
   - `src/rounds.rs` plans a trivia game's rounds: difficulty, theme and points.
