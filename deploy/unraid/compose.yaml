@@ -26,17 +26,17 @@ services:
       - /mnt/user/appdata/triviabix:/data
     restart: unless-stopped
 
-  # Room for Bix's self-hosted text-to-speech voice. It needs a GPU (Nvidia Driver plugin on
-  # Unraid) and is added with the TTS work; it will look roughly like this:
+  # Bix's self-hosted voice (optional). It needs an NVIDIA GPU (Nvidia Driver plugin on Unraid)
+  # and comes with the TTS work in tts/. Once that lands, uncomment this, add
+  # TTS_URL: http://tts:8000 to triviabix's environment above, and run with the "voice" profile.
+  # Spoken lines are cached under /data/tts in triviabix's appdata.
   #
-  # triviabix-tts:
+  # tts:
   #   image: ghcr.io/piccologravel/triviabix-tts:latest
-  #   container_name: triviabix-tts
+  #   profiles: [voice]
   #   runtime: nvidia
   #   environment:
   #     NVIDIA_VISIBLE_DEVICES: all
   #   volumes:
   #     - /mnt/user/appdata/triviabix-tts:/models
   #   restart: unless-stopped
-  #
-  # and triviabix would get an environment setting pointing at http://triviabix-tts:<port>.

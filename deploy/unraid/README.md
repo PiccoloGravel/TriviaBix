@@ -86,9 +86,10 @@ The game only needs your LAN. To let people join from elsewhere:
 ## Bix's voice
 
 Bix currently speaks with the browser's built-in text-to-speech, so the TV laptop/phone does the
-talking and the server needs nothing extra. A self-hosted voice model is being added separately;
-it will run as a second container next to this one (with a GPU), and the compose file already has
-a placeholder for it.
+talking and the server needs nothing extra. A self-hosted voice model is being added separately.
+It runs as a second container (needs an NVIDIA GPU and the Nvidia Driver plugin), and the game
+finds it through the **Voice server** setting (`TTS_URL`). The Compose Manager stack has it
+ready to uncomment; voice lines are cached in `appdata/triviabix/tts`.
 
 ## Troubleshooting
 

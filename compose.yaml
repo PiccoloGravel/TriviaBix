@@ -17,8 +17,5 @@ services:
       - triviabix-data:/data
     restart: unless-stopped
 
-  # Room for a self-hosted text-to-speech sidecar for Bix's voice (GPU). Its service and the
-  # TTS_* settings for triviabix will be added with the TTS work.
-
 volumes:
   triviabix-data:
