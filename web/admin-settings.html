@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>TriviaBix · Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;900&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { font-size: 16px; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 48px; }
+    header { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 8px; }
+    header h1 { margin: 0; font-size: 28px; color: var(--accent); flex: 1; }
+    a { color: var(--accent); }
+    .intro { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+    button { padding: 8px 14px; font-size: 15px; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+    button.small { padding: 5px 11px; font-size: 13px; box-shadow: none; }
+    button:disabled { opacity: .5; cursor: default; }
+    .group { background: var(--panel); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .group-head h2 { font-family: "Bungee", sans-serif; font-size: 18px; margin: 0; flex: 1; }
+    .result { font-size: 14px; border-radius: 10px; padding: 6px 10px; background: rgba(0,0,0,.25); }
+    .result.ok { color: var(--good); }
+    .result.bad { color: #ff9b9b; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .field-head label { font-weight: 900; }
+    .badge { border-radius: 999px; padding: 2px 9px; font-size: 12px; background: rgba(255,255,255,.12); color: var(--muted); }
+    .badge.saved { background: var(--good); color: #1a0b3d; }
+    .badge.env { background: rgba(255,255,255,.2); color: var(--text); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .row input, .row select { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 15px; border-radius: 10px; border: none; padding: 8px 10px; background: #fff; color: #1a0b3d; }
+    .row input[type=number] { flex: 0 1 120px; }
+    .help { color: var(--muted); font-size: 13px; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 10px 18px; border-radius: 14px; z-index: 10; max-width: calc(100% - 32px); }
+    .toast.ok { background: var(--good); color: #1a0b3d; }
+    #login { max-width: 360px; margin: 18vh auto 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <section id="login" class="hidden" data-screen>
+    <h1 style="color:var(--accent)">TriviaBix</h1>
+    <p class="muted"><a href="/admin">Log in on the admin page</a> first, then come back here.</p>
+  </section>
+
+  <section id="settings" class="wrap hidden" data-screen>
+    <header>
+      <h1>Settings</h1>
+    </header>
+    <p class="intro">
+      Keys, addresses and models for the services TriviaBix uses. What you save here is kept in the database in
+      appdata and wins over the container's own settings; <b>Use container's</b> goes back to those. Keys are
+      never shown again once saved, and changes take effect right away.
+    </p>
+    <div id="groups"></div>
+  </section>
+
+  <script src="/common.js"></script>
+  <script src="/admin-nav.js"></script>
+  <script src="/admin-settings.js"></script>
+</body>
+</html>

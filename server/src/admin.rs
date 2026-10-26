@@ -95,6 +95,8 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/render/import", post(render_import))
         .route("/api/admin/pipeline", get(pipeline))
         .route("/api/admin/pipeline/pack", post(upload_pack))
+        .route("/api/admin/settings", get(settings_view).put(settings_set))
+        .route("/api/admin/settings/test", post(settings_test))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -346,7 +348,7 @@ async fn music_status(State(app): State<AppState>) -> Json<crate::library::Libra
 /// poll `GET /api/admin/music` until `syncing` is false.
 async fn music_sync(State(app): State<AppState>) -> Response {
     if !app.music.library.configured() {
-        let error = "Set LIDARR_URL and LIDARR_API_KEY on the server to use your music library.";
+        let error = "Set Lidarr's address and API key in Settings to use your music library.";
         return (StatusCode::CONFLICT, Json(json!({ "error": error }))).into_response();
     }
     tracing::info!("admin started a music library sync");
@@ -551,5 +553,50 @@ async fn upload_pack(State(app): State<AppState>, Json(body): Json<PackUpload>) 
     match app.render.upload_pack(&body.name, &body.toml).await {
         Ok(res) => Json(res).into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// The Settings page: every key, address and model, where its value comes from, and the values
+/// of the ones that aren't secret.
+async fn settings_view(State(app): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({ "fields": app.settings.view() }))
+}
+
+#[derive(Deserialize)]
+struct SettingBody {
+    key: String,
+    /// Empty or missing forgets the saved value, so the container's is used again.
+    value: Option<String>,
+}
+
+async fn settings_set(State(app): State<AppState>, Json(body): Json<SettingBody>) -> Response {
+    if let Err(e) = app.settings.set(&body.key, body.value.as_deref()).await {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
+    }
+    // The key's name only: never its value.
+    tracing::info!("admin changed the {} setting", body.key);
+    let s = &app.settings;
+    match body.key.as_str() {
+        "TTS_URL" => app.voice.set_default(s.get("TTS_URL").as_deref()),
+        "LIDARR_URL" | "LIDARR_API_KEY" => app
+            .music
+            .library
+            .set_lidarr(s.get("LIDARR_URL"), s.get("LIDARR_API_KEY")),
+        // Jobs read the rest when they start; art counts depend on the models.
+        _ => app.render.forget_missing().await,
+    }
+    Json(json!({ "fields": s.view() })).into_response()
+}
+
+#[derive(Deserialize)]
+struct TestBody {
+    service: String,
+}
+
+/// Checks that a service answers with the settings in use, without spending anything.
+async fn settings_test(State(app): State<AppState>, Json(body): Json<TestBody>) -> Response {
+    match app.settings.test(&body.service).await {
+        Ok(message) => Json(json!({ "ok": true, "message": message })).into_response(),
+        Err(error) => Json(json!({ "ok": false, "error": error })).into_response(),
     }
 }

@@ -48,6 +48,7 @@ pub(crate) struct AppState {
     /// VOICE_NAMES
     pub voice_names: std::sync::Arc<[String]>,
     pub render: crate::render::Render,
+    pub settings: crate::settings::Settings,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -62,9 +63,16 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         None => crate::host::Script::builtin(),
     };
     let script = std::sync::Arc::new(script);
-    let voice = Voice::new(config.tts_url.as_deref(), &config.tts_cache_dir);
+    // Keys and addresses saved on the Settings page win over the environment's.
+    let settings = crate::settings::Settings::load(db.clone())
+        .await?
+        .starting_with("TTS_URL", config.tts_url.clone())
+        .starting_with("LIDARR_URL", config.library.lidarr_url.clone())
+        .starting_with("LIDARR_API_KEY", config.library.api_key.clone());
+    let tts_url = settings.get("TTS_URL");
+    let voice = Voice::new(tts_url.as_deref(), &config.tts_cache_dir);
     let host_name: std::sync::Arc<str> = script.host_name.as_str().into();
-    if let Some(url) = &config.tts_url {
+    if let Some(url) = &tts_url {
         tracing::info!(
             "host voice from {url}, cached in {}",
             config.tts_cache_dir.display()
@@ -78,7 +86,11 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
     if config.music_warmup {
         tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
     }
-    let library = Library::new(config.library.clone());
+    let library = Library::new(crate::library::LibraryConfig {
+        lidarr_url: settings.get("LIDARR_URL"),
+        api_key: settings.get("LIDARR_API_KEY"),
+        ..config.library.clone()
+    });
     tokio::spawn(library.clone().run(db.clone()));
     let music = Music {
         itunes,
@@ -103,6 +115,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         config.static_dir.clone(),
         db.clone(),
         voice.clone(),
+        settings.clone(),
     );
     render.recover().await;
     let state = AppState {
@@ -117,6 +130,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         script,
         voice_names: config.voice_names.clone().into(),
         render: render.clone(),
+        settings,
     };
     // New questions and Claude's host lines are loaded and queued for the voice as soon as
     // they're written.
@@ -166,6 +180,10 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route_service(
             "/admin/pipeline",
             ServeFile::new(dir.join("admin-pipeline.html")),
+        )
+        .route_service(
+            "/admin/settings",
+            ServeFile::new(dir.join("admin-settings.html")),
         )
         // The old address of the Pipeline page, from before it imported trivia.
         .route_service(

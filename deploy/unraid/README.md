@@ -166,16 +166,22 @@ limit and the most the job can cost. Nothing starts until you press **Start** an
 you see the log and the progress, and **Cancel** stops it and gives the GPU back. Past jobs and what they
 cost are listed underneath.
 
-1. Add the keys in the template (or the stack's `.env`); they're masked and never shown in the panel:
-   - **vast.ai API key** (`VAST_API_KEY`) for voice and art. Make it at
-     <https://cloud.vast.ai/manage-keys/>. vast.ai is prepaid: keep $5 to $10 of credit with auto-reload
-     off, and that's the most that can ever be spent.
-   - **Anthropic API key** (`ANTHROPIC_API_KEY`) for host lines written by Claude, billed to that account.
+1. Add the keys on **`/admin` → Settings** (or in the template, or the stack's `.env`). Saved keys are kept
+   in the database in appdata, win over the template's, and are never shown again; **Test** checks each
+   one without spending anything:
+   - **vast.ai API key** for voice and art. Make it at <https://cloud.vast.ai/manage-keys/>. vast.ai is
+     prepaid: keep $5 to $10 of credit with auto-reload off, and that's the most that can ever be spent.
+   - **Anthropic API key** for host lines written by Claude, billed to that account.
+   - **Hugging Face token** so the GPU can download the models.
 2. Make the `triviabix-tts` and `triviabix-art` packages on GitHub public (see
-   [gpu/README.md](../../gpu/README.md)), or fill in **Private image login**.
+   [gpu/README.md](../../gpu/README.md)), or fill in **Image registry login** on the Settings page.
 3. **Apply**, then open the Pipeline page.
 
-The limits are the scripts' own: at most $0.50/hr for voice and $0.60/hr for art, a voice run stops
+Settings also picks the models (Claude's model and effort for lines, the Ming voice model and voice, and
+the FLUX, BiRefNet and Wan art models), which GPUs may be rented, and each job's price limit.
+
+The limits: at most $0.50/hr for voice and $0.60/hr for art unless you change them in Settings, which
+never allows more than $2.00/hr; a voice run stops
 after 3 hours at most, an art run after its estimate plus half, and only one GPU at a time. A job
 rents at no more than a little over the price you confirmed. Whatever happens (it finishes, fails, is
 cancelled, or the container restarts mid-job) the instance is destroyed; **Destroy leftover GPUs**

@@ -431,7 +431,7 @@ async fn sync_problems_are_reported_without_losing_the_library() {
 
     let wrong_key = Library::new(library_config(&lidarr, &music_dir, "nope"));
     let status = wrong_key.sync(&db).await;
-    assert!(status.error.unwrap().contains("LIDARR_API_KEY"));
+    assert!(status.error.unwrap().contains("Lidarr API key"));
     assert_eq!(status.songs, 0);
 
     let good = Library::new(library_config(&lidarr, &music_dir, API_KEY));

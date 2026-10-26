@@ -13,6 +13,7 @@ pub mod render;
 pub mod room;
 pub mod rooms;
 pub mod rounds;
+pub mod settings;
 pub mod voice;
 pub mod web;
 

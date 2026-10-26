@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use crate::model::{Question, QuestionKind, Rating, ScriptSlot};
 use crate::script::{Lines, OneOrMany, ScriptEntry};
 
-pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
+pub const DEFAULT_MODEL: &str = crate::DEFAULT_MODEL;
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2026-10-21";
 /// Lets the API retry a declined request on another model instead of failing the batch.

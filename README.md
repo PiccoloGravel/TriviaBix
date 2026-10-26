@@ -147,9 +147,14 @@ pack file, which is checked before it's saved to `content/packs/mine`. Each impo
 questions are in the game, have host lines, and are voiced, and what to run next. The other steps make Bix's voice lines and the cutscene art on a rented vast.ai GPU, and has Claude
 write host lines for questions that have none. It shows what's missing, prices each job with a dry run (the GPU, its
 hourly price and the most the job can cost), starts only after you confirm, then shows the log and progress with a
-Cancel button that gives the GPU back. Past jobs are listed with their cost. It needs `VAST_API_KEY` and/or
-`ANTHROPIC_API_KEY` on the server, which the panel never shows. See
+Cancel button that gives the GPU back. Past jobs are listed with their cost. See
 [deploy/unraid/README.md](deploy/unraid/README.md#rendering-from-the-admin-panel).
+
+**Settings** (`/admin/settings`) holds the keys and addresses for vast.ai, Anthropic, Hugging Face, Lidarr and the
+voice server, and picks the models: Claude's model and effort, the Ming voice model and voice, and the FLUX, BiRefNet
+and Wan art models. It also sets which GPUs may be rented and each GPU job's price limit (never above $2.00/hr).
+Saved values are kept in the database, win over the container's environment variables of the same name, and apply
+without a restart. Keys are never sent back to the page. **Test** checks each service without spending anything.
 
 Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
 your home network can reach the server.

@@ -125,8 +125,8 @@ function renderSetup() {
   const todo = [];
   if (!r.python || !r.gpu_tools || !r.art_tools) todo.push(["Python and the GPU scripts aren't in this server. Use the ghcr.io/piccologravel/triviabix image, which has them."]);
   if (!r.line_writer) todo.push(["The ", el("code", {}, "triviabix-questions"), " tool isn't in this server, so host lines can't be written here."]);
-  if (!r.vast_key) todo.push(["Voice and art rent GPUs on vast.ai: set ", el("code", {}, "VAST_API_KEY"), " in the container's settings (Unraid Docker tab → TriviaBix → Edit). Make the key at cloud.vast.ai/manage-keys."]);
-  if (!r.anthropic_key) todo.push(["Host lines are written by Claude: set ", el("code", {}, "ANTHROPIC_API_KEY"), " in the container's settings. Calls are billed to that Anthropic account."]);
+  if (!r.vast_key) todo.push(["Voice and art rent GPUs on vast.ai: add your vast.ai API key in ", el("a", { href: "/admin/settings" }, "Settings"), "."]);
+  if (!r.anthropic_key) todo.push(["Host lines are written by Claude: add your Anthropic API key in ", el("a", { href: "/admin/settings" }, "Settings"), ". Calls are billed to that Anthropic account."]);
   const box = $("#setup");
   box.classList.toggle("hidden", !todo.length);
   box.replaceChildren(el("b", {}, "To finish setting up"), el("ul", {}, todo.map((t) => el("li", {}, ...t))));

@@ -462,6 +462,8 @@ async fn static_pages_are_served() {
         "/admin/pipeline",
         "/admin-pipeline.js",
         "/admin-nav.js",
+        "/admin/settings",
+        "/admin-settings.js",
         "/style.css",
         "/player.js",
         "/host.js",

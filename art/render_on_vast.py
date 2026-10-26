@@ -87,8 +87,10 @@ def main(argv: list[str] | None = None) -> int:
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
                "--max-minutes", str(limit)]
-        if os.environ.get("HF_TOKEN"):
-            run += ["--env", f"HF_TOKEN={os.environ['HF_TOKEN']}"]
+        # The token and the models picked on the admin panel's Settings page go to the GPU too.
+        for key in ("HF_TOKEN", "ART_IMAGE_MODEL", "ART_CUTOUT_MODEL", "ART_VIDEO_MODEL"):
+            if os.environ.get(key):
+                run += ["--env", f"{key}={os.environ[key]}"]
         run += ["--yes"] * args.yes + ["--dry-run"] * args.dry_run
         code = subprocess.call(run)
         if args.dry_run:

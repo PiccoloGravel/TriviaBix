@@ -26,6 +26,7 @@ use tokio::process::Command;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::db::Db;
+use crate::settings::{self, Settings};
 use crate::voice::Voice;
 
 /// Log lines kept per job, in memory and in the database.
@@ -40,9 +41,6 @@ const PREVIEW_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const CANCEL_GRACE: Duration = Duration::from_secs(90);
 /// How long the "what's missing" counts are reused.
 const MISSING_TTL: Duration = Duration::from_secs(60);
-/// The scripts' own price limits ($/hour, all in), which the panel never raises.
-const VOICE_MAX_PRICE: f64 = 0.50;
-const ART_MAX_PRICE: f64 = 0.60;
 /// The most hours a voice run may keep a GPU (vast.py's default).
 const VOICE_MAX_HOURS: f64 = 3.0;
 /// The most questions one line-writing run may cover.
@@ -403,6 +401,7 @@ struct Inner {
     static_dir: PathBuf,
     db: Db,
     voice: Voice,
+    settings: Settings,
     job: Mutex<Option<Job>>,
     previews: Mutex<HashMap<String, Preview>>,
     previewing: Mutex<bool>,
@@ -414,10 +413,6 @@ fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
-}
-
-fn env_set(key: &str) -> bool {
-    std::env::var(key).is_ok_and(|v| !v.trim().is_empty())
 }
 
 /// Whether `cmd` can be run: a path that exists, or a name on PATH.
@@ -444,8 +439,10 @@ impl Render {
         static_dir: PathBuf,
         db: Db,
         voice: Voice,
+        settings: Settings,
     ) -> Self {
         Self(Arc::new(Inner {
+            settings,
             cfg,
             content_dir,
             static_dir,
@@ -457,6 +454,30 @@ impl Render {
             missing: Default::default(),
             finished: broadcast::channel(8).0,
         }))
+    }
+
+    /// Counts what's missing again next time, e.g. after the art models change.
+    pub async fn forget_missing(&self) {
+        *self.0.missing.lock().await = None;
+    }
+
+    /// The most a GPU job may pay per hour: the Settings page's limit, never above the ceiling.
+    fn cap(&self, kind: Kind) -> f64 {
+        match kind {
+            Kind::Voice => self
+                .0
+                .settings
+                .price("VOICE_MAX_PRICE", settings::VOICE_PRICE),
+            _ => self.0.settings.price("ART_MAX_PRICE", settings::ART_PRICE),
+        }
+    }
+
+    /// Hands a tool the keys and model choices saved on the Settings page. Ones set only in the
+    /// container's environment reach it anyway.
+    fn with_settings(&self, cmd: &mut Command) {
+        for (key, value) in self.0.settings.saved_env() {
+            cmd.env(key, value);
+        }
     }
 
     pub fn art_dir(&self) -> &Path {
@@ -517,11 +538,11 @@ impl Render {
             "gpu_tools": c.tools_dir.join("gpu/vast.py").is_file(),
             "art_tools": c.tools_dir.join("art/render_on_vast.py").is_file(),
             "line_writer": runnable(&c.questions_bin),
-            "vast_key": env_set("VAST_API_KEY"),
-            "anthropic_key": env_set("ANTHROPIC_API_KEY"),
-            "hf_token": env_set("HF_TOKEN"),
-            "voice_max_price": VOICE_MAX_PRICE,
-            "art_max_price": ART_MAX_PRICE,
+            "vast_key": self.0.settings.is_set("VAST_API_KEY"),
+            "anthropic_key": self.0.settings.is_set("ANTHROPIC_API_KEY"),
+            "hf_token": self.0.settings.is_set("HF_TOKEN"),
+            "voice_max_price": self.cap(Kind::Voice),
+            "art_max_price": self.cap(Kind::Art),
             "voice_max_hours": VOICE_MAX_HOURS,
             "lines_max": LINES_MAX,
         })
@@ -617,6 +638,7 @@ impl Render {
             .arg(&c.art_dir)
             .arg("--library")
             .arg(&c.assets_dir);
+        self.with_settings(&mut art);
         let mut lines = self.command(
             Kind::Lines,
             &Options {
@@ -748,11 +770,7 @@ impl Render {
             .ok_or("That price check has expired. Check the price again.")?;
         // Rent at no more than a little over the price shown, and never over the script's limit,
         // so the most it can cost stays close to what was confirmed.
-        let cap = match preview.kind {
-            Kind::Voice => Some(VOICE_MAX_PRICE),
-            Kind::Art => Some(ART_MAX_PRICE),
-            _ => None,
-        };
+        let cap = matches!(preview.kind, Kind::Voice | Kind::Art).then(|| self.cap(preview.kind));
         let max_price = cap.map(|cap| {
             preview
                 .price_hr
@@ -1196,6 +1214,7 @@ impl Render {
         cmd.arg(c.tools_dir.join("gpu/vast.py"))
             .arg("destroy")
             .arg(instance.to_string());
+        self.with_settings(&mut cmd);
         let out = collect(&mut cmd, Duration::from_secs(120), &c.tools_dir).await;
         let ok = matches!(&out, Ok(o) if o.code == Some(0));
         let said = match &out {
@@ -1254,6 +1273,13 @@ impl Render {
                     .args(["scripts", "generate", "--into", LINES_FOLDER, "--limit"])
                     .arg(o.limit.unwrap_or(50).to_string())
                     .args(["--missing", o.missing.as_deref().unwrap_or("either")]);
+                let settings = &self.0.settings;
+                if let Some(model) = settings.get("CLAUDE_MODEL") {
+                    cmd.args(["--model", &model]);
+                }
+                if let Some(effort) = settings.get("CLAUDE_EFFORT") {
+                    cmd.args(["--effort", &effort]);
+                }
                 cmd
             }
             Kind::Cleanup => {
@@ -1280,6 +1306,10 @@ impl Render {
         match mode {
             Mode::DryRun => {
                 cmd.arg("--dry-run");
+                // Price the GPU the job would be allowed to rent.
+                if matches!(kind, Kind::Voice | Kind::Art) {
+                    cmd.arg("--max-price").arg(format!("{:.2}", self.cap(kind)));
+                }
             }
             Mode::Run(max_price) => {
                 if matches!(kind, Kind::Voice | Kind::Art) {
@@ -1293,6 +1323,7 @@ impl Render {
         cmd.env("TBX_EVENTS", "1")
             .env("PYTHONUNBUFFERED", "1")
             .env("ASSETS_DIR", &c.assets_dir);
+        self.with_settings(&mut cmd);
         cmd
     }
 

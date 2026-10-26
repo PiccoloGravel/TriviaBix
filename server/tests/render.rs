@@ -97,6 +97,17 @@ async fn start() -> Server {
 }
 
 impl Server {
+    async fn put(&self, path: &str, body: Value) -> (u16, Value) {
+        let res = reqwest::Client::new()
+            .put(format!("http://{}/api/admin/{path}", self.addr))
+            .header("cookie", &self.cookie)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        (res.status().as_u16(), res.json().await.unwrap())
+    }
+
     async fn call(&self, path: &str, body: Option<Value>) -> (u16, Value) {
         let http = reqwest::Client::new();
         let url = format!("http://{}/api/admin/{path}", self.addr);
@@ -428,4 +439,122 @@ async fn importing_and_uploading_trivia() {
     assert_eq!(batches[0]["in_game"], 2, "{batches}");
     assert_eq!(batches[0]["with_lines"], 0);
     assert_eq!(batches[1]["in_game"], 1, "{batches}");
+}
+
+fn setting<'a>(view: &'a Value, key: &str) -> &'a Value {
+    view["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["key"] == key)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn settings_reach_the_jobs_and_keys_stay_hidden() {
+    let s = start().await;
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "CLAUDE_MODEL")["default"], "claude-opus-5-5");
+    assert_eq!(setting(&view, "VOICE_MAX_PRICE")["kind"]["max"], 2.0);
+
+    let (code, view) = s
+        .put(
+            "settings",
+            json!({ "key": "VAST_API_KEY", "value": " secret-key-123 " }),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert_eq!(setting(&view, "VAST_API_KEY")["source"], "saved");
+    assert!(setting(&view, "VAST_API_KEY")["value"].is_null());
+    assert!(!view.to_string().contains("secret-key-123"), "{view}");
+    let (_, status) = s.call("render", None).await;
+    assert_eq!(status["ready"]["vast_key"], true);
+    assert!(!status.to_string().contains("secret-key-123"));
+
+    // Bad values are refused.
+    for (key, value) in [
+        ("VOICE_MAX_PRICE", "5"),
+        ("VOICE_MAX_PRICE", "cheap"),
+        ("CLAUDE_MODEL", "gpt-4"),
+        ("ART_IMAGE_MODEL", "not a model"),
+        ("LIDARR_URL", "192.168.1.20:8686"),
+        ("NOT_A_SETTING", "x"),
+    ] {
+        let (code, _) = s
+            .put("settings", json!({ "key": key, "value": value }))
+            .await;
+        assert_eq!(code, 400, "{key} = {value}");
+    }
+
+    // The price limit, GPU and models reach the tools, with the saved key.
+    for (key, value) in [
+        ("VOICE_MAX_PRICE", "$1.2"),
+        ("CLAUDE_MODEL", "claude-haiku-5-5"),
+        ("CLAUDE_EFFORT", "low"),
+        ("ART_VIDEO_MODEL", "Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
+    ] {
+        let (code, view) = s
+            .put("settings", json!({ "key": key, "value": value }))
+            .await;
+        assert_eq!(code, 200, "{key}: {view}");
+    }
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "VOICE_MAX_PRICE")["value"], "1.20");
+    let (_, status) = s.call("render", None).await;
+    assert_eq!(status["ready"]["voice_max_price"], 1.2);
+    let (_, preview) = s
+        .call("render/preview", Some(json!({ "kind": "voice" })))
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    assert!(
+        s.calls()
+            .contains("--dry-run --max-price 1.20 [key secret-key-123]"),
+        "{}",
+        s.calls()
+    );
+    let (_, preview) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "lines", "options": { "limit": 5 } })),
+        )
+        .await;
+    assert_eq!(preview["ok"], true, "{preview}");
+    assert!(
+        s.calls().contains("--model claude-haiku-5-5 --effort low"),
+        "{}",
+        s.calls()
+    );
+
+    // Clearing goes back to the container's value (none here).
+    let (_, view) = s
+        .put("settings", json!({ "key": "VAST_API_KEY", "value": null }))
+        .await;
+    assert_eq!(setting(&view, "VAST_API_KEY")["source"], "unset");
+    let (_, status) = s.call("render", None).await;
+    assert_eq!(status["ready"]["vast_key"], false);
+
+    // Tests report what's wrong rather than failing the request.
+    let (_, res) = s
+        .call("settings/test", Some(json!({ "service": "lidarr" })))
+        .await;
+    assert_eq!(res["ok"], false);
+    assert!(
+        res["error"].as_str().unwrap().contains("Set Lidarr"),
+        "{res}"
+    );
+    s.put(
+        "settings",
+        json!({ "key": "TTS_URL", "value": "http://127.0.0.1:1/" }),
+    )
+    .await;
+    let (_, view) = s.call("settings", None).await;
+    assert_eq!(setting(&view, "TTS_URL")["value"], "http://127.0.0.1:1");
+    let (_, res) = s
+        .call("settings/test", Some(json!({ "service": "voice" })))
+        .await;
+    assert_eq!(res["ok"], false);
+    assert!(
+        res["error"].as_str().unwrap().contains("Couldn't reach"),
+        "{res}"
+    );
 }
