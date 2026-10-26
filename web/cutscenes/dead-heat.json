@@ -1,0 +1,81 @@
+{
+  "duration": 3200,
+  "backdrop": {
+    "kind": "split",
+    "colors": [
+      "#e63973",
+      "#2f80ed"
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "tie"
+      ]
+    },
+    "shade": 0.15
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": 0,
+      "x": 24,
+      "y": 58,
+      "size": 24,
+      "at": 200,
+      "in": "left"
+    },
+    {
+      "type": "player",
+      "who": 1,
+      "x": 76,
+      "y": 58,
+      "size": 24,
+      "at": 200,
+      "in": "right"
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "tie"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "⚖️"
+      },
+      "x": 50,
+      "y": 56,
+      "size": 22,
+      "at": 700,
+      "in": "pop",
+      "loop": "swing"
+    },
+    {
+      "type": "text",
+      "text": "DEAD HEAT",
+      "y": 16,
+      "size": 13,
+      "at": 500,
+      "in": "slam"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 100
+    },
+    {
+      "sound": "slam",
+      "at": 500
+    },
+    {
+      "sound": "boing",
+      "at": 900
+    }
+  ]
+}

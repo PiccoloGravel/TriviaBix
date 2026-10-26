@@ -5,7 +5,17 @@
     "colors": [
       "#ff3d00",
       "#ffb400"
-    ]
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "streak"
+      ]
+    },
+    "shade": 0.3
   },
   "layers": [
     {

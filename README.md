@@ -41,6 +41,11 @@ for the champion. Each line from the server carries a `cue`, and the scenes are 
 [`web/cutscenes/`](web/cutscenes/), so adding one means dropping in a file and a line in `index.json`. The guide is
 [`web/cutscenes/README.md`](web/cutscenes/README.md), and `/cutscenes.html` previews every scene.
 
+Scenes can also use **AI-generated art**: backdrops, stickers, looping video clips and a title card for every category, made
+with open models (FLUX.1-schnell, BiRefNet, Wan2.2) on a rented vast.ai GPU or your own. Scenes ask for art by tag ("a sticker
+tagged winner") so pieces get reused across scenes, every original is kept in the asset store so nothing is made twice, and
+everything falls back to the drawn backgrounds until art exists. See [`art/README.md`](art/README.md).
+
 The script is [`server/host-script.json`](server/host-script.json). Lines are grouped by rating; a room uses every line at or
 below its rating and leans heavily toward the spiciest tier allowed, so PG rooms stay friendly and NC-17 rooms get filthy. Edit
 it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the script on startup (known events, a PG line for
@@ -188,6 +193,7 @@ cargo test                    # unit tests plus full games over WebSockets
 - `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
   - `cutscenes.js` plays the scenes in `cutscenes/`; `bix.js` draws the host; `cutscenes.html` previews them.
 - `server/src/admin.rs` is the admin login and API (`/api/admin/*`).
+- `art/` makes the generated cutscene art (`catalog.toml` says what, `generate.py` makes it, `render_on_vast.py` rents a GPU).
 
 ### WebSocket protocol
 

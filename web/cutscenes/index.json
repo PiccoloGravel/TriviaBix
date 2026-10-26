@@ -4,13 +4,15 @@
     "intro": {
       "mood": "excited",
       "scenes": [
-        "showtime"
+        "showtime",
+        "showtime-neon"
       ]
     },
     "round": {
       "mood": "happy",
       "scenes": [
-        "round"
+        "round",
+        "round-category"
       ]
     },
     "final_round": {
@@ -28,33 +30,52 @@
     "everyone": {
       "mood": "excited",
       "scenes": [
-        "clean-sweep"
+        "clean-sweep",
+        "crowd-goes-wild"
       ]
     },
     "nobody": {
       "mood": "shocked",
       "scenes": [
-        "nobody"
+        "nobody",
+        "tumbleweed"
       ]
     },
     "only_one": {
-      "mood": "excited"
+      "mood": "excited",
+      "scenes": [
+        "only-one"
+      ],
+      "chance": 0.7
     },
     "fastest": {
-      "mood": "happy"
+      "mood": "happy",
+      "scenes": [
+        "fastest"
+      ],
+      "chance": 0.5
     },
     "streak_broken": {
-      "mood": "laugh"
+      "mood": "laugh",
+      "scenes": [
+        "streak-broken"
+      ],
+      "chance": 0.6
     },
     "roast": {
       "mood": "smug",
       "scenes": [
-        "roasted"
+        "roasted",
+        "burn-notice"
       ],
       "chance": 0.35
     },
     "asleep": {
-      "mood": "smug"
+      "mood": "smug",
+      "scenes": [
+        "asleep"
+      ],
+      "chance": 0.5
     },
     "new_leader": {
       "mood": "excited",
@@ -63,27 +84,37 @@
       ]
     },
     "leader": {
-      "mood": "happy"
+      "mood": "happy",
+      "scenes": [
+        "leader"
+      ],
+      "chance": 0.4
     },
     "tie": {
-      "mood": "shocked"
+      "mood": "shocked",
+      "scenes": [
+        "dead-heat"
+      ]
     },
     "last_place": {
       "mood": "laugh",
       "scenes": [
-        "last-place"
+        "last-place",
+        "participation"
       ]
     },
     "winner": {
       "mood": "cool",
       "scenes": [
-        "champion"
+        "champion",
+        "trophy-room"
       ]
     },
     "finale_tie": {
       "mood": "shocked",
       "scenes": [
-        "tie"
+        "tie",
+        "dead-heat"
       ]
     }
   }

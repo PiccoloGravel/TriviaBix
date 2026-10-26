@@ -5,7 +5,17 @@
     "colors": [
       "#ff3d00",
       "#1a0b3d"
-    ]
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "stage"
+      ]
+    },
+    "shade": 0.3
   },
   "layers": [
     {

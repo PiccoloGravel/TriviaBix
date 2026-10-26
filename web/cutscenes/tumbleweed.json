@@ -1,0 +1,71 @@
+{
+  "duration": 3400,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#ffe2a8"
+    ],
+    "enter": "fade",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "nobody"
+      ]
+    },
+    "shade": 0.15
+  },
+  "layers": [
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "nobody"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "🌾"
+      },
+      "x": -8,
+      "y": 72,
+      "size": 20,
+      "at": 200,
+      "in": "fade",
+      "inMs": 200,
+      "loop": "roll"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "NOBODY?!",
+      "y": 20,
+      "size": 12,
+      "at": 600,
+      "in": "stamp",
+      "color": "#ff4f6d"
+    },
+    {
+      "type": "bix",
+      "mood": "shocked",
+      "x": 86,
+      "y": 46,
+      "size": 22,
+      "at": 1200,
+      "in": "pop"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "crickets",
+      "at": 200
+    },
+    {
+      "sound": "slam",
+      "at": 600
+    }
+  ]
+}

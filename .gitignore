@@ -1,2 +1,6 @@
 /target
 /data
+# Full-size originals from art/generate.py; big, so they live outside git (see art/README.md).
+/art/library
+/web/cutscenes/assets/gen/.needs-gpu
+**/__pycache__

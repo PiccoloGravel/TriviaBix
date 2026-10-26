@@ -1,3 +1,6 @@
 target
 data
 .git
+art/library
+art/.cache
+**/__pycache__

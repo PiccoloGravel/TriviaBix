@@ -1,0 +1,70 @@
+{
+  "duration": 2000,
+  "backdrop": {
+    "kind": "split",
+    "colors": [
+      "#2f80ed",
+      "#7b5cff"
+    ]
+  },
+  "layers": [
+    {
+      "type": "image",
+      "art": {
+        "kind": "category"
+      },
+      "frame": true,
+      "y": 50,
+      "size": 46,
+      "at": 100,
+      "in": "flip",
+      "rotate": -3,
+      "fallback": {
+        "type": "text",
+        "text": "{category}",
+        "size": 11,
+        "width": 80,
+        "in": "slam"
+      }
+    },
+    {
+      "type": "text",
+      "text": "#{round}",
+      "x": 14,
+      "y": 16,
+      "size": 12,
+      "at": 300,
+      "in": "stamp",
+      "rotate": -8,
+      "color": "#ffd23f"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "{kind} {round} of {total} · {category}",
+      "y": 88,
+      "size": 4.5,
+      "at": 400,
+      "in": "rise"
+    },
+    {
+      "type": "bix",
+      "mood": "happy",
+      "x": 90,
+      "y": 84,
+      "size": 20,
+      "at": 300,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 0
+    },
+    {
+      "sound": "pop",
+      "at": 400
+    }
+  ]
+}

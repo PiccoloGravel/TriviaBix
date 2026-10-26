@@ -143,6 +143,8 @@ function cutsceneContext(s) {
   return {
     players,
     subject,
+    // Generated art is rated like questions; a family room never sees an MA picture.
+    rating: s.settings.max_rating,
     vars: {
       host: h.name,
       // In trivia rounds, count questions within the current round.
@@ -462,6 +464,10 @@ function renderRoundIntro(s, changed) {
   $("#ri-mult").textContent = `${mult(st.points_pct)} points`;
   $("#ri-qs").textContent = `${st.questions} question${st.questions === 1 ? "" : "s"}`;
   renderLadder(s, $("#ri-ladder"));
+  // The category's generated title card, if art/generate.py has made one, behind the title.
+  const art = Cutscenes.pickArt({ kind: "category" }, { rating: s.settings.max_rating, vars: { category: st.category } });
+  screen.classList.toggle("has-art", !!art);
+  if (art) screen.style.setProperty("--cat-art", `url("${art}")`);
   if (changed) enter(screen);
 }
 

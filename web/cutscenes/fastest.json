@@ -1,0 +1,80 @@
+{
+  "duration": 2600,
+  "backdrop": {
+    "kind": "stripes",
+    "colors": [
+      "#2f80ed",
+      "#1a0b3d"
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "fastest"
+      ]
+    },
+    "shade": 0.2
+  },
+  "layers": [
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "fastest"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "⚡"
+      },
+      "x": 24,
+      "y": 48,
+      "size": 34,
+      "at": 100,
+      "in": "slam",
+      "loop": "flicker",
+      "rotate": -12
+    },
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 60,
+      "y": 54,
+      "size": 28,
+      "at": 200,
+      "in": "left",
+      "inMs": 400
+    },
+    {
+      "type": "text",
+      "text": "FASTEST FINGERS",
+      "y": 15,
+      "size": 11,
+      "at": 400,
+      "in": "slam",
+      "color": "#ffd23f"
+    },
+    {
+      "type": "bix",
+      "mood": "cool",
+      "x": 88,
+      "y": 82,
+      "size": 22,
+      "at": 600,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 100
+    },
+    {
+      "sound": "slam",
+      "at": 400
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "duration": 3600,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#7b9cff"
+    ],
+    "enter": "fade",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "asleep"
+      ]
+    },
+    "shade": 0.3
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 42,
+      "y": 60,
+      "size": 26,
+      "at": 100,
+      "in": "fade",
+      "loop": "float",
+      "hat": "💤",
+      "hatAt": 600
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "asleep"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "⏰"
+      },
+      "x": 72,
+      "y": 42,
+      "size": 24,
+      "at": 1600,
+      "in": "drop",
+      "loop": "shake"
+    },
+    {
+      "type": "text",
+      "text": "WAKE UP, {name}!",
+      "y": 16,
+      "size": 10,
+      "at": 1600,
+      "in": "slam",
+      "color": "#ffd23f"
+    },
+    {
+      "type": "bix",
+      "mood": "smug",
+      "x": 88,
+      "y": 82,
+      "size": 22,
+      "at": 300,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "crickets",
+      "at": 200
+    },
+    {
+      "sound": "airhorn",
+      "at": 1600
+    }
+  ]
+}

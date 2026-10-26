@@ -6,7 +6,17 @@
       "#ff9f1c",
       "#ffd23f"
     ],
-    "enter": "iris"
+    "enter": "iris",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "winner"
+      ]
+    },
+    "shade": 0.3
   },
   "layers": [
     {

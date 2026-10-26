@@ -1,0 +1,85 @@
+{
+  "duration": 2800,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#ff3d00",
+      "#1a0b3d"
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "roast"
+      ]
+    },
+    "shade": 0.3
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 40,
+      "y": 64,
+      "size": 26,
+      "at": 100,
+      "in": "pop",
+      "loop": "shake"
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "fire"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "🔥"
+      },
+      "x": 40,
+      "y": 38,
+      "size": 18,
+      "at": 400,
+      "in": "rise",
+      "loop": "flicker"
+    },
+    {
+      "type": "image",
+      "art": "sticker:fire-extinguisher",
+      "x": 78,
+      "y": 60,
+      "size": 30,
+      "at": 1200,
+      "in": "right",
+      "rotate": -15,
+      "fallback": {
+        "type": "emoji",
+        "char": "🧯"
+      }
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "BURN!",
+      "y": 14,
+      "size": 14,
+      "at": 400,
+      "in": "stamp",
+      "color": "#ffd23f"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 400
+    },
+    {
+      "sound": "whoosh",
+      "at": 1200
+    }
+  ]
+}
