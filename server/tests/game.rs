@@ -22,6 +22,11 @@ async fn start_server() -> String {
 
 /// Also returns the database URL, for tests that need to control the content.
 async fn start_server_with_db() -> (String, String) {
+    start_server_with(None).await
+}
+
+/// With `tts_url`, the host's lines are voiced by that TTS service.
+async fn start_server_with(tts_url: Option<String>) -> (String, String) {
     let db = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
     let database_url = format!("sqlite://{}", db.display());
     let config = Config {
@@ -33,6 +38,7 @@ async fn start_server_with_db() -> (String, String) {
         itunes_url: FakeItunes::start().await.url,
         music_country: "US".into(),
         music_warmup: false,
+        library: Default::default(),
         timing: Timing {
             question: Duration::from_secs(5),
             song_question: Duration::from_secs(5),
@@ -48,6 +54,8 @@ async fn start_server_with_db() -> (String, String) {
         admin_password: Some(ADMIN_PASSWORD.into()),
         host_script: None,
         content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
+        tts_url,
+        tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -616,9 +624,14 @@ async fn name_that_tune_plays_clips_on_the_tv_only() {
 #[tokio::test]
 async fn song_rounds_respect_ratings_and_cache_tracks() {
     use triviabix::db::{Db, Rating};
-    use triviabix::music::{Itunes, build_round};
+    use triviabix::music::{Itunes, Music, build_round};
+    use triviabix::protocol::SongSource::Hits;
     let fake = FakeItunes::start().await;
-    let itunes = Itunes::new(&fake.url, "US");
+    let itunes = Music {
+        itunes: Itunes::new(&fake.url, "US"),
+        library: triviabix::library::Library::new(Default::default()),
+        media: Default::default(),
+    };
     let path = std::env::temp_dir().join(format!("triviabix-test-{}.db", uuid::Uuid::new_v4()));
     let db = Db::connect(&format!("sqlite://{}", path.display()))
         .await
@@ -628,7 +641,9 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
     let all_songs = db.songs(Rating::Nc17).await.unwrap();
     assert!(pg_songs.len() >= 50 && all_songs.len() > pg_songs.len());
 
-    let round = build_round(&db, &itunes, 5, Rating::Pg, &[]).await.unwrap();
+    let round = build_round(&db, &itunes, 5, Rating::Pg, &[], Hits)
+        .await
+        .unwrap();
     assert_eq!(round.len(), 5);
     for q in &round {
         assert!(pg_songs.iter().any(|s| s.id == q.id));
@@ -652,7 +667,7 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
         .map(|s| s.id)
         .filter(|id| !round.iter().any(|q| q.id == *id))
         .collect();
-    let again = build_round(&db, &itunes, 5, Rating::Pg, &ids)
+    let again = build_round(&db, &itunes, 5, Rating::Pg, &ids, Hits)
         .await
         .unwrap();
     assert_eq!(again.len(), 5);
@@ -663,7 +678,7 @@ async fn song_rounds_respect_ratings_and_cache_tracks() {
     // Searches are capped per game, so it takes a few games to find everything.
     let mut everything = Vec::new();
     for _ in 0..6 {
-        everything = build_round(&db, &itunes, 100, Rating::Ma, &[])
+        everything = build_round(&db, &itunes, 100, Rating::Ma, &[], Hits)
             .await
             .unwrap();
     }
@@ -1507,4 +1522,145 @@ async fn admin_sets_each_rooms_size() {
     wait_state(&mut host, |s| s["max_players"] == 24).await;
     let mut c = open(&addr, &format!("/ws/play?code={code}&name=C")).await;
     assert_eq!(recv(&mut c).await["type"], "welcome");
+}
+
+/// Stands in for the TTS service in tts/: "audio" is the text, and it counts what it's asked for.
+#[derive(Clone, Default)]
+struct FakeTts {
+    url: String,
+    live: Arc<Mutex<Vec<String>>>,
+    warm: Arc<AtomicUsize>,
+}
+
+impl FakeTts {
+    async fn start() -> Self {
+        use axum::{extract::State, routing::get, routing::post};
+
+        async fn speech(
+            State(f): State<FakeTts>,
+            axum::Json(body): axum::Json<Value>,
+        ) -> impl axum::response::IntoResponse {
+            let text = body["text"].as_str().unwrap().to_string();
+            if body["priority"] == "warm" {
+                f.warm.fetch_add(1, Ordering::SeqCst);
+            } else {
+                f.live.lock().unwrap().push(text.clone());
+            }
+            (
+                [("content-type", "audio/ogg"), ("x-voice", "ip:US_James")],
+                format!("OggS {text}"),
+            )
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let fake = FakeTts {
+            url: format!("http://{}", listener.local_addr().unwrap()),
+            ..Default::default()
+        };
+        let app = axum::Router::new()
+            .route(
+                "/healthz",
+                get(|| async { axum::Json(json!({ "ready": true, "voice": "ip:US_James" })) }),
+            )
+            .route("/v1/speech", post(speech))
+            .with_state(fake.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        fake
+    }
+}
+
+#[tokio::test]
+async fn the_tv_gets_bix_lines_as_audio_from_the_tts_service() {
+    let tts = FakeTts::start().await;
+    let (addr, _) = start_server_with(Some(tts.url.clone())).await;
+    let http = reqwest::Client::new();
+    let config: Value = http
+        .get(format!("http://{addr}/api/config"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(config["voice"], true);
+
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Zelda")).await;
+    // The host greets Zelda by name, so that line is made on demand.
+    let s = wait_state(&mut host, |s| {
+        s["host"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("Zelda"))
+    })
+    .await;
+    let part = &s["host"]["voice"][0];
+    assert!(part["text"].as_str().unwrap().contains("Zelda"));
+    let url = part["audio"].as_str().unwrap().to_string();
+    assert!(url.starts_with("/api/voice/"), "{url}");
+    let phone_state = wait_state(&mut phone, |s| s["host"].is_object()).await;
+    assert!(
+        phone_state["host"].get("voice").is_none(),
+        "only the TV gets audio"
+    );
+
+    for _ in 0..2 {
+        let res = http
+            .get(format!("http://{addr}{url}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        assert_eq!(res.headers()["content-type"], "audio/ogg");
+        let body = res.text().await.unwrap();
+        assert!(
+            body.starts_with("OggS ") && body.contains("Zelda"),
+            "{body}"
+        );
+    }
+    let zelda = tts
+        .live
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|t| t.contains("Zelda"))
+        .count();
+    assert_eq!(zelda, 1, "the second fetch comes from the cache");
+
+    // Questions are read out too, and the fixed lines are made ahead of time.
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    let prompt = q["question"]["prompt_audio"].as_str().unwrap();
+    let res = http
+        .get(format!("http://{addr}{prompt}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(
+        res.text()
+            .await
+            .unwrap()
+            .contains(q["question"]["prompt"].as_str().unwrap())
+    );
+    let res = http
+        .get(format!("http://{addr}/api/voice/{}", "0".repeat(32)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        404,
+        "only lines the game has said can be made"
+    );
+    for _ in 0..50 {
+        if tts.warm.load(Ordering::SeqCst) > 10 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        tts.warm.load(Ordering::SeqCst) > 10,
+        "lines should be pre-generated in the background"
+    );
 }

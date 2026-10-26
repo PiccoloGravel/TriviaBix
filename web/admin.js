@@ -5,6 +5,7 @@ const { $, el, show } = TBX;
 const POLL_MS = 1500;
 const PLAYER_SIZES = [2, 4, 6, 8, 10, 12, 16, 20, 24];
 const RATINGS = ["PG", "PG-13", "MA", "NC-17"];
+const SONG_SOURCES = [["mix", "Library + hits"], ["library", "Your library"], ["hits", "Hits"]];
 const PHASES = {
   lobby: "Lobby", intro: "Intro", round_intro: "Round intro", question: "Question", reveal: "Reveal",
   scoreboard: "Scores", recap: "Round recap", final: "Final scores",
@@ -71,6 +72,7 @@ $("#logout").addEventListener("click", async () => {
 function startDashboard() {
   show("dash");
   refresh();
+  loadMusic();
   stopPolling();
   pollTimer = setInterval(refresh, POLL_MS);
 }
@@ -162,6 +164,8 @@ function roomCard(r) {
       select(sizes.map((n) => [n, n]), r.max_players, (v) => act(r.code, "settings", { max_players: Number(v) }))),
     lobby ? el("label", { class: "inline" }, "Game",
       select([["trivia", "Trivia"], ["hangman", "Speed Hangman"], ["songs", "Name That Tune"]], r.settings.mode, (v) => act(r.code, "settings", { mode: v }))) : null,
+    lobby && r.settings.mode === "songs" ? el("label", { class: "inline" }, "Songs from",
+      select(SONG_SOURCES, r.settings.song_source, (v) => act(r.code, "settings", { song_source: v }))) : null,
     lobby && r.settings.mode === "songs" ? el("label", { class: "inline" }, "Clip",
       select([[1000, "1 sec"], [2000, "2 sec"], [3000, "3 sec"]], r.settings.clip_ms, (v) => act(r.code, "settings", { clip_ms: Number(v) }))) : null,
     lobby && trivia ? el("label", { class: "inline" }, "Rounds",
@@ -225,12 +229,44 @@ $("#new-room").addEventListener("submit", async (e) => {
       teams: Number(f.teams.value),
       late_join: f.late_join.checked,
       max_players: Number(f.max_players.value),
+      song_source: f.song_source.value,
     });
     toast(`Room ${room.code} is open. Use "Open TV" to put it on a screen.`);
     await refresh();
   } catch (err) {
     toast(err.message);
   }
+});
+
+// ---------- Music library ----------
+
+let musicTimer = null;
+
+function showMusic(m) {
+  const parts = [];
+  if (!m.configured) {
+    parts.push("Off. Set LIDARR_URL and LIDARR_API_KEY on the server to use your own music.");
+  } else {
+    parts.push(`${m.songs.toLocaleString()} songs ready`);
+    if (m.syncing) parts.push("syncing with Lidarr…");
+    else if (m.last_sync) parts.push(`synced ${new Date(m.last_sync).toLocaleString()}`);
+    if (m.last_report && m.last_report.matched) parts.push(`${m.last_report.matched} of the built-in hits play from your files`);
+    if (m.missing_files) parts.push(`⚠️ ${m.missing_files.toLocaleString()} files not found in the container`);
+    if (m.error) parts.push(`⚠️ ${m.error}`);
+  }
+  $("#music-status").textContent = parts.join(" · ");
+  $("#music-sync").classList.toggle("hidden", !m.configured);
+  $("#music-sync").disabled = !!m.syncing;
+  clearTimeout(musicTimer);
+  if (m.syncing) musicTimer = setTimeout(loadMusic, 2000);
+}
+
+async function loadMusic() {
+  try { showMusic(await api("music")); } catch { /* the rooms poll reports trouble */ }
+}
+
+$("#music-sync").addEventListener("click", async () => {
+  try { showMusic(await api("music/sync", {})); } catch (e) { toast(e.message); }
 });
 
 // ---------- Boot ----------

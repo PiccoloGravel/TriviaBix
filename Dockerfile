@@ -25,6 +25,7 @@ ENV PORT=8080 \
     STATIC_DIR=/app/web \
     CONTENT_DIR=/app/content \
     DATABASE_URL=sqlite:///data/triviabix.db \
+    TTS_CACHE_DIR=/data/tts \
     RUST_LOG=triviabix=info,tower_http=info \
     PUID=10001 \
     PGID=10001

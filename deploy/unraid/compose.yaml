@@ -21,22 +21,38 @@ services:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
+      # Your music library through Lidarr (optional). See deploy/unraid/README.md.
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      # The music folder as Lidarr sees it; empty uses Lidarr's root folder.
+      LIDARR_MUSIC_PATH: ${LIDARR_MUSIC_PATH:-}
+      LIBRARY_RATING: ${LIBRARY_RATING:-PG-13}
+      # Bix's voice server: http://tts:8000 with the voice profile, empty for the browser's voice.
+      TTS_URL: ${TTS_URL:-}
     volumes:
       # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
       - /mnt/user/appdata/triviabix:/data
+      # The music share Lidarr manages, read-only. The TV streams clips from it.
+      - ${MUSIC_SHARE:-/mnt/user/data/media/music}:/music:ro
     restart: unless-stopped
 
-  # Bix's self-hosted voice (optional). It needs an NVIDIA GPU (Nvidia Driver plugin on Unraid)
-  # and comes with the TTS work in tts/. Once that lands, uncomment this, add
-  # TTS_URL: http://tts:8000 to triviabix's environment above, and run with the "voice" profile.
+  # Bix's self-hosted voice (optional). Needs an NVIDIA GPU and the Nvidia Driver plugin. Start the
+  # stack with the "voice" profile and set TTS_URL=http://tts:8000 in .env (see deploy/unraid/README.md).
   # Spoken lines are cached under /data/tts in triviabix's appdata.
-  #
-  # tts:
-  #   image: ghcr.io/piccologravel/triviabix-tts:latest
-  #   profiles: [voice]
-  #   runtime: nvidia
-  #   environment:
-  #     NVIDIA_VISIBLE_DEVICES: all
-  #   volumes:
-  #     - /mnt/user/appdata/triviabix-tts:/models
-  #   restart: unless-stopped
+  tts:
+    image: ghcr.io/piccologravel/triviabix-tts:latest
+    container_name: triviabix-tts
+    profiles: [voice]
+    runtime: nvidia
+    ports:
+      - "8000:8000"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      # ip:US_James, ip:US_Emma, ip:UK_George, ip:UK_Charlotte, or clone:/voices/bix.wav
+      BIX_VOICE: ${BIX_VOICE:-ip:US_James}
+    volumes:
+      # The model (about 3 GB) downloads here on first start.
+      - /mnt/user/appdata/triviabix-tts/models:/models
+      # Reference clips for a custom Bix voice (bix.wav + bix.txt).
+      - /mnt/user/appdata/triviabix-tts/voices:/voices
+    restart: unless-stopped

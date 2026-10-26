@@ -83,13 +83,60 @@ The game only needs your LAN. To let people join from elsewhere:
   Set Public URL to the public `https://` address. Use a strong admin password, or block `/admin`
   at the proxy, since anyone who finds the address can reach it.
 
+## Your music library (Lidarr)
+
+Name That Tune can play songs from your own library instead of (or as well as) Apple's previews,
+and the TV plays your music quietly in the lobby and between rounds. TriviaBix asks Lidarr which
+tracks have files, then streams them from your music share, which it only reads.
+
+1. In Lidarr: **Settings → General → Security**, copy the **API Key**. Note the root folder under
+   **Settings → Media Management → Root Folders** (e.g. `/music` or `/data/media/music`).
+2. In the TriviaBix template (or the stack's `.env`):
+   - **Music library**: the Unraid share holding your music, the same one mapped into Lidarr,
+     e.g. `/mnt/user/data/media/music`. It's mounted read-only at `/music`.
+   - **Lidarr URL**: `http://<your Unraid IP>:8686`.
+   - **Lidarr API key**: the key from step 1.
+   - **Lidarr music path** (advanced): only needed if Lidarr has more than one root folder, or the
+     share you mapped above is a parent of it. Put the folder *as Lidarr sees it* that matches the
+     share you mounted, e.g. `/data/media/music`.
+   - **Library rating** (advanced): rating for library songs, `PG-13` by default. Tracks marked
+     explicit are always at least `MA`, so a PG room skips your library unless you set this to `PG`.
+3. **Apply**. The library syncs at startup and every 6 hours (`LIDARR_SYNC_HOURS`). The admin
+   panel shows how many songs are ready and has **Sync from Lidarr** for after you add albums.
+
+Per room, the admin panel's **Songs from** picks **Library + hits** (half and half, the default),
+**Your library**, or **Hits** (the built-in list, played from your files when you have them and
+from Apple otherwise). Live albums, remixes, tracks under a minute and files TV browsers can't play
+(e.g. `.wma`, `.ape`) are left out. Wrong answers are songs of the same genre from around the same
+year. The **🎵 Music** button (or **B**) on the TV turns the background music and sound effects off.
+
+If the admin panel says files aren't found, the music share isn't mounted at `/music` or Lidarr
+sees it under a different path: set **Lidarr music path**.
+
 ## Bix's voice
 
-Bix currently speaks with the browser's built-in text-to-speech, so the TV laptop/phone does the
-talking and the server needs nothing extra. A self-hosted voice model is being added separately.
-It runs as a second container (needs an NVIDIA GPU and the Nvidia Driver plugin), and the game
-finds it through the **Voice server** setting (`TTS_URL`). The Compose Manager stack has it
-ready to uncomment; voice lines are cached in `appdata/triviabix/tts`.
+Out of the box, Bix speaks with the browser's built-in text-to-speech on the TV laptop or phone, and the
+server needs nothing extra. With an NVIDIA GPU, he can have a real voice from the self-hosted
+Ming-3.0-tts model instead (see [tts/README.md](../../tts/README.md) for how it works and the voices).
+
+1. Install the **Nvidia Driver** plugin from Community Applications, reboot, and note the GPU's UUID on its
+   settings page (or use `all`). An RTX 30-series or newer is the safe bet; the model is only published as
+   tested on data-center cards.
+2. Start the voice container:
+   - **Compose Manager:** in the stack's `.env`, set `TTS_URL=http://tts:8000`, then start the stack with
+     the `voice` profile.
+   - **Without compose:** add a container from `ghcr.io/piccologravel/triviabix-tts:latest` with
+     Extra Parameters `--runtime=nvidia`, variable `NVIDIA_VISIBLE_DEVICES` set to the GPU UUID (or
+     `all`), port 8000, and paths `/models` → `/mnt/user/appdata/triviabix-tts/models` and `/voices` →
+     `/mnt/user/appdata/triviabix-tts/voices`. Then set TriviaBix's **Voice server** to
+     `http://<unraid-ip>:8000`.
+3. The first start downloads the model (about 3 GB). `http://<unraid-ip>:8000/healthz` says
+   `"ready": true` when it's loaded. TriviaBix then makes every question and fixed line in the background,
+   once, and keeps them in `appdata/triviabix/tts`. Until a line is ready, the browser voice reads it.
+
+For a custom, cheekier Bix, run `python make_voice.py --count 4` in the voice container's console, listen
+to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.wav` (and its `.txt` to
+`bix.txt`), and set `BIX_VOICE=clone:/voices/bix.wav`.
 
 ## Troubleshooting
 
@@ -97,4 +144,7 @@ ready to uncomment; voice lines are cached in `appdata/triviabix/tts`.
   not `localhost`, and phones must be on the same Wi-Fi (not a guest network that isolates devices).
 - **Permission errors in the log:** the container fixes appdata ownership on start using PUID/PGID
   (99/100 by default on Unraid). Check those weren't changed.
+- **"Lidarr has N tracks with files, but none of them are under /music":** the **Music library**
+  path points at a different folder than Lidarr's root folder, or **Lidarr music path** is wrong.
+  Compare a file's path in Lidarr (an album → the file icon) with what's in your share.
 - **Logs:** Docker tab → TriviaBix icon → **Logs**.

@@ -13,9 +13,42 @@ services:
       MAX_PLAYERS: ${MAX_PLAYERS:-12}
       # Turns on the admin panel at /admin.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Optional: your music library through Lidarr. Mount the music folder below too.
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      LIDARR_MUSIC_PATH: ${LIDARR_MUSIC_PATH:-}
+      # Bix's voice. Set to http://tts:8000 and start with --profile voice (see tts/README.md).
+      # Empty means the TV uses the browser's text-to-speech.
+      TTS_URL: ${TTS_URL:-}
     volumes:
       - triviabix-data:/data
+      # The folder Lidarr keeps your music in, read-only.
+      # - /path/to/music:/music:ro
+    restart: unless-stopped
+
+  # Ming-3.0-tts for Bix's voice. Needs an NVIDIA GPU and the NVIDIA container toolkit.
+  #   TTS_URL=http://tts:8000 docker compose --profile voice up --build
+  tts:
+    image: ghcr.io/piccologravel/triviabix-tts:latest
+    build: ./tts
+    profiles: [voice]
+    ports:
+      - "8000:8000"
+    environment:
+      # ip:US_James, ip:US_Emma, ip:UK_George, ip:UK_Charlotte, or clone:/voices/bix.wav
+      BIX_VOICE: ${BIX_VOICE:-ip:US_James}
+    volumes:
+      - tts-models:/models
+      - ./voices:/voices
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
 
 volumes:
   triviabix-data:
+  tts-models:

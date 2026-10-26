@@ -93,9 +93,18 @@
       <label class="inline">Max players
         <select name="max_players"><option>4</option><option>6</option><option>8</option><option>10</option><option selected>12</option><option>16</option><option>20</option><option>24</option></select>
       </label>
+      <label class="inline">Songs from
+        <select name="song_source"><option value="mix">Library + hits</option><option value="library">Your library</option><option value="hits">Hits</option></select>
+      </label>
       <label class="inline"><input type="checkbox" name="late_join" checked style="width:auto"> Late joins</label>
       <button type="submit">Create room</button>
     </form>
+
+    <div class="new-room" id="music">
+      <span class="title">🎵 Music library</span>
+      <span id="music-status" class="muted">Checking…</span>
+      <button type="button" class="secondary small hidden" id="music-sync">Sync from Lidarr</button>
+    </div>
 
     <div class="rooms" id="rooms"></div>
   </section>

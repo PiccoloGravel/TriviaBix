@@ -33,6 +33,7 @@ pub enum ClientMsg {
         late_join: Option<bool>,
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
+        song_source: Option<SongSource>,
     },
     /// Player: switch to another team while in the lobby.
     Team { team: u8 },
@@ -58,6 +59,19 @@ pub enum GameMode {
     Hangman,
     /// Name That Tune: the TV plays a second or two of a song and phones pick the title.
     Songs,
+}
+
+/// Where Name That Tune's songs come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SongSource {
+    /// Half from the music library, half from the curated hits.
+    #[default]
+    Mix,
+    /// The music library only, topped up with hits if it runs short.
+    Library,
+    /// The curated hits only (played from the library when it has them, else Apple previews).
+    Hits,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +120,9 @@ pub struct StateView<'a> {
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
+    /// TV only: background music from the library for the lobby and scoreboards, within the
+    /// room's rating. Empty without a music library.
+    pub playlist: Vec<PlaylistView<'a>>,
     /// Only in speed hangman rounds.
     pub hangman: Option<HangmanView<'a>>,
     /// What the host is saying right now, with graphics for the TV to show alongside it.
@@ -142,6 +159,8 @@ pub struct SettingsView {
     pub trivia_rounds: u8,
     /// Trivia only: questions in each round.
     pub per_round: usize,
+    /// Name That Tune: where the songs come from.
+    pub song_source: SongSource,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -194,9 +213,20 @@ pub struct QuestionView<'a> {
     pub kind: &'static str,
     pub category: &'a str,
     pub prompt: &'a str,
+    /// TV only, with a TTS service: where to fetch the prompt read aloud.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_audio: Option<String>,
     pub choices: &'a [String],
     /// TV only: what to play. Phones never get the audio, so they have to listen.
     pub clip: Option<ClipView<'a>>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct PlaylistView<'a> {
+    pub url: &'a str,
+    pub title: &'a str,
+    pub artist: &'a str,
+    pub start_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -221,6 +251,9 @@ pub struct SongView<'a> {
     pub year: i64,
     pub artwork_url: Option<&'a str>,
     pub store_url: Option<&'a str>,
+    pub album: Option<&'a str>,
+    /// Played from the operator's music library rather than an Apple preview.
+    pub from_library: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -236,10 +269,20 @@ pub struct HostView<'a> {
     /// Changes with every new line, so the TV speaks each one once.
     pub id: u64,
     pub text: &'a str,
+    /// TV only, with a TTS service: the line in pieces, each with where to fetch its audio.
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub voice: &'a [VoicePart],
     pub callouts: &'a [Callout],
     /// The moment this line is for, so the TV can play a cutscene and pick the host's face: intro,
     /// round, final_round, winner, finale_tie, or the biggest callout's kind. See web/cutscenes/.
     pub cue: Option<&'static str>,
+}
+
+/// One piece of a host line and its synthesized audio, if the TTS service can make it.
+#[derive(Debug, Serialize, Clone)]
+pub struct VoicePart {
+    pub text: String,
+    pub audio: Option<String>,
 }
 
 /// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.
@@ -329,6 +372,7 @@ pub enum AdminCmd {
         late_join: Option<bool>,
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
+        song_source: Option<SongSource>,
         /// Room size, any time; never below the players already in the room.
         max_players: Option<usize>,
     },
