@@ -411,18 +411,32 @@ async fn host_reads_each_questions_own_lines_within_the_room_rating() {
         "a PG room heard an MA line: {said}"
     );
 
-    // An MA room hears it, in place of the generic roast.
+    // An MA room hears it, and Bix still roasts a wrong answer.
     let (code, host_token) =
         create_room_with(&addr, json!({ "rounds": 1, "max_rating": "MA" })).await;
     let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
-    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Bo")).await;
-    recv(&mut phone).await;
+    let mut phones = Vec::new();
+    for name in ["Bo", "Cy"] {
+        let mut phone = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut phone).await;
+        phones.push(phone);
+    }
     send(&mut host, json!({ "type": "start" })).await;
     wait_state(&mut host, |s| s["phase"] == "question").await;
-    send(&mut host, json!({ "type": "skip" })).await;
+    // Different picks, so one of them is wrong.
+    for (i, phone) in phones.iter_mut().enumerate() {
+        send(phone, json!({ "type": "answer", "choice": i })).await;
+    }
     let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
     let said = reveal["host"]["text"].as_str().unwrap();
     assert!(said.contains("SPICY REVEAL"), "{said}");
+    let kinds: Vec<&str> = reveal["host"]["callouts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["kind"].as_str())
+        .collect();
+    assert!(kinds.contains(&"roast"), "{kinds:?}: {said}");
 }
 
 #[tokio::test]
