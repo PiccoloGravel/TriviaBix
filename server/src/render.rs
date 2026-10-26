@@ -110,6 +110,8 @@ pub struct RenderConfig {
     pub assets_dir: PathBuf,
     /// This server, as the voice job reaches its admin API.
     pub server_url: String,
+    /// The admin Art page's themes, category styles and catalog changes (crate::art), in appdata.
+    pub studio: PathBuf,
 }
 
 impl Default for RenderConfig {
@@ -121,6 +123,7 @@ impl Default for RenderConfig {
             art_dir: "data/art".into(),
             assets_dir: "data/assets".into(),
             server_url: "http://127.0.0.1:8080".into(),
+            studio: "data/art-studio.json".into(),
         }
     }
 }
@@ -202,6 +205,12 @@ pub struct Options {
     /// Art: only this kind (backdrop, sticker, category or clip).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kinds: Option<String>,
+    /// Art: the theme to draw in (crate::art). Without it, the one in use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Art: only these pieces, as kind:id separated by commas (a new take of one piece).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only: Option<String>,
     /// Lines: the most questions to write lines for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
@@ -304,8 +313,29 @@ impl Options {
                         ART_KINDS.join(", ")
                     ));
                 }
+                let theme = self.theme.filter(|t| !t.is_empty());
+                if let Some(t) = &theme
+                    && !crate::art::valid_id(t)
+                {
+                    return Err("That isn't an art theme.".into());
+                }
+                let only = self.only.filter(|o| !o.is_empty());
+                if let Some(o) = &only {
+                    let pieces: Vec<&str> = o.split(',').collect();
+                    let ok = pieces.len() <= 50
+                        && pieces.iter().all(|p| {
+                            p.split_once(':').is_some_and(|(k, id)| {
+                                ART_KINDS.contains(&k) && crate::art::valid_id(id)
+                            })
+                        });
+                    if !ok {
+                        return Err("Pick pieces of art as kind:id, up to 50 of them.".into());
+                    }
+                }
                 Options {
                     kinds,
+                    theme,
+                    only,
                     ..Default::default()
                 }
             }
@@ -656,7 +686,7 @@ impl Render {
 
     /// Hands a tool the keys and model choices saved on the Settings page. Ones set only in the
     /// container's environment reach it anyway.
-    fn with_settings(&self, cmd: &mut Command) {
+    pub(crate) fn with_settings(&self, cmd: &mut Command) {
         for (key, value) in self.0.settings.saved_env() {
             cmd.env(key, value);
         }
@@ -664,6 +694,31 @@ impl Render {
 
     pub fn art_dir(&self) -> &Path {
         &self.0.cfg.art_dir
+    }
+
+    pub fn config(&self) -> &RenderConfig {
+        &self.0.cfg
+    }
+
+    /// The art the server ships, which the TV gets where appdata has none.
+    pub fn shipped_art(&self) -> PathBuf {
+        self.0.static_dir.join("cutscenes/assets/gen")
+    }
+
+    /// The art theme in use (crate::art).
+    pub fn art_theme(&self) -> String {
+        crate::art::active(&self.0.cfg.studio)
+    }
+
+    /// Where a theme's TV files are: the default theme in the art folder itself, others in
+    /// themes/<id> inside it (as generate.py's theme_out).
+    pub fn theme_dir(&self, theme: &str) -> PathBuf {
+        crate::art::theme_dir(&self.0.cfg.art_dir, theme)
+    }
+
+    /// Whether an art run (or a cleanup) is going, so the art can't be rewritten under it.
+    pub fn art_busy(&self) -> Option<String> {
+        self.blocked(Kind::Art)
     }
 
     /// The candidate voices for Bix in the asset store, newest first, each with whether it's the
@@ -898,13 +953,18 @@ impl Render {
         }
         self.seed_art_dir();
         let c = &self.0.cfg;
+        let theme = self.art_theme();
         let mut art = Command::new(&c.python);
+        // The offline backend names art as a GPU run does, so art the GPU made counts as made.
         art.arg(c.tools_dir.join("art/generate.py"))
-            .arg("--plan")
+            .args(["--plan", "--backend", "offline"])
             .arg("--out")
-            .arg(&c.art_dir)
+            .arg(self.theme_dir(&theme))
             .arg("--library")
-            .arg(&c.assets_dir);
+            .arg(&c.assets_dir)
+            .arg("--studio")
+            .arg(&c.studio)
+            .args(["--theme", &theme]);
         self.with_settings(&mut art);
         let mut lines = self.command(
             Kind::Lines,
@@ -985,7 +1045,10 @@ impl Render {
         if matches!(kind, Kind::Cleanup | Kind::Import) {
             return Err("That job is free, so it needs no price check.".into());
         }
-        let options = options.check(kind)?;
+        let mut options = options.check(kind)?;
+        if kind == Kind::Art && options.theme.is_none() {
+            options.theme = Some(self.art_theme());
+        }
         if let Some(why) = self.blocked(kind) {
             return Err(why);
         }
@@ -1572,13 +1635,20 @@ impl Render {
                 cmd
             }
             Kind::Art => {
+                let theme = o.theme.clone().unwrap_or_else(|| self.art_theme());
                 let mut cmd = tool("art/render_on_vast.py");
                 cmd.arg("--out")
-                    .arg(&c.art_dir)
+                    .arg(self.theme_dir(&theme))
                     .arg("--library")
-                    .arg(&c.assets_dir);
+                    .arg(&c.assets_dir)
+                    .arg("--studio")
+                    .arg(&c.studio)
+                    .args(["--theme", &theme]);
                 if let Some(k) = &o.kinds {
                     cmd.args(["--kinds", k]);
+                }
+                if let Some(only) = &o.only {
+                    cmd.args(["--only", only]);
                 }
                 cmd
             }
@@ -1662,7 +1732,7 @@ impl Render {
 
     /// The TV's art is served from `art_dir` once it has a manifest. Before the first art job
     /// writes there, it starts as a copy of the art that ships with the server.
-    fn seed_art_dir(&self) {
+    pub(crate) fn seed_art_dir(&self) {
         let dir = &self.0.cfg.art_dir;
         let shipped = self.0.static_dir.join("cutscenes/assets/gen");
         if dir.join("manifest.json").exists() || !shipped.join("manifest.json").exists() {
