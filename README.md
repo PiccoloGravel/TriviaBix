@@ -47,7 +47,7 @@ it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the s
 each, and only placeholders that event fills in). Reveals and scoreboards stretch so the host can finish talking.
 
 Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
-line (a joke, anecdote, or fun fact) right after the answer, in place of his generic roast. They're rated too, so a PG room
+line (a joke, anecdote, or fun fact) right after the answer, before his usual reactions and roasts. They're rated too, so a PG room
 hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
 script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
 them in the admin panel.
