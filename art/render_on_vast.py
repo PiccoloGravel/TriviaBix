@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -149,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             tempfile.TemporaryDirectory(prefix="triviabix-art-code-") as code:
         ship_code(Path(code) / "code")
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
-               "--input", code,
+               "--input", code, "--keep-partial",
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
                "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
                "--offload-below", str(OFFLOAD_GB), "--kind", "art"]
@@ -160,7 +161,10 @@ def main(argv: list[str] | None = None) -> int:
         run += ["--yes"] * args.yes + ["--dry-run"] * args.dry_run
         # The art image's PyTorch (2.7, CUDA 12.8) runs Blackwell cards too, but needs a host driver for 12.8.
         env = {"VAST_MAX_COMPUTE_CAP": "1200", "VAST_MIN_CUDA": "12.8", **os.environ}
-        code = subprocess.call(run, env=env)
+        # Cancelling (SIGTERM to the whole process group) stops gpu/vast.py, which gives the GPU back and
+        # returns; what came home by then is still saved below.
+        signal.signal(signal.SIGTERM, lambda *_: None)
+        code = subprocess.Popen(run, env=env).wait()
         if args.dry_run:
             return code
 

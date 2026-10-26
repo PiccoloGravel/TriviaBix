@@ -54,6 +54,8 @@ PORT = 8000
 # next GPU tried if it never answered at all), and how often the wait is logged meanwhile.
 UNREACHABLE_MINUTES = float(os.environ.get("VAST_UNREACHABLE_MINUTES") or 5)
 WAIT_NOTE_SECONDS = 60
+# How often, in seconds, a job's results so far are fetched while it works.
+PARTIAL_EVERY = 60
 # How many GPUs a job tries when the one it rented can't be reached.
 UNREACHABLE_TRIES = 3
 # How the voice image starts its service, with the rental's token so only the game server can use it.
@@ -680,17 +682,22 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
             max_minutes: float = 60, disk: float = 40, env: dict | None = None, login: str | None = None,
             boot_minutes: float = 20, yes: bool = False, dry_run: bool = False, another: bool = False,
             vast: Vast | None = None, work_minutes: float | None = None, boot_estimate: float = 0,
-            offload_below_gb: float = 0, kind: str = "job", inputs: Path | None = None) -> int:
+            offload_below_gb: float = 0, kind: str = "job", inputs: Path | None = None,
+            keep_partial: bool = False) -> int:
     """Runs `cmd` in `image` on a rented GPU, copies the container's `out` folder into `to`, and destroys the
     instance. Returns the command's exit code. `inputs`, a folder, is uploaded to /in before `cmd` starts. With `work_minutes` (the job's length on an RTX 4090), the GPU
-    is picked by the expected cost of the whole job and the estimate is shown with the price."""
+    is picked by the expected cost of the whole job and the estimate is shown with the price. With
+    `keep_partial`, what the job has written comes into `to` every minute too, so a job that fails or runs
+    out of time still hands back what it made."""
     vast = vast or Vast()
     offers = pick_offers(vast, min_vram, max_price, disk, work_minutes, boot_estimate, max_minutes, offload_below_gb)
     confirm(offers[0], max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
     if dry_run:
         return 0
     return run_rented(vast, offers, image, cmd, to, out, max_minutes, disk, env, login, boot_minutes, another,
-                      kind=kind, inputs=inputs)
+                      kind=kind, inputs=inputs,
+                      partial=(lambda got: shutil.copytree(got, to, dirs_exist_ok=True)) if keep_partial else None,
+                      partial_every=PARTIAL_EVERY)
 
 
 def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str = "/out", max_minutes: float = 60,
@@ -1249,6 +1256,8 @@ def main(argv=None) -> int:
     r.add_argument("--offload-below", type=float, default=0,
                    help="GB of GPU memory under which the job runs slower (models moved in and out), for the estimate")
     r.add_argument("--input", type=Path, help=f"a folder to upload to {JOB_IN} before --cmd starts")
+    r.add_argument("--keep-partial", action="store_true",
+                   help="copy what the job writes into --to every minute, so a failed run keeps it")
     r.add_argument("--kind", default="job",
                    help="what the job makes, e.g. art; one job of each kind can run at a time (default job)")
     renting(r, 16, 0.5)
@@ -1286,7 +1295,7 @@ def main(argv=None) -> int:
                            args.max_minutes, args.disk, env, args.login, args.boot_minutes, args.yes,
                            args.dry_run, args.another, work_minutes=args.work_minutes,
                            boot_estimate=args.boot_estimate, offload_below_gb=args.offload_below, kind=args.kind,
-                           inputs=args.input)
+                           inputs=args.input, keep_partial=args.keep_partial)
         elif args.command == "list":
             for i in Vast().ours():
                 up = (time.time() - (i.get("start_date") or time.time())) / 3600
