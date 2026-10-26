@@ -18,6 +18,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -51,8 +52,28 @@ const SAMPLE_KIND: &str = "voice-sample";
 pub const VOICE_DESCRIPTION: &str = "A washed-up American game show host in his fifties, clinging to his last gig. \
 His voice is warm and a little gravelly, cheeky and quick but world-weary, with dry, sarcastic timing and a tired \
 sigh in it, and the old showman's bounce still comes back for the big moments. Always clear and easy to follow.";
-pub const VOICE_SAMPLE: &str = "Welcome back to TriviaBix. I'm Bix, your host. Still. Twenty years in show business, \
-and this is the room they give me. Phones out, brains on. Let's play!";
+/// Lines a candidate voice might say in its clip. Each candidate gets a different one, picked at
+/// random, so every design run sounds fresh. The admin can edit the list.
+pub const VOICE_SAMPLES: &[&str] = &[
+    "Welcome back to TriviaBix. I'm Bix, your host. Still. Twenty years in show business, and this is the room they give me. Phones out, brains on. Let's play!",
+    "Good evening, good evening. Please, hold your applause. No, really, you can hold it. I can tell you're all holding it very tightly.",
+    "Another round, another chance for you lot to disappoint me. And honestly? I respect the consistency. Phones ready!",
+    "I once hosted a show watched by eleven million people. Tonight I'm watched by a dog and a guy eating chips. Let's do this.",
+    "Right answer! Look at you. I'd give you a prize, but the network took the prize budget. And the car. And my parking space.",
+    "That was wrong. Very wrong. Impressively wrong. I've been doing this a long time and I've never seen wrong quite like that.",
+    "My agent says this gig is a stepping stone. He's said that for nine years. Anyway, here's your next question.",
+    "Ladies and gentlemen, and whoever is hiding in the kitchen, it's time for the final round. Try to look interested.",
+    "Ten seconds left. Nine. Eight. You know what, I'm not counting the rest. I'm tired. Just answer the question.",
+    "Our leader is pulling away, and the rest of you are pulling a muscle trying to keep up. It's beautiful, really.",
+    "Fun fact: I used to have a catchphrase. It was on mugs. Now the mugs are in my garage. Next question!",
+    "Ooh, a tie at the top. The tension, the drama. This is the most excitement I've had since my last contract renewal.",
+    "You know, they told me hosting trivia in a living room would be humbling. They were right. They were so, so right.",
+    "Congratulations to our winner. You beat everyone here, which, let's be honest, was not the toughest crowd. Goodnight, everybody!",
+    "Don't worry if you get this one wrong. I've gotten plenty wrong. Career choices, mostly. Phones up, here we go.",
+    "Is it hot in here, or is it just the pressure? It's the pressure. Also the lights. Mostly my career. Next question!",
+];
+/// The most lines the list can hold.
+const VOICE_SAMPLES_MAX: usize = 60;
 /// The most questions one line-writing run may cover.
 const LINES_MAX: usize = 500;
 /// Where the line writer saves, under content/scripts. Not a folder the image ships, so a
@@ -147,9 +168,13 @@ pub struct Options {
     /// Design: what the voice should sound like.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Design: what each candidate says, which becomes the clip the voice is cloned from.
+    /// Design: lines a candidate might say, one per line. Each candidate's clip, which its voice
+    /// is cloned from, says a different one picked at random.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Design: the lines picked from `text`, one per candidate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Vec<String>>,
     /// Design: how many candidates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub count: Option<usize>,
@@ -199,24 +224,44 @@ impl Options {
                     if v.is_empty() { default.to_string() } else { v }
                 };
                 let description = tidy(self.description, VOICE_DESCRIPTION);
-                let text = tidy(self.text, VOICE_SAMPLE);
                 if !(20..=800).contains(&description.chars().count()) {
                     return Err("Describe the voice in 20 to 800 characters.".into());
                 }
+                let mut pool: Vec<String> = self
+                    .text
+                    .unwrap_or_default()
+                    .lines()
+                    .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                if pool.is_empty() {
+                    pool = VOICE_SAMPLES.iter().map(|l| l.to_string()).collect();
+                }
+                pool.sort();
+                pool.dedup();
+                if pool.len() > VOICE_SAMPLES_MAX {
+                    return Err(format!("Keep the list to {VOICE_SAMPLES_MAX} lines."));
+                }
                 // Ming clones best from a clip of 5 to 15 seconds.
-                if !(30..=300).contains(&text.chars().count()) {
-                    return Err(
-                        "The sample line should be 30 to 300 characters (5 to 15 seconds spoken)."
-                            .into(),
-                    );
+                if let Some(l) = pool
+                    .iter()
+                    .find(|l| !(30..=300).contains(&l.chars().count()))
+                {
+                    return Err(format!(
+                        "Each line should be 30 to 300 characters (5 to 15 seconds spoken): \"{l}\""
+                    ));
                 }
                 let count = self.count.unwrap_or(4);
                 if !(1..=DESIGN_MAX).contains(&count) {
                     return Err(format!("Make 1 to {DESIGN_MAX} candidates at a time."));
                 }
+                // A different line for each candidate while the list lasts.
+                let mut rng = rand::rng();
+                pool.shuffle(&mut rng);
+                let lines = (0..count).map(|i| pool[i % pool.len()].clone()).collect();
                 Options {
                     description: Some(description),
-                    text: Some(text),
+                    lines: Some(lines),
                     count: Some(count),
                     ..Default::default()
                 }
@@ -655,7 +700,7 @@ impl Render {
             "voice_max_hours": VOICE_MAX_HOURS,
             "design_max": DESIGN_MAX,
             "voice_description": VOICE_DESCRIPTION,
-            "voice_sample": VOICE_SAMPLE,
+            "voice_samples": VOICE_SAMPLES,
             "lines_max": LINES_MAX,
         })
     }
@@ -1376,9 +1421,11 @@ impl Render {
                         "--description",
                         o.description.as_deref().unwrap_or(VOICE_DESCRIPTION),
                     ])
-                    .args(["--text", o.text.as_deref().unwrap_or(VOICE_SAMPLE)])
                     .arg("--count")
                     .arg(o.count.unwrap_or(4).to_string());
+                for line in o.lines.iter().flatten() {
+                    cmd.args(["--text", line]);
+                }
                 cmd
             }
             Kind::Art => {

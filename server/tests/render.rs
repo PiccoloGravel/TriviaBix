@@ -578,9 +578,21 @@ async fn designing_listening_to_and_picking_a_voice() {
         )
         .await;
     assert_eq!(code, 409);
+    let (code, res) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "design", "options": { "text": "Too short." } })),
+        )
+        .await;
+    assert_eq!(code, 409);
+    assert!(
+        res["error"].as_str().unwrap().contains("Too short."),
+        "{res}"
+    );
 
     let description = "A tired, gravelly game show host who has seen it all.";
     let options = json!({ "description": description, "count": 2 });
+    let mine = "Hello again, everyone. Yes, it's still me. No, there's no refund.";
     let (_, preview) = s
         .call(
             "render/preview",
@@ -589,11 +601,15 @@ async fn designing_listening_to_and_picking_a_voice() {
         .await;
     assert_eq!(preview["ok"], true, "{preview}");
     assert_eq!(preview["details"]["todo"]["count"], 2);
+    // Each candidate says a different line from the default list.
+    let lines = preview["options"]["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 2);
+    assert_ne!(lines[0], lines[1]);
     assert_eq!(preview["max_cost"], 0.13);
     let calls = s.calls();
     assert!(calls.contains("vast design --library"), "{calls}");
     assert!(
-        calls.contains("--count 2 --dry-run --max-price 0.50"),
+        calls.contains("--count 2 --text ") && calls.contains(" --dry-run --max-price 0.50"),
         "{calls}"
     );
     let (code, job) = s
@@ -608,22 +624,33 @@ async fn designing_listening_to_and_picking_a_voice() {
     assert_eq!(job["details"]["made"].as_array().unwrap().len(), 2);
     assert_eq!(job["cost"], 0.033);
 
-    // Asking again makes nothing, so there's nothing to rent.
+    // Candidates already made aren't paid for again.
+    let options = json!({ "description": description, "count": 1, "text": mine });
+    let (_, first) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "design", "options": options })),
+        )
+        .await;
+    let (_, job) = s
+        .call(
+            "render/start",
+            Some(json!({ "token": first["token"], "confirm": true })),
+        )
+        .await;
+    s.finish(job["id"].as_i64().unwrap()).await;
     let (_, again) = s
         .call(
             "render/preview",
             Some(json!({ "kind": "design", "options": options })),
         )
         .await;
-    assert_eq!(
-        (&again["ok"], &again["nothing"]),
-        (&json!(true), &json!(true))
-    );
+    assert_eq!(again["nothing"], true, "{again}");
     assert!(again["token"].is_null());
 
     let (_, list) = s.call("voices", None).await;
     let voices = list["voices"].as_array().unwrap();
-    assert_eq!(voices.len(), 2, "{list}");
+    assert_eq!(voices.len(), 3, "{list}");
     assert_eq!(voices[0]["description"], description);
     assert_eq!(voices[0]["current"], false);
     let key = voices[0]["key"].as_str().unwrap().to_string();
@@ -662,6 +689,12 @@ async fn the_host_persona_reaches_the_line_writer() {
     let (_, view) = s.call("settings", None).await;
     let persona = setting(&view, "HOST_PERSONA");
     assert_eq!(persona["kind"]["type"], "long_text");
+    // The page's script, which draws long_text as a textarea, is never served stale.
+    let res = reqwest::get(format!("http://{}/admin-settings.js", s.addr))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()["cache-control"], "no-cache");
+    assert!(res.text().await.unwrap().contains("textarea"));
     assert!(
         persona["default"]
             .as_str()

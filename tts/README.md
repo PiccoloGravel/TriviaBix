@@ -58,7 +58,7 @@ Changing the voice makes a fresh cache folder, so everything is regenerated in t
 
 The built-in voices are clean narrators. For a cheekier host, design one and clone it so every line sounds
 like the same person. The easy way is the admin panel: **Pipeline → Design Bix's voice**. Describe him,
-check the price, and it makes a few candidates on a rented GPU. Listen to them there and press **Use this
+keep or edit the list of lines he might say (each candidate says a different one, picked at random), check the price, and it makes a few candidates on a rented GPU. Listen to them there and press **Use this
 voice**; the next voice run (step 3) makes his lines again in it. Candidates are kept in the asset store,
 so going back to one costs nothing.
 

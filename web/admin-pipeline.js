@@ -204,6 +204,9 @@ function quoteBox(kind) {
     const reused = d.todo.total - d.todo.count;
     lines.push(`${plural(d.todo.count, "new candidate")} to make` + (reused ? `; ${reused} already made, so free` : ""));
   }
+  const said = kind === "design" && q.options.lines
+    ? el("ol", { class: "said" }, q.options.lines.map((l) => el("li", {}, `“${l}”`)))
+    : null;
   if (kind === "lines" && d.todo) lines.push(`Lines for ${d.todo.count} of ${d.todo.total} questions, about ${Math.ceil(d.todo.count / 10)} ${d.todo.count > 10 ? "calls" : "call"} to Claude`);
   const head = q.gpu
     ? el("div", { class: "big" }, `${q.gpu} · ${money(q.price_hr)}/hr`)
@@ -211,6 +214,7 @@ function quoteBox(kind) {
   return el("div", { class: "quote" },
     head,
     ...lines.map((l) => el("div", {}, l)),
+    said,
     q.max_cost != null ? el("div", {}, `Stops after ${duration(q.minutes * 60000)} at most, so it can cost at most `, el("b", {}, money(q.max_cost)), ".") : null,
     el("div", { class: "row" },
       el("button", { onclick: () => start(kind) }, q.max_cost != null ? `Start, up to ${money(q.max_cost)}` : "Start"),
@@ -251,7 +255,7 @@ function renderCards() {
 
 function textBox(key, rows) {
   const o = picked.design;
-  if (o[key] == null) o[key] = status.ready[key === "description" ? "voice_description" : "voice_sample"];
+  if (o[key] == null) o[key] = key === "description" ? status.ready.voice_description : status.ready.voice_samples.join("\n");
   const t = el("textarea", { rows: String(rows), oninput: (e) => {
     o[key] = e.target.value;
     if (quotes.design) { delete quotes.design; renderDesign(); }
@@ -269,7 +273,7 @@ function renderDesign() {
     const count = select([1, 2, 3, 4, 6, 8].map((n) => [n, String(n)]), o.count, (v) => { o.count = Number(v); delete quotes.design; renderDesign(); });
     designForm = el("div", { class: "design-form" },
       el("label", {}, "What Bix sounds like", textBox("description", 4)),
-      el("label", {}, "What he says in each clip (his voice is copied from it, so 5 to 15 seconds)", textBox("text", 2)),
+      el("label", {}, "Lines he might say, one per line. Each candidate says a different one, picked at random, and his voice is copied from that clip (5 to 15 seconds each)", textBox("text", 8)),
       el("div", { class: "opts" }, el("label", { class: "inline" }, "Make", count, "candidates"),
         el("span", { class: "muted small" }, "The same description and line always make the same candidates, so each is only paid for once.")),
       el("div", { id: "design-action" }));
@@ -296,6 +300,7 @@ function voiceCard(v) {
   return el("div", { class: `voice${v.current ? " current" : ""}` },
     el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${v.key}/clip` }),
     el("div", { class: "row" }, el("b", {}, `Take ${v.seed ?? "?"}`), el("span", { style: "flex:1" }), use),
+    v.text ? el("div", { class: "said" }, `“${v.text}”`) : null,
     el("div", { class: "muted small", title: v.description || "" }, v.description || ""));
 }
 

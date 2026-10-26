@@ -575,19 +575,23 @@ def send_clip(r: Rental, base: str, clip: tuple[bytes, str, str], ready_by: floa
         time.sleep(5)
 
 
-def design(description: str, text: str, count: int = 4, mode: str = "freeform", library: str | None = None,
+def design(description: str, texts: list[str] | str, count: int = 4, mode: str = "freeform", library: str | None = None,
            max_minutes: float = 40, min_vram: float = 16, max_price: float = 0.5, disk: float = 40,
            image: str = TTS_IMAGE, login: str | None = None, boot_minutes: float = 25, yes: bool = False,
            dry_run: bool = False, another: bool = False, vast: Vast | None = None) -> int:
     """Makes `count` candidate voices for Bix from a description (tts/make_voice.py) on a rented GPU and keeps
-    them in the asset store. Candidates already there are reused, so asking again costs nothing."""
-    description, text = " ".join(description.split()), " ".join(text.split())
-    if not description or not text:
+    them in the asset store. Candidate n says texts[n-1] in its clip (round the list again if it's short), so
+    candidates sound different. Candidates already there are reused, so asking again costs nothing."""
+    texts = [texts] if isinstance(texts, str) else texts
+    description = " ".join(description.split())
+    texts = [t for t in (" ".join(t.split()) for t in texts) if t]
+    if not description or not texts:
         raise Abort("give a description of the voice and a sample line for it to say")
     store = Store(library)
     model = os.environ.get("TTS_MODEL") or TTS_MODEL
     style = f"ming-{mode}:{model}"
-    wanted = {seed: {"description": description, "text": text, "seed": seed} for seed in range(1, count + 1)}
+    wanted = {seed: {"description": description, "text": texts[(seed - 1) % len(texts)], "seed": seed}
+              for seed in range(1, count + 1)}
     todo = []
     for seed, inputs in wanted.items():
         hit = store.find(SAMPLE_KIND, style, inputs)
@@ -602,7 +606,8 @@ def design(description: str, text: str, count: int = 4, mode: str = "freeform", 
     vast = vast or Vast()
     source = (ROOT / "tts" / "make_voice.py").read_text(encoding="utf-8")
     cmd = (f"{DESIGN_CMD} --out {DESIGN_OUT} --seeds {','.join(map(str, todo))} --mode {mode} "
-           f"--description {shlex.quote(description)} --text {shlex.quote(text)}")
+           f"--description {shlex.quote(description)}"
+           + "".join(f" --text {shlex.quote(wanted[seed]['text'])}" for seed in todo))
     env = {"TBX_PY": pack(source), "TTS_MODEL": model}
     if os.environ.get("HF_TOKEN"):
         env["HF_TOKEN"] = os.environ["HF_TOKEN"]
@@ -618,7 +623,7 @@ def design(description: str, text: str, count: int = 4, mode: str = "freeform", 
                 say(f"candidate {seed} didn't come back")
                 continue
             hit = store.put(SAMPLE_KIND, style, wanted[seed], wav.read_bytes(), ".wav", model=model,
-                            description=description, transcript=text, seed=seed, mode=mode,
+                            description=description, transcript=wanted[seed]["text"], seed=seed, mode=mode,
                             tags=["bix", "voice-candidate"], generator="vast.ai")
             event("made", key=hit.meta["key"], seed=seed)
             saved += 1
@@ -732,7 +737,8 @@ def main(argv=None) -> int:
 
     g = sub.add_parser("design", help="make candidate voices for Bix on a rented GPU, kept in the asset store")
     g.add_argument("--description", required=True, help="what Bix should sound like")
-    g.add_argument("--text", required=True, help="what he says in each candidate clip")
+    g.add_argument("--text", action="append", required=True,
+                   help="what he says in a candidate's clip; repeat for a different line per candidate")
     g.add_argument("--count", type=int, default=4, help="how many candidates (default 4, at most 8)")
     g.add_argument("--mode", choices=("freeform", "design"), default="freeform")
     g.add_argument("--library", help="the asset store (default $ASSETS_DIR)")

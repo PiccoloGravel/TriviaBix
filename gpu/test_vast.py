@@ -276,31 +276,34 @@ class DesignTest(Base):
             Path(root, "tts", "make_voice.py").write_text(
                 "import argparse, os\n"
                 "p = argparse.ArgumentParser(); [p.add_argument(a) for a in ('--out', '--seeds', '--mode', "
-                "'--description', '--text')]\n"
+                "'--description')]; p.add_argument('--text', action='append')\n"
                 "a = p.parse_args(); os.makedirs(a.out, exist_ok=True)\n"
-                "for n in a.seeds.split(','):\n"
-                "    open(os.path.join(a.out, f'bix-{n}.wav'), 'w').write(a.description + '|' + n)\n")
+                "for n, t in zip(a.seeds.split(','), a.text):\n"
+                "    open(os.path.join(a.out, f'bix-{n}.wav'), 'w').write(a.description + '|' + n + '|' + t)\n")
             out = os.path.join(box, "out")
             with unittest.mock.patch.multiple(self.vast, ROOT=Path(root), DESIGN_OUT=out, DESIGN_CMD=(
                     f"{sys.executable} -c "
                     "\"import base64,os,zlib;exec(zlib.decompress(base64.b64decode(os.environ['TBX_PY'])))\"")):
                 before = len(self.fake.created)
-                code = self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=2, library=lib,
+                lines = ["Hi, it's me. Again.", "Still here, folks."]
+                code = self.vast.design("A tired host's voice", lines, count=2, library=lib,
                                         yes=True, max_minutes=2)
                 self.assertEqual(code, 0)
                 self.assertEqual(len(self.fake.created), before + 1)
                 store = assets.Store(lib)
                 made = [a for a in store.all() if a.meta["kind"] == self.vast.SAMPLE_KIND]
                 self.assertEqual(sorted(a.path.read_text() for a in made),
-                                 ["A tired host's voice|1", "A tired host's voice|2"])
-                self.assertEqual({a.meta["transcript"] for a in made}, {"Hi, it's me. Again."})
+                                 ["A tired host's voice|1|Hi, it's me. Again.", "A tired host's voice|2|Still here, folks."])
+                self.assertEqual({a.meta["transcript"] for a in made}, set(lines))
                 # Asking again rents nothing; one more candidate rents for that one only.
-                self.assertEqual(self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=2,
+                self.assertEqual(self.vast.design("A tired host's voice", lines, count=2,
                                                   library=lib, yes=True), 0)
                 self.assertEqual(len(self.fake.created), before + 1)
-                self.vast.design("A tired host's voice", "Hi, it's me. Again.", count=3, library=lib, yes=True,
+                self.vast.design("A tired host's voice", lines, count=3, library=lib, yes=True,
                                  max_minutes=2)
-                self.assertIn("--seeds 3 ", self.fake.created[-1]["env"]["TBX_CMD"])
+                cmd = self.fake.created[-1]["env"]["TBX_CMD"]
+                self.assertIn("--seeds 3 ", cmd)
+                self.assertTrue(cmd.endswith("--text 'Hi, it'\"'\"'s me. Again.'"), cmd)
 
 
 class AssetsTest(unittest.TestCase):
