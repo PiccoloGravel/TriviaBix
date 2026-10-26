@@ -13,8 +13,9 @@ use triviabix_questions::*;
 #[command(about = "Manage the TriviaBix question bank")]
 struct Cli {
     /// The content folder holding categories.toml and packs/.
-    #[arg(long, global = true, default_value = "content")]
-    content: PathBuf,
+    /// Defaults to CONTENT_DIR (the Docker image sets it to the appdata copy), else `content`.
+    #[arg(long, global = true)]
+    content: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -94,9 +95,10 @@ enum ScriptsAction {
         /// Show what would be sent without calling the API.
         #[arg(long)]
         dry_run: bool,
-        /// A folder under content/scripts to save into, such as `generated`. Folders that come
-        /// with the server (like `starter`) are replaced on every container start, so the admin
-        /// panel saves into its own.
+        /// A folder under content/scripts to save into, such as `generated` (default: the
+        /// SCRIPTS_INTO environment variable, else next to the packs). Folders that come with
+        /// the server (like `starter`) are replaced on every container start, so the Docker image
+        /// sets SCRIPTS_INTO=generated to keep written lines in appdata.
         #[arg(long)]
         into: Option<PathBuf>,
     },
@@ -165,9 +167,18 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<(), String> {
+    let content = cli
+        .content
+        .clone()
+        .or_else(|| {
+            std::env::var_os("CONTENT_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("content"));
     match &cli.command {
         Command::Validate => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             for w in bank.warnings() {
                 println!("warning: {w}");
             }
@@ -178,7 +189,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             );
         }
         Command::Stats => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let s = bank.stats();
             println!("{} questions", s.total);
             println!(
@@ -218,7 +229,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             topics,
             rating,
         } => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let filter = Filter {
                 topics: topics.clone(),
                 max_rating: *rating,
@@ -257,7 +268,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             }
         }
         Command::Export { out } => {
-            let bank = load(&cli.content)?;
+            let bank = load(&content)?;
             let json = serde_json::to_string_pretty(bank.questions()).map_err(|e| e.to_string())?;
             std::fs::write(out, json).map_err(|e| e.to_string())?;
             println!(
@@ -266,8 +277,8 @@ fn run(cli: &Cli) -> Result<(), String> {
                 out.display()
             );
         }
-        Command::Import { source } => import_cmd(&cli.content, source)?,
-        Command::Scripts { action } => scripts_cmd(&cli.content, action)?,
+        Command::Import { source } => import_cmd(&content, source)?,
+        Command::Scripts { action } => scripts_cmd(&content, action)?,
     }
     Ok(())
 }
@@ -459,7 +470,11 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
         ScriptsAction::Add { file } => {
             let incoming =
                 ScriptFile::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
-            let (added, updated) = add_scripts(&content.join("scripts"), &bank, incoming.scripts)?;
+            let into = std::env::var_os("SCRIPTS_INTO")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            let scripts = content.join("scripts").join(into);
+            let (added, updated) = add_scripts(&scripts, &bank, incoming.scripts)?;
             println!("Added scripts for {added} questions and replaced {updated}.");
             println!("Check them with `triviabix-questions sample`, then restart the server to load them.");
         }
@@ -481,6 +496,11 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                 println!("Every matching question already has lines.");
                 return Ok(());
             }
+            let into = into.clone().or_else(|| {
+                std::env::var_os("SCRIPTS_INTO")
+                    .filter(|v| !v.is_empty())
+                    .map(PathBuf::from)
+            });
             let scripts = content
                 .join("scripts")
                 .join(into.as_deref().unwrap_or(Path::new("")));

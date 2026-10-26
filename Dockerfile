@@ -30,7 +30,8 @@ COPY content /app/content
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 ENV PORT=8080 \
     STATIC_DIR=/app/web \
-    CONTENT_DIR=/app/content \
+    CONTENT_DIR=/data/content \
+    SCRIPTS_INTO=generated \
     DATABASE_URL=sqlite:///data/triviabix.db \
     ASSETS_DIR=/data/assets \
     ART_DIR=/data/art \

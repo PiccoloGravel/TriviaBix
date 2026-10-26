@@ -57,14 +57,30 @@ The **WebUI** entry in the container's menu on the Docker tab opens the TV page.
 
 ## Your data
 
-Everything lives in `/mnt/user/appdata/triviabix`:
+Everything TriviaBix keeps lives in `/mnt/user/appdata/triviabix` (the container's `/data`), never inside
+the image, so updating or recreating the container loses nothing. Back it up with the **Appdata Backup**
+plugin like any other container.
 
-- `triviabix.db` holds rooms, scores, and anything edited in the admin panel. Back up appdata
-  with the **Appdata Backup** plugin like any other container.
-- `content/` holds the question packs and Bix's host scripts. The built-in `starter` folders are
-  refreshed from the image on every start, so don't edit them; put your own packs in
-  `content/packs/mine/` (any folder name other than `starter` works) and restart the container,
-  or press reload in the admin panel. See `content/README.md` for the pack format.
+| What | Where in appdata | Kept as |
+|---|---|---|
+| Players, scores, game history, admin edits to Bix's lines, the music library from Lidarr, rendering jobs and their costs | `triviabix.db` | SQLite database |
+| Question packs | `content/packs/` | TOML files you can edit |
+| Host lines Claude wrote (from the Rendering page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
+| Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)) |
+| Generated art originals (pictures, cut-outs, clips) | `assets/image/`, `assets/clip/` | files plus a `.json` each with prompt, seed, model, tags and rating |
+| The TV's copies of the art | `art/` | small WebP/MP4 files and `manifest.json` |
+
+Files are used for anything big (audio, art) or anything you might edit by hand (packs); the database holds
+everything else. Generated content is looked up in the asset store before anything is made, so nothing is
+paid for twice.
+
+The image only holds the program and the built-in content it starts from. The built-in `starter` folders
+under `content/packs` and `content/scripts` are refreshed from the image on every start, so don't edit
+them; put your own packs in `content/packs/mine/` (any folder name other than `starter` works) and restart
+the container, or press reload in the admin panel. See `content/README.md` for the pack format.
+
+Not kept across restarts, on purpose: live rooms, admin logins, and a voice server the Rendering page
+pointed at a rented GPU (it goes back to `TTS_URL`). API keys and addresses are container settings.
 
 ## Updating
 
