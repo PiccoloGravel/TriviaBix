@@ -677,7 +677,6 @@ function follow(job, append = false) {
     if (n > logSeq) logLines.push(line);
   }
   logSeq = Math.max(logSeq, job.log_seq);
-  if (logLines.length > 600) logLines = logLines.slice(-500);
   shown = job;
   renderJob();
 }
@@ -704,36 +703,101 @@ function progress(job) {
   return [null, null];
 }
 
+/** The job panel's parts, kept between refreshes so the log isn't redrawn under a selection. */
+let panel = null;
+
+/** Whether the reader has text selected in the log (redrawing it would drop the selection). */
+function selectingIn(node) {
+  const sel = window.getSelection();
+  return !!sel && !sel.isCollapsed && sel.rangeCount > 0 && node.contains(sel.getRangeAt(0).commonAncestorContainer);
+}
+
+/** Replaces a node's children, leaving out the parts that don't apply (null). */
+function fill(node, ...kids) {
+  node.replaceChildren(...kids.filter((k) => k != null && k !== false));
+}
+
+function logText() {
+  return logLines.join("\n");
+}
+
+async function copyLog(btn) {
+  const text = await fullLog(shown).catch(() => logText());
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    // The clipboard API needs https; on a plain http address copy through a hidden text box.
+    const t = el("textarea", { style: "position:fixed;top:0;left:0;opacity:0" });
+    t.value = text;
+    document.body.append(t);
+    t.select();
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    t.remove();
+  }
+  toast(ok ? "Log copied" : "Couldn't copy here; use Download log instead", ok);
+  if (btn) btn.blur();
+}
+
+async function fullLog(job) {
+  const res = await fetch(`/api/admin/render/jobs/${job.id}/log`);
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return res.text();
+}
+
 function renderJob() {
   const box = $("#job");
   const job = shown;
-  if (!job) { box.replaceChildren(); renderRunning(); return; }
+  if (!job) { box.replaceChildren(); panel = null; renderRunning(); return; }
+  if (!panel || panel.id !== job.id || !box.contains(panel.root)) {
+    const pre = el("pre", { class: "log" });
+    panel = { id: job.id, head: el("div", { class: "job-head" }), meta: el("div", { class: "meta" }),
+      bar: el("div"), says: el("div"), pre, shown: 0 };
+    panel.root = el("div", { class: "job" }, panel.head, panel.meta, panel.bar, panel.says, pre,
+      el("div", { class: "row" },
+        el("button", { class: "secondary small", onclick: (e) => copyLog(e.target) }, "📋 Copy log"),
+        el("a", { class: "small", href: `/api/admin/render/jobs/${job.id}/log?download=1` }, "⬇ Download log")));
+    box.replaceChildren(panel.root);
+  }
   const running = job.state === "running";
   const end = job.finished_at || Date.now();
   const [frac, says] = progress(job);
-  const pre = el("pre", { class: "log" }, logLines.join("\n") || "Starting…");
   const cancel = running ? el("button", { class: "danger", onclick: () => cancelJob(job) }, job.cancelling ? "Stopping…" : "✖ Cancel") : null;
   if (cancel) cancel.disabled = job.cancelling;
-  box.replaceChildren(el("div", { class: "job" },
-    el("div", { class: "job-head" },
-      el("h2", {}, KINDS[job.kind].title),
-      el("span", { class: `badge ${job.state}` }, STATES[job.state] || job.state),
-      el("span", { style: "flex:1" }),
-      cancel,
-      !running ? el("button", { class: "secondary small", onclick: () => { shown = null; renderJob(); } }, "Close") : null),
-    el("div", { class: "meta" },
-      el("span", {}, `Started ${time(job.started_at)}`),
-      el("span", {}, running ? `running ${duration(end - job.started_at)}` : `took ${duration(end - job.started_at)}`),
-      job.gpu ? el("span", {}, el("b", {}, job.gpu), ` at ${money(job.price_hr)}/hr`) : null,
-      job.cost != null ? el("span", {}, running ? "so far " : "cost ", el("b", {}, money(job.cost))) : null,
-      job.details && job.details.estimate ? el("span", {}, `expected about ${duration(job.details.estimate.minutes * 60000)}, ${money(job.details.estimate.cost)}`) : null,
-      job.max_cost != null ? el("span", {}, `at most ${money(job.max_cost)}`) : null,
-      job.instance && !job.released ? el("span", {}, `GPU ${job.instance} rented`) : null,
-      job.instance && job.released ? el("span", {}, "GPU given back") : null),
-    frac != null ? el("div", { class: "bar" }, el("div", { style: `width:${Math.round(frac * 100)}%` })) : null,
-    says ? el("div", { class: "meta" }, says) : null,
-    pre));
-  pre.scrollTop = pre.scrollHeight;
+  fill(panel.head,
+    el("h2", {}, KINDS[job.kind].title),
+    el("span", { class: `badge ${job.state}` }, STATES[job.state] || job.state),
+    el("span", { style: "flex:1" }),
+    cancel,
+    !running ? el("button", { class: "secondary small", onclick: () => { shown = null; renderJob(); } }, "Close") : null);
+  fill(panel.meta,
+    el("span", {}, `Started ${time(job.started_at)}`),
+    el("span", {}, running ? `running ${duration(end - job.started_at)}` : `took ${duration(end - job.started_at)}`),
+    job.gpu ? el("span", {}, el("b", {}, job.gpu), ` at ${money(job.price_hr)}/hr`) : null,
+    job.cost != null ? el("span", {}, running ? "so far " : "cost ", el("b", {}, money(job.cost))) : null,
+    job.details && job.details.estimate ? el("span", {}, `expected about ${duration(job.details.estimate.minutes * 60000)}, ${money(job.details.estimate.cost)}`) : null,
+    job.max_cost != null ? el("span", {}, `at most ${money(job.max_cost)}`) : null,
+    job.instance && !job.released ? el("span", {}, `GPU ${job.instance} rented`) : null,
+    job.instance && job.released ? el("span", {}, "GPU given back") : null);
+  fill(panel.bar, frac != null ? el("div", { class: "bar" }, el("div", { style: `width:${Math.round(frac * 100)}%` })) : null);
+  fill(panel.says, says ? el("div", { class: "meta" }, says) : null);
+
+  // The log only ever grows here: new lines are added at the end, so a selection survives.
+  const pre = panel.pre;
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  if (!logLines.length) {
+    if (!panel.shown) pre.textContent = "Starting…";
+  } else if (panel.shown > logLines.length || (!panel.shown && pre.textContent)) {
+    if (!selectingIn(pre)) {
+      pre.textContent = logText();
+      panel.shown = logLines.length;
+    }
+  } else if (panel.shown < logLines.length) {
+    pre.append((panel.shown ? "\n" : "") + logLines.slice(panel.shown).join("\n"));
+    panel.shown = logLines.length;
+  }
+  if (atBottom && !selectingIn(pre)) pre.scrollTop = pre.scrollHeight;
   renderRunning();
   renderCards();
 }

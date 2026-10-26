@@ -120,6 +120,7 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/personas/{id}/use", post(use_persona))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
+        .route("/api/admin/render/jobs/{id}/log", get(render_log))
         .route_layer(middleware::from_fn_with_state(state, require_login));
     Router::new()
         .route("/api/admin/session", get(session))
@@ -586,6 +587,45 @@ async fn render_job(
         )
             .into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct LogQuery {
+    /// Any value asks the browser to save it as a file.
+    download: Option<String>,
+}
+
+/// A job's whole log (the last lines the server keeps) as plain text, to copy or save.
+async fn render_log(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Query(q): Query<LogQuery>,
+) -> Response {
+    let Some(job) = app.render.job(id, 0).await else {
+        return (StatusCode::NOT_FOUND, "No such job.").into_response();
+    };
+    let mut text: String = job.log.iter().map(|(_, l)| format!("{l}\n")).collect();
+    if text.is_empty() {
+        text.push_str("(nothing logged yet)\n");
+    }
+    let mut headers = vec![(
+        header::CONTENT_TYPE,
+        "text/plain; charset=utf-8".to_string(),
+    )];
+    if q.download.is_some() {
+        let kind = job.kind.as_str();
+        headers.push((
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"triviabix-{kind}-job-{id}.log\""),
+        ));
+    }
+    let headers: Vec<_> = headers
+        .into_iter()
+        .filter_map(|(k, v)| HeaderValue::from_str(&v).ok().map(|v| (k, v)))
+        .collect();
+    let mut res = text.into_response();
+    res.headers_mut().extend(headers);
+    res
 }
 
 async fn render_cancel(State(app): State<AppState>, Path(id): Path<i64>) -> Response {
