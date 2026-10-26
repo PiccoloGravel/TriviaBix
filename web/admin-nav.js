@@ -1,4 +1,5 @@
 // The menu across the top of every admin page. Add a page here and it shows up everywhere.
+// On a phone it only shows Rooms; anything marked .desk-only is hidden there too.
 
 (function () {
   const PAGES = [
@@ -21,11 +22,14 @@
     nav.admin-nav a.on { background: var(--accent); color: #1a0b3d; }
     nav.admin-nav .gap { flex: 1; }
     nav.admin-nav button { flex: none; padding: 6px 12px; font-size: 14px; box-shadow: none; }
+    /* On a phone, admin is for running rooms; the other pages are for a computer. */
+    @media (max-width: 700px) { nav.admin-nav a.desk-only, .desk-only { display: none !important; } }
   `;
   document.head.append(style);
 
   const nav = TBX.el("nav", { class: "admin-nav", "aria-label": "Admin pages" },
-    PAGES.map(([href, label]) => TBX.el("a", { href, class: href === here ? "on" : "",
+    PAGES.map(([href, label]) => TBX.el("a", { href,
+      class: href === here ? "on" : href === "/admin" ? "" : "desk-only",
       ...(href === here ? { "aria-current": "page" } : {}) }, label)),
     TBX.el("span", { class: "gap" }),
     TBX.el("button", { class: "secondary", type: "button", onclick: async () => {
