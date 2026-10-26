@@ -29,6 +29,12 @@ services:
       LIBRARY_RATING: ${LIBRARY_RATING:-PG-13}
       # Bix's voice server: http://tts:8000 with the voice profile, empty for the browser's voice.
       TTS_URL: ${TTS_URL:-}
+      # Rendering from the admin panel (optional): GPUs on vast.ai for voice and art, and Claude
+      # for host lines. Never shown in the panel; leave empty to turn that job off.
+      VAST_API_KEY: ${VAST_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      VAST_IMAGE_LOGIN: ${VAST_IMAGE_LOGIN:-}
     volumes:
       # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
       - /mnt/user/appdata/triviabix:/data

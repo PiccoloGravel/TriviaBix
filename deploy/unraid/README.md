@@ -141,6 +141,35 @@ For a custom, cheekier Bix, run `python make_voice.py --count 4` in the voice co
 to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.wav` (and its `.txt` to
 `bix.txt`), and set `BIX_VOICE=clone:/voices/bix.wav`.
 
+## Rendering from the admin panel
+
+Bix's voice lines, the cutscene art and the host's per-question lines can all be made from the website:
+open **`/admin` → Rendering** (it works from a phone). Each job shows how much is missing, then
+**Check the price** does a dry run that rents nothing and shows the GPU, its price per hour, the time
+limit and the most the job can cost. Nothing starts until you press **Start** and confirm. While it runs
+you see the log and the progress, and **Cancel** stops it and gives the GPU back. Past jobs and what they
+cost are listed underneath.
+
+1. Add the keys in the template (or the stack's `.env`); they're masked and never shown in the panel:
+   - **vast.ai API key** (`VAST_API_KEY`) for voice and art. Make it at
+     <https://cloud.vast.ai/manage-keys/>. vast.ai is prepaid: keep $5 to $10 of credit with auto-reload
+     off, and that's the most that can ever be spent.
+   - **Anthropic API key** (`ANTHROPIC_API_KEY`) for host lines written by Claude, billed to that account.
+2. Make the `triviabix-tts` and `triviabix-art` packages on GitHub public (see
+   [gpu/README.md](../../gpu/README.md)), or fill in **Private image login**.
+3. **Apply**, then open the Rendering page.
+
+The limits are the scripts' own: at most $0.50/hr for voice and $0.60/hr for art, a voice run stops
+after 3 hours at most, an art run after its estimate plus half, and only one GPU at a time. A job
+rents at no more than a little over the price you confirmed. Whatever happens (it finishes, fails, is
+cancelled, or the container restarts mid-job) the instance is destroyed; **Destroy leftover GPUs**
+clears anything started from the command line.
+
+Everything made is kept in appdata: voice lines in `assets/voice`, art originals in `assets/`, the
+TV's copies of the art in `art/` (served to the TV straight away), and Claude's lines in
+`content/scripts/generated/` (loaded and queued for Bix's voice as soon as the job finishes). Nothing
+is made twice.
+
 ## Troubleshooting
 
 - **Phones can't connect / QR points at the wrong place:** Public URL must be the Unraid LAN IP,

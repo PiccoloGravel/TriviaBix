@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -29,6 +30,12 @@ IMAGE = os.environ.get("ART_IMAGE", "ghcr.io/piccologravel/triviabix-art:latest"
 # Rough timings on an RTX 4090, for the time limit and the estimate: model downloads at boot, then
 # FLUX.1-schnell pictures in seconds and Wan2.2 clips in minutes.
 BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.25, 7
+
+
+def event(name: str, **data):
+    """A line the game server's admin panel reads (TBX_EVENTS=1)."""
+    if os.environ.get("TBX_EVENTS"):
+        print("@tbx " + json.dumps({"event": name, **data}), file=sys.stderr, flush=True)
 
 
 def generate(*args: str) -> int:
@@ -64,11 +71,13 @@ def main(argv: list[str] | None = None) -> int:
     if code == 0 or not needs.exists():
         if code == 0:
             print("Nothing needs a GPU.")
+            event("todo", count=0, clips=0)
         return code
     todo = needs.read_text().split()
     clips = sum(k.startswith("clip:") for k in todo)
     minutes = BOOT_MIN + (len(todo) - clips) * PER_PICTURE_MIN + clips * PER_CLIP_MIN
     limit = max(30, int(minutes * 1.5))
+    event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit)
     print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
 
     # 2. The rest on a rented GPU. The container writes TV files to /out/gen and originals to /out/assets.

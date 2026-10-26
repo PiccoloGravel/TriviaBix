@@ -7,6 +7,7 @@
     python3 gpu/vast.py run --image IMAGE --cmd "python generate.py --out /out" --out /out --to ./art
     python3 gpu/vast.py list                                     # TriviaBix instances you're paying for
     python3 gpu/vast.py cleanup                                  # destroy all of them
+    python3 gpu/vast.py destroy 1234                             # destroy one of them
 
 Every command that rents prints the GPU, its price and the most it can cost, and asks first (pass --yes to
 skip the question, e.g. from another script). Whatever happens (the job ends, fails, Ctrl-C, an error, or
@@ -54,6 +55,12 @@ class Gone(Abort):
 
 def say(*args):
     print("[vast]", *args, file=sys.stderr, flush=True)
+
+
+def event(name: str, **data):
+    """A line the game server's admin panel reads (TBX_EVENTS=1), e.g. to show the price before renting."""
+    if os.environ.get("TBX_EVENTS"):
+        print("@tbx " + json.dumps({"event": name, **data}), file=sys.stderr, flush=True)
 
 
 # ---------- vast.ai API ----------
@@ -250,6 +257,7 @@ class Rental:
         self.token = secrets.token_urlsafe(24)
         self.deadline = time.time() + minutes * 60
         self.id = None
+        self.rented_at = None
         self.body = {
             "client_id": "me", "image": image, "disk": disk, "label": f"{LABEL}-{kind}",
             "runtype": "args", "args": boot_args(), "image_login": login,
@@ -260,12 +268,17 @@ class Rental:
 
     def __enter__(self):
         self.id = self.vast.create(self.offer["id"], self.body)
+        self.rented_at = time.time()
         say(f"rented instance {self.id}: {describe(self.offer)}")
+        event("rented", instance=self.id, price_hr=self.offer.get("dph_total", 0))
         return self
 
     def __exit__(self, *exc):
         if self.id is not None:
             self.vast.destroy(self.id)
+            seconds = time.time() - self.rented_at
+            event("destroyed", instance=self.id, seconds=round(seconds),
+                  cost=round(self.offer.get("dph_total", 0) * seconds / 3600, 4))
 
     def address(self, boot_minutes: float = 20) -> str:
         """Waits for the instance to run and returns http://ip:port for the container's port."""
@@ -306,6 +319,9 @@ def pick_offer(vast: Vast, min_vram: float, max_price: float, disk: float) -> di
 
 def confirm(offer: dict, minutes: float, yes: bool, what: str):
     worst = offer.get("dph_total", 0) * minutes / 60
+    event("offer", gpu=offer.get("gpu_name"), vram_gb=round(offer.get("gpu_ram", 0) / 1024),
+          price_hr=offer.get("dph_total", 0), location=offer.get("geolocation"), minutes=minutes,
+          max_cost=round(worst, 2))
     say(f"{what} on {describe(offer)}")
     say(f"stops after {minutes:g} minutes at most, so it can cost at most ${worst:.2f} (plus pennies for disk)")
     if yes:
@@ -431,6 +447,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
     game = Game(server, password)
     backlog = game.status()["backlog"]
     say(f"{backlog} lines waiting to be made")
+    event("backlog", lines=backlog)
     if backlog == 0 and not hours:
         say("nothing to make; not renting anything")
         return
@@ -466,6 +483,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
             idle = 0
             while time.time() < r.deadline - 30:
                 s = game.status()
+                event("backlog", lines=s["backlog"])
                 say(f"{s['backlog']} lines to go" + (f", live until {time.strftime('%H:%M', time.localtime(until))}"
                                                      if until else ""))
                 idle = idle + 1 if s["backlog"] == 0 and s["in_flight"] == 0 else 0
@@ -487,7 +505,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="command", required=True)
 
     def renting(sp, vram, price):
         sp.add_argument("--min-vram", type=float, default=vram, help=f"GB of GPU memory (default {vram:g})")
@@ -525,13 +543,15 @@ def main(argv=None) -> int:
 
     sub.add_parser("list", help="TriviaBix instances on your account")
     sub.add_parser("cleanup", help="destroy every TriviaBix instance on your account")
+    d = sub.add_parser("destroy", help="destroy one TriviaBix instance by id")
+    d.add_argument("id", type=int)
     args = p.parse_args(argv)
 
     try:
-        if args.cmd == "offers":
+        if args.command == "offers":
             for offer in Vast().offers(args.min_vram, args.max_price, args.disk):
                 print(describe(offer))
-        elif args.cmd == "voice":
+        elif args.command == "voice":
             if not args.server:
                 raise Abort("pass --server with the game server's address (or set TRIVIABIX_URL)")
             password = os.environ.get("ADMIN_PASSWORD")
@@ -539,22 +559,28 @@ def main(argv=None) -> int:
                 raise Abort("set ADMIN_PASSWORD to the game server's admin password")
             voice(args.server, password, args.voice, args.hours, args.max_hours, args.min_vram, args.max_price,
                   args.disk, args.image, args.login, args.boot_minutes, args.yes, args.dry_run, args.another)
-        elif args.cmd == "run":
+        elif args.command == "run":
             env = dict(e.split("=", 1) for e in args.env)
             return run_job(args.image, args.cmd, args.to, args.out, args.min_vram, args.max_price,
                            args.max_minutes, args.disk, env, args.login, args.boot_minutes, args.yes,
                            args.dry_run, args.another)
-        elif args.cmd == "list":
+        elif args.command == "list":
             for i in Vast().ours():
                 up = (time.time() - (i.get("start_date") or time.time())) / 3600
                 print(f"{i['id']}  {i.get('label')}  {i.get('actual_status')}  {i.get('gpu_name')}  "
                       f"${i.get('dph_total', 0):.3f}/hr  up {up:.1f}h")
-        elif args.cmd == "cleanup":
+        elif args.command == "cleanup":
             vast = Vast()
             ours = vast.ours()
             for i in ours:
                 vast.destroy(i["id"])
             say(f"destroyed {len(ours)} instance(s)")
+        elif args.command == "destroy":
+            vast = Vast()
+            if not any(i["id"] == args.id for i in vast.ours()):
+                say(f"instance {args.id} isn't a running TriviaBix instance; nothing to do")
+            else:
+                vast.destroy(args.id)
         return 0
     except Abort as e:
         say(str(e))

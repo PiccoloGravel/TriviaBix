@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -115,6 +116,24 @@ class VastTest(Base):
         before = len(self.fake.created)
         self.assertEqual(self.vast.run_job("img", "true", "/nonexistent", dry_run=True), 0)
         self.assertEqual(len(self.fake.created), before)
+
+    def test_the_command_line_runs_jobs_and_reports_the_price(self):
+        # `run --cmd` once shadowed the subcommand's name, so `run` silently did nothing.
+        before = len(self.fake.created)
+        err = io.StringIO()
+        os.environ["TBX_EVENTS"] = "1"
+        try:
+            with unittest.mock.patch("sys.stderr", err):
+                code = self.vast.main(["run", "--image", "img", "--cmd", "true", "--to", "/nonexistent",
+                                       "--dry-run", "--max-minutes", "30"])
+        finally:
+            del os.environ["TBX_EVENTS"]
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.fake.created), before)
+        events = [json.loads(l[5:]) for l in err.getvalue().splitlines() if l.startswith("@tbx ")]
+        offer = next(e for e in events if e["event"] == "offer")
+        self.assertEqual(offer["minutes"], 30)
+        self.assertAlmostEqual(offer["max_cost"], round(offer["price_hr"] / 2, 2))
 
     def test_extract_stays_inside(self):
         buf = io.BytesIO()
