@@ -901,6 +901,9 @@ impl Render {
         let mut art = Command::new(&c.python);
         art.arg(c.tools_dir.join("art/generate.py"))
             .arg("--plan")
+            // Compared with what the GPU (or the asset store) makes, not placeholder art, which
+            // would count everything as missing.
+            .args(["--backend", "offline"])
             .arg("--out")
             .arg(&c.art_dir)
             .arg("--library")
