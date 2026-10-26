@@ -61,3 +61,10 @@ can add its own.
 game server serves them at `/api/voice/<key>`, makes missing ones through the TTS service (on the
 Unraid GPU, a rented one through `gpu/vast.py voice`, or none), and plays whatever is cached when no
 service is up.
+
+## Candidate voices
+
+`gpu/vast.py design` keeps the voices it designs for Bix as kind `voice-sample`. `style` is
+`ming-<mode>:<model>`, `inputs` is `{"description", "text", "seed"}`, and the file is a `.wav` whose metadata
+also has `description`, `transcript` and `seed`. `BIX_VOICE=clone:<key>` makes one Bix's voice: a rented GPU
+gets the clip and transcript and clones it for every line.

@@ -67,6 +67,7 @@ plugin like any other container.
 | Question packs | `content/packs/` | TOML files you can edit |
 | Host lines Claude wrote (from the Pipeline page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
 | Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)) |
+| Candidate voices for Bix (Pipeline → Design Bix's voice) | `assets/voice-sample/` | `.wav` clips plus a `.json` each with the description and transcript |
 | Generated art originals (pictures, cut-outs, clips) | `assets/image/`, `assets/clip/` | files plus a `.json` each with prompt, seed, model, tags and rating |
 | The TV's copies of the art | `art/` | small WebP/MP4 files and `manifest.json` |
 

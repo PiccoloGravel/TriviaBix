@@ -64,8 +64,24 @@ The first start takes about 10 minutes (image pull and a 3 GB model download); a
 the same machine type. Live lines travel over the internet, so a slow one falls back to the browser voice
 after 3.5 s as usual.
 
-Built-in voices only for now (`--voice ip:UK_George` and so on). A cloned `bix.wav` voice would need the
-clip on the rented GPU, which isn't wired up yet.
+`--voice` (BIX_VOICE) is a built-in voice (`ip:UK_George` and so on) or a cloned one: `clone:<key>` for a
+voice designed below, or `clone:/path/bix.wav` for a clip on this machine with its transcript in `bix.txt`.
+For a cloned voice the GPU starts with a small receiver instead of the voice service; `vast.py` sends it
+the clip and transcript (behind the rental's token), and it then starts the service speaking in that voice.
+
+## Designing Bix's voice
+
+```sh
+python3 gpu/vast.py design --description "A washed-up game show host..." --text "Welcome back..." --dry-run
+python3 gpu/vast.py design --description "..." --text "..." --count 4
+```
+
+Rents a GPU running the voice image, makes `--count` candidate clips with `tts/make_voice.py` (sent along
+with the job, so the image doesn't need rebuilding when it changes), and keeps them in the asset store as
+kind `voice-sample` (see [docs/assets.md](../docs/assets.md)). The same description, line and take number
+always give the same clip, so candidates already in the store are reused and only new ones are paid for.
+The admin panel's Pipeline page runs this, plays the candidates and sets `BIX_VOICE=clone:<key>` for the
+one picked. Defaults: 40 minutes at most, `--max-price` 0.50 (the Settings page's voice limit).
 
 ## Any other job (images, video)
 
@@ -114,7 +130,7 @@ new to make.
 With `TBX_EVENTS=1`, `vast.py` (and `art/render_on_vast.py`) also print lines like
 `@tbx {"event": "offer", "gpu": "RTX 4090", "price_hr": 0.31, "max_cost": 0.93, ...}` to stderr: `offer`
 before renting, `rented` and `destroyed` (with the cost) around the instance, `backlog` while voicing and
-`todo` for the art. The game server (`server/src/render.rs`) reads them to show prices, progress and
+`todo` for the art and voice designs, and `made` for each new candidate voice. The game server (`server/src/render.rs`) reads them to show prices, progress and
 costs. They're ignored on the command line.
 
 ## Testing

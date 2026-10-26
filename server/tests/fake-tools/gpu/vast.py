@@ -1,6 +1,7 @@
 """A stand-in for gpu/vast.py in the render tests: prints the same @tbx events without renting
 anything, and writes each call to calls.log next to this folder.
 
+design writes --count candidate voices into the asset store (--library), skipping ones there.
 voice --max-hours picks a scenario: 0.25 runs until stopped (for cancelling), 0.5 rents and then
 crashes without destroying (for the server's backstop), anything else finishes at once.
 """
@@ -30,6 +31,27 @@ def stop(*_):
 
 
 cmd = args[0]
+if cmd == "design":
+    folder = Path(opt("--library"), "voice-sample", "0123456789ab")
+    keys = [f"{n:032x}" for n in range(1, int(opt("--count", "4")) + 1)]
+    todo = [k for k in keys if not (folder / f"{k}.wav").exists()]
+    event("todo", count=len(todo), total=len(keys), minutes=40)
+    if not todo:
+        sys.exit(0)
+    event("offer", gpu="RTX 3090", vram_gb=24, price_hr=0.2, location="Norway", minutes=40, max_cost=0.13)
+    if "--dry-run" in args:
+        sys.exit(0)
+    event("rented", instance=43, price_hr=0.2)
+    folder.mkdir(parents=True, exist_ok=True)
+    for n, key in enumerate(todo, 1):
+        (folder / f"{key}.wav").write_bytes(b"RIFF" + key.encode())
+        (folder / f"{key}.json").write_text(json.dumps({
+            "kind": "voice-sample", "key": key, "file": f"{key}.wav", "created": 1793000000 + n, "seed": n,
+            "description": opt("--description"), "transcript": opt("--text"),
+            "inputs": {"description": opt("--description"), "text": opt("--text"), "seed": n}}))
+        event("made", key=key, seed=n)
+    event("destroyed", instance=43, seconds=600, cost=0.033)
+    sys.exit(0)
 if cmd in ("cleanup", "destroy"):
     print(f"[vast] {cmd} done", file=sys.stderr)
     sys.exit(0)

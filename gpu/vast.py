@@ -4,6 +4,7 @@
     python3 gpu/vast.py offers                                   # what you'd get, renting nothing
     python3 gpu/vast.py voice --server http://192.168.1.20:8080  # make Bix's missing lines, then stop
     python3 gpu/vast.py voice --server ... --hours 4             # also voice live lines for a game night
+    python3 gpu/vast.py design --description "A tired game show host..."   # candidate voices for Bix
     python3 gpu/vast.py run --image IMAGE --cmd "python generate.py --out /out" --out /out --to ./art
     python3 gpu/vast.py list                                     # TriviaBix instances you're paying for
     python3 gpu/vast.py cleanup                                  # destroy all of them
@@ -23,7 +24,9 @@ import argparse
 import base64
 import json
 import os
+import re
 import secrets
+import shlex
 import shutil
 import signal
 import sys
@@ -37,12 +40,27 @@ import zlib
 from http.cookiejar import CookieJar
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from assets import Store  # noqa: E402
+
 API = os.environ.get("VAST_URL", "https://console.vast.ai").rstrip("/")
+ROOT = Path(__file__).resolve().parent.parent
 LABEL = "triviabix"
 TTS_IMAGE = "ghcr.io/piccologravel/triviabix-tts:latest"
+TTS_MODEL = "inclusionAI/Ming-3.0-tts-0.5b"
 PORT = 8000
 # How the voice image starts its service, with the rental's token so only the game server can use it.
 VOICE_CMD = "cd /app && TTS_TOKEN=$TBX_TOKEN exec python server.py"
+# Runs the Python source in $TBX_PY, which this script sends along, so a job doesn't depend on the image
+# having the newest copy of it.
+INLINE_PY = "python -c \"import base64,os,zlib;exec(zlib.decompress(base64.b64decode(os.environ['TBX_PY'])))\""
+# With a designed (cloned) voice: wait for the clip (CLONE_BOOT), then start the service with it.
+CLONE_CMD = f"cd /app && TTS_TOKEN=$TBX_TOKEN exec {INLINE_PY}"
+# Designs candidate voices with the newest tts/make_voice.py.
+DESIGN_CMD = f"cd /app && {INLINE_PY}"
+DESIGN_OUT = "/out"
+# Candidate voices for Bix in the asset store (docs/assets.md). BIX_VOICE=clone:<key> picks one.
+SAMPLE_KIND = "voice-sample"
 
 
 class Abort(Exception):
@@ -240,9 +258,63 @@ while True:
 '''
 
 
+def pack(source: str) -> str:
+    return base64.b64encode(zlib.compress(source.encode(), 9)).decode()
+
+
 def boot_args() -> list:
-    packed = base64.b64encode(zlib.compress(WRAPPER.encode(), 9)).decode()
-    return ["python3", "-c", f"import base64,zlib;exec(zlib.decompress(base64.b64decode('{packed}')))"]
+    return ["python3", "-c", f"import base64,zlib;exec(zlib.decompress(base64.b64decode('{pack(WRAPPER)}')))"]
+
+
+# Started in place of the voice service when Bix speaks in a cloned voice. It answers /healthz as "not
+# ready" and takes the clip at POST /v1/voice (behind the rental's token), saves it with its transcript
+# under /voices, then turns into the voice service speaking with it.
+CLONE_BOOT = r'''
+import base64, hmac, json, os, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+E = os.environ
+name = E["TBX_VOICE_NAME"]
+folder = E.get("TBX_VOICES", "/voices")
+path = os.path.join(folder, name + ".wav")
+got = []
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def send(self, code, obj):
+        data = json.dumps(obj).encode()
+        self.send_response(code); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_GET(self):
+        if self.path == "/healthz":
+            return self.send(200, {"ok": True, "ready": False, "voice": None, "waiting": "the voice clip"})
+        self.send(404, {"error": "not found"})
+    def do_POST(self):
+        if self.path != "/v1/voice":
+            return self.send(404, {"error": "not found"})
+        if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), ("Bearer " + E["TBX_TOKEN"]).encode()):
+            return self.send(401, {"error": "wrong or missing token"})
+        size = int(self.headers.get("Content-Length", 0))
+        if size > 30_000_000:
+            return self.send(413, {"error": "too big"})
+        try:
+            body = json.loads(self.rfile.read(size))
+            wav, text = base64.b64decode(body["wav"]), str(body["text"]).strip()
+        except Exception as e:
+            return self.send(400, {"error": repr(e)})
+        os.makedirs(folder, exist_ok=True)
+        with open(path, "wb") as f: f.write(wav)
+        with open(path[:-4] + ".txt", "w", encoding="utf-8") as f: f.write(text + "\n")
+        got.append(1)
+        self.send(200, {"ok": True})
+
+srv = HTTPServer(("0.0.0.0", int(E.get("PORT", "8000"))), H)
+while not got:
+    srv.handle_request()
+srv.server_close()
+print("[tbx] got the voice clip; starting the voice service", flush=True)
+E["BIX_VOICE"] = "clone:" + path
+os.execv(sys.executable, [sys.executable, "server.py"])
+'''
 
 
 # ---------- Renting ----------
@@ -451,14 +523,104 @@ def voice_env(bix_voice: str) -> dict:
     return env
 
 
+def clone_clip(spec: str, store: Store | None = None) -> tuple[bytes, str, str]:
+    """The clip, transcript and a file name for BIX_VOICE=clone:<value>: a voice designed on the Pipeline page
+    (its asset store key), or a .wav on this machine with a .txt transcript next to it."""
+    value = spec.partition(":")[2].strip()
+    if re.fullmatch(r"[0-9a-f]{32}", value):
+        store = store or Store()
+        for wav in sorted(store.root.glob(f"{SAMPLE_KIND}/*/{value}.wav")):
+            meta = Store._meta(wav.with_suffix(".json"))
+            text = (meta.get("transcript") or meta.get("inputs", {}).get("text") or "").strip()
+            if text:
+                return wav.read_bytes(), text, value
+        raise Abort(f"there's no designed voice {value} in the asset store ({store.root}); pick one on the "
+                    "admin panel's Pipeline page")
+    wav = Path(value)
+    txt = wav.with_suffix(".txt")
+    if not wav.is_file() or not txt.is_file():
+        raise Abort(f"BIX_VOICE={spec}: a cloned voice needs {wav} and its transcript {txt} on this machine")
+    name = re.sub(r"[^A-Za-z0-9_-]", "-", wav.stem) or "bix"
+    return wav.read_bytes(), txt.read_text(encoding="utf-8").strip(), name
+
+
+def send_clip(r: Rental, base: str, clip: tuple[bytes, str, str], ready_by: float):
+    """Hands the rented voice service the clip to clone (CLONE_BOOT), retrying while it starts."""
+    body = json.dumps({"wav": base64.b64encode(clip[0]).decode(), "text": clip[1]}).encode()
+    while True:
+        req = urllib.request.Request(f"{base}/v1/voice", body, method="POST", headers={
+            "Authorization": f"Bearer {r.token}", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60):
+                say(f"sent Bix's voice clip ({len(clip[0]) // 1024} KB)")
+                return
+        except urllib.error.HTTPError as e:
+            raise Abort(f"the GPU refused the voice clip ({e.code})")
+        except (urllib.error.URLError, OSError):  # still starting
+            pass
+        if time.time() > ready_by:
+            raise Abort("the GPU didn't take the voice clip in time")
+        time.sleep(5)
+
+
+def design(description: str, text: str, count: int = 4, mode: str = "freeform", library: str | None = None,
+           max_minutes: float = 40, min_vram: float = 16, max_price: float = 0.5, disk: float = 40,
+           image: str = TTS_IMAGE, login: str | None = None, boot_minutes: float = 25, yes: bool = False,
+           dry_run: bool = False, another: bool = False, vast: Vast | None = None) -> int:
+    """Makes `count` candidate voices for Bix from a description (tts/make_voice.py) on a rented GPU and keeps
+    them in the asset store. Candidates already there are reused, so asking again costs nothing."""
+    description, text = " ".join(description.split()), " ".join(text.split())
+    if not description or not text:
+        raise Abort("give a description of the voice and a sample line for it to say")
+    store = Store(library)
+    model = os.environ.get("TTS_MODEL") or TTS_MODEL
+    style = f"ming-{mode}:{model}"
+    wanted = {seed: {"description": description, "text": text, "seed": seed} for seed in range(1, count + 1)}
+    todo = []
+    for seed, inputs in wanted.items():
+        hit = store.find(SAMPLE_KIND, style, inputs)
+        if hit:
+            say(f"candidate {seed} is already in the asset store ({hit.meta.get('key')})")
+        else:
+            todo.append(seed)
+    event("todo", count=len(todo), total=count, minutes=max_minutes)
+    if not todo:
+        say("every candidate is already made; renting nothing")
+        return 0
+    vast = vast or Vast()
+    source = (ROOT / "tts" / "make_voice.py").read_text(encoding="utf-8")
+    cmd = (f"{DESIGN_CMD} --out {DESIGN_OUT} --seeds {','.join(map(str, todo))} --mode {mode} "
+           f"--description {shlex.quote(description)} --text {shlex.quote(text)}")
+    env = {"TBX_PY": pack(source), "TTS_MODEL": model}
+    if os.environ.get("HF_TOKEN"):
+        env["HF_TOKEN"] = os.environ["HF_TOKEN"]
+    with tempfile.TemporaryDirectory(prefix="triviabix-voice-") as tmp:
+        code = run_job(image, cmd, tmp, DESIGN_OUT, min_vram, max_price, max_minutes, disk, env, login,
+                       boot_minutes, yes, dry_run, another, vast)
+        if dry_run:
+            return code
+        saved = 0
+        for seed in todo:
+            wav = Path(tmp, f"bix-{seed}.wav")
+            if not wav.is_file():
+                say(f"candidate {seed} didn't come back")
+                continue
+            hit = store.put(SAMPLE_KIND, style, wanted[seed], wav.read_bytes(), ".wav", model=model,
+                            description=description, transcript=text, seed=seed, mode=mode,
+                            tags=["bix", "voice-candidate"], generator="vast.ai")
+            event("made", key=hit.meta["key"], seed=seed)
+            saved += 1
+        say(f"saved {saved} of {len(todo)} new candidate voices in the asset store")
+        return code if saved == len(todo) else (code or 1)
+
+
 def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
           min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
           login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
           another: bool = False, vast: Vast | None = None):
     """Rents a GPU running Bix's voice service, points the game server at it until the backlog is done (or
     for `hours`, to voice live lines during a game), then points it back and destroys the instance."""
-    if bix_voice.startswith("clone:"):
-        raise Abort("a cloned voice needs its clip on the GPU, which isn't supported yet; use an ip: voice")
+    clip = clone_clip(bix_voice) if bix_voice.startswith("clone:") else None
     vast = vast or Vast()
     game = Game(server, password)
     backlog = game.status()["backlog"]
@@ -475,15 +637,23 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
     refuse_doubles(vast, another)
     on_signals()
     env = voice_env(bix_voice)
-    with Rental(vast, offer, image, VOICE_CMD, "serve",
+    cmd = VOICE_CMD
+    if clip:
+        env.update(BIX_VOICE="ip:US_James", TBX_PY=pack(CLONE_BOOT), TBX_VOICE_NAME=clip[2])
+        cmd = CLONE_CMD
+    with Rental(vast, offer, image, cmd, "serve",
                 minutes, env=env, disk=disk, login=login, kind="voice") as r:
         base = r.address(boot_minutes)
-        say(f"voice service at {base}; loading the model (the first start downloads about 3 GB)")
         ready_by = time.time() + boot_minutes * 60
+        if clip:
+            send_clip(r, base, clip, ready_by)
+        say(f"voice service at {base}; loading the model (the first start downloads about 3 GB)")
         while True:
             try:
                 health = json.load(urllib.request.urlopen(f"{base}/healthz", timeout=10))
                 if health.get("ready"):
+                    if clip and not str(health.get("voice", "")).startswith("clone:"):
+                        raise Abort(f"the voice service came up as {health.get('voice')}, not the cloned voice")
                     break
                 if health.get("error"):
                     raise Abort(f"the voice service failed to load: {health['error']}")
@@ -547,6 +717,17 @@ def main(argv=None) -> int:
     v.add_argument("--boot-minutes", type=float, default=25)
     renting(v, 16, 0.5)
 
+    g = sub.add_parser("design", help="make candidate voices for Bix on a rented GPU, kept in the asset store")
+    g.add_argument("--description", required=True, help="what Bix should sound like")
+    g.add_argument("--text", required=True, help="what he says in each candidate clip")
+    g.add_argument("--count", type=int, default=4, help="how many candidates (default 4, at most 8)")
+    g.add_argument("--mode", choices=("freeform", "design"), default="freeform")
+    g.add_argument("--library", help="the asset store (default $ASSETS_DIR)")
+    g.add_argument("--max-minutes", type=float, default=40, help="hard limit (default 40)")
+    g.add_argument("--image", default=TTS_IMAGE)
+    g.add_argument("--boot-minutes", type=float, default=25)
+    renting(g, 16, 0.5)
+
     r = sub.add_parser("run", help="run a generation job on a rented GPU and copy its output back")
     r.add_argument("--image", required=True)
     r.add_argument("--cmd", required=True, help="shell command to run in the image")
@@ -575,6 +756,12 @@ def main(argv=None) -> int:
                 raise Abort("set ADMIN_PASSWORD to the game server's admin password")
             voice(args.server, password, args.voice, args.hours, args.max_hours, args.min_vram, args.max_price,
                   args.disk, args.image, args.login, args.boot_minutes, args.yes, args.dry_run, args.another)
+        elif args.command == "design":
+            if not 1 <= args.count <= 8:
+                raise Abort("make 1 to 8 candidates at a time")
+            return design(args.description, args.text, args.count, args.mode, args.library, args.max_minutes,
+                          args.min_vram, args.max_price, args.disk, args.image, args.login, args.boot_minutes,
+                          args.yes, args.dry_run, args.another)
         elif args.command == "run":
             env = dict(e.split("=", 1) for e in args.env)
             return run_job(args.image, args.cmd, args.to, args.out, args.min_vram, args.max_price,

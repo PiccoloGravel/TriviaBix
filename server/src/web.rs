@@ -240,6 +240,14 @@ async fn voice_line(State(app): State<AppState>, Path(hash): Path<String>) -> Re
     }
 }
 
+/// Queues every line the game can know ahead, such as after Bix's voice changes, so the next
+/// voice run makes them all in the new voice.
+pub(crate) async fn warm_all(app: &AppState) {
+    app.voice.warm(app.script.fixed_lines(), false);
+    warm_questions(&app.voice, &app.db, &app.host_name).await;
+    warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
+}
+
 /// Queues the host's lines with categories, answers and regulars' names filled in, last, so a
 /// batch run leaves little for a game to need from a live TTS service.
 pub(crate) async fn warm_expanded(

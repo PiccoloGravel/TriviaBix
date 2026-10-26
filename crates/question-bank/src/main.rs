@@ -82,7 +82,7 @@ enum ScriptsAction {
     /// Load a filled-in brief (JSON or TOML) into content/scripts, next to each question's pack.
     Add { file: PathBuf },
     /// Have Claude write the missing lines and save them to content/scripts. Uses the paid
-    /// Anthropic API, so it needs ANTHROPIC_API_KEY.
+    /// Anthropic API, so it needs ANTHROPIC_API_KEY. HOST_PERSONA, if set, says who Bix is.
     Generate {
         /// Which lines to write: lead-in, reveal, or either (both, where missing).
         #[arg(long, default_value = "either", value_parser = ["lead-in", "reveal", "either"])]
@@ -580,7 +580,7 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                 .join(into.as_deref().unwrap_or(Path::new("")));
             let batches: Vec<_> = todo.chunks((*batch).max(1)).collect();
             if *dry_run {
-                let gen = Generator::new("", model, effort);
+                let gen = Generator::new("", model, effort).with_persona(&persona());
                 let json = serde_json::to_string_pretty(&gen.request(batches[0]))
                     .map_err(|e| e.to_string())?;
                 println!("{json}");
@@ -595,7 +595,7 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
                 .ok()
                 .filter(|k| !k.trim().is_empty())
                 .ok_or("set ANTHROPIC_API_KEY to an Anthropic API key (console.anthropic.com) first. Calls are billed to that account.")?;
-            let gen = Generator::new(key.trim(), model, effort);
+            let gen = Generator::new(key.trim(), model, effort).with_persona(&persona());
             eprintln!(
                 "Writing lines for {} of {total} questions with {model}, {} per request...",
                 todo.len(),
@@ -643,6 +643,12 @@ fn scripts_cmd(content: &Path, action: &ScriptsAction) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Who Bix is for the line writer: HOST_PERSONA (set on the admin panel's Settings page), else
+/// the default.
+fn persona() -> String {
+    std::env::var("HOST_PERSONA").unwrap_or_default()
 }
 
 fn wanted(missing: &str) -> Wanted {

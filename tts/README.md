@@ -57,13 +57,18 @@ Changing the voice makes a fresh cache folder, so everything is regenerated in t
 ## A custom voice for Bix
 
 The built-in voices are clean narrators. For a cheekier host, design one and clone it so every line sounds
-like the same person:
+like the same person. The easy way is the admin panel: **Pipeline → Design Bix's voice**. Describe him,
+check the price, and it makes a few candidates on a rented GPU. Listen to them there and press **Use this
+voice**; the next voice run (step 3) makes his lines again in it. Candidates are kept in the asset store,
+so going back to one costs nothing.
+
+On a machine with its own GPU:
 
 ```sh
 docker compose --profile voice run --rm tts python make_voice.py --count 4
 ```
 
-That writes `voices/bix-1.wav` to `bix-4.wav` (with transcripts) from a "cheeky game show host"
+That writes `voices/bix-1.wav` to `bix-4.wav` (with transcripts) from a "washed-up game show host"
 description. Listen to them, rename your favorite to `voices/bix.wav` and its transcript to
 `voices/bix.txt`, then restart with `BIX_VOICE=clone:/voices/bix.wav`. Change the description with
 `--description "..."`. You can also use your own 5 to 15 second recording with an exact transcript, but
