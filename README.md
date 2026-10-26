@@ -54,6 +54,8 @@ them in the admin panel.
 
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.
+With an NVIDIA GPU, the optional voice service in [`tts/`](tts/README.md) gives Bix a real voice with Ming-3.0-tts: lines are
+made once, cached, and mostly made ahead of time, and the browser voice fills in for anything that isn't ready.
 
 ### Trivia rounds
 
@@ -185,12 +187,15 @@ cargo test                    # unit tests plus full games over WebSockets
 | `ROOM_IDLE_SECS` | `900` | Close rooms with nobody connected |
 | `PUID` / `PGID` | `10001` | Docker only: who owns the files in `/data` (Unraid: `99` / `100`) |
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
+| `TTS_URL` | | Bix's voice service, e.g. `http://tts:8000` (see [tts/README.md](tts/README.md)); empty means browser text-to-speech |
+| `TTS_CACHE_DIR` | `data/tts` | Where his lines are cached (`/data/tts` in Docker) |
 
 ## Layout
 
 - `server/` is the Rust game server (axum + WebSockets + SQLite via sqlx). Each room is its own task that owns the game state.
   - `src/room.rs` holds the game rules, `src/host.rs` the host, `src/protocol.rs` the JSON messages, `src/db.rs` the database,
-    `src/music.rs` the song lookups for Name That Tune, `src/library.rs` the Lidarr sync and `/media/` links.
+    `src/music.rs` the song lookups for Name That Tune, `src/library.rs` the Lidarr sync and `/media/` links,
+    `src/voice.rs` the cache in front of the voice service.
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
   - `src/rounds.rs` plans a trivia game's rounds: difficulty, theme and points.
@@ -198,6 +203,7 @@ cargo test                    # unit tests plus full games over WebSockets
   - `src/content.rs` loads the question packs into the database at startup.
 - `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
   [content/README.md](content/README.md). `crates/question-bank` reads it and has the command line tool.
+- `tts/` is the optional voice service (Python, Ming-3.0-tts on a GPU).
 - `web/` is the TV page (`host.html`), the phone page (`index.html`) and the admin panel (`admin.html`), plain HTML/JS with no build step.
   - `cutscenes.js` plays the scenes in `cutscenes/`; `bix.js` draws the host; `cutscenes.html` previews them.
 - `server/src/admin.rs` is the admin login and API (`/api/admin/*`).

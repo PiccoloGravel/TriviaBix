@@ -1,3 +1,5 @@
 target
 data
 .git
+voices
+tts/__pycache__

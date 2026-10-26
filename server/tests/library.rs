@@ -479,6 +479,8 @@ async fn start_server(library: LibraryConfig) -> String {
         admin_password: Some("pw".into()),
         host_script: None,
         content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
+        tts_url: None,
+        tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
     };
     let app = triviabix::router(config).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

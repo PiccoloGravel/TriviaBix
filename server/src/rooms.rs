@@ -9,6 +9,7 @@ use crate::db::Db;
 use crate::host::Script;
 use crate::music::Music;
 use crate::room::{Room, RoomHandle, Settings, Timing};
+use crate::voice::Voice;
 
 /// No vowels, so random codes can't spell anything rude, and no letters that
 /// look alike on a TV across the room.
@@ -21,6 +22,7 @@ pub struct Rooms {
     db: Db,
     script: Arc<Script>,
     music: Music,
+    voice: Voice,
     timing: Timing,
     max_players: usize,
     max_rooms: usize,
@@ -31,6 +33,7 @@ impl Rooms {
         db: Db,
         script: Script,
         music: Music,
+        voice: Voice,
         timing: Timing,
         max_players: usize,
         max_rooms: usize,
@@ -40,6 +43,7 @@ impl Rooms {
             db,
             script: Arc::new(script),
             music,
+            voice,
             timing,
             max_players,
             max_rooms,
@@ -78,6 +82,7 @@ impl Rooms {
             self.db.clone(),
             self.script.clone(),
             self.music.clone(),
+            self.voice.clone(),
             move || {
                 registry.lock().unwrap().remove(&closing);
             },

@@ -236,6 +236,25 @@ impl Db {
         Ok(row.get("n"))
     }
 
+    /// Everything the host might read out about a playable question: its prompt and the lines
+    /// it would use (edited lines where there are any, else the pack's). `{host}` is left in.
+    pub async fn voice_texts(&self) -> anyhow::Result<Vec<String>> {
+        let rows = sqlx::query(concat!(
+            "SELECT prompt AS text FROM questions WHERE ",
+            playable!(),
+            " UNION SELECT l.text FROM question_lines l
+              WHERE l.text != ''
+                AND l.question_id IN (SELECT id FROM questions WHERE ",
+            playable!(),
+            ")
+                AND (l.origin = 'edited' OR NOT EXISTS (SELECT 1 FROM question_lines e
+                     WHERE e.question_id = l.question_id AND e.slot = l.slot AND e.origin = 'edited'))"
+        ))
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(|r| r.get("text")).collect())
+    }
+
     /// Picks up to `n` random questions rated at most `max_rating`, skipping ids in `exclude` so a
     /// "play again" in the same room does not repeat itself.
     pub async fn random_questions(

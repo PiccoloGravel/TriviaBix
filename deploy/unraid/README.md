@@ -115,11 +115,28 @@ sees it under a different path: set **Lidarr music path**.
 
 ## Bix's voice
 
-Bix currently speaks with the browser's built-in text-to-speech, so the TV laptop/phone does the
-talking and the server needs nothing extra. A self-hosted voice model is being added separately.
-It runs as a second container (needs an NVIDIA GPU and the Nvidia Driver plugin), and the game
-finds it through the **Voice server** setting (`TTS_URL`). The Compose Manager stack has it
-ready to uncomment; voice lines are cached in `appdata/triviabix/tts`.
+Out of the box, Bix speaks with the browser's built-in text-to-speech on the TV laptop or phone, and the
+server needs nothing extra. With an NVIDIA GPU, he can have a real voice from the self-hosted
+Ming-3.0-tts model instead (see [tts/README.md](../../tts/README.md) for how it works and the voices).
+
+1. Install the **Nvidia Driver** plugin from Community Applications, reboot, and note the GPU's UUID on its
+   settings page (or use `all`). An RTX 30-series or newer is the safe bet; the model is only published as
+   tested on data-center cards.
+2. Start the voice container:
+   - **Compose Manager:** in the stack's `.env`, set `TTS_URL=http://tts:8000`, then start the stack with
+     the `voice` profile.
+   - **Without compose:** add a container from `ghcr.io/piccologravel/triviabix-tts:latest` with
+     Extra Parameters `--runtime=nvidia`, variable `NVIDIA_VISIBLE_DEVICES` set to the GPU UUID (or
+     `all`), port 8000, and paths `/models` → `/mnt/user/appdata/triviabix-tts/models` and `/voices` →
+     `/mnt/user/appdata/triviabix-tts/voices`. Then set TriviaBix's **Voice server** to
+     `http://<unraid-ip>:8000`.
+3. The first start downloads the model (about 3 GB). `http://<unraid-ip>:8000/healthz` says
+   `"ready": true` when it's loaded. TriviaBix then makes every question and fixed line in the background,
+   once, and keeps them in `appdata/triviabix/tts`. Until a line is ready, the browser voice reads it.
+
+For a custom, cheekier Bix, run `python make_voice.py --count 4` in the voice container's console, listen
+to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.wav` (and its `.txt` to
+`bix.txt`), and set `BIX_VOICE=clone:/voices/bix.wav`.
 
 ## Troubleshooting
 

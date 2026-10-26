@@ -31,6 +31,7 @@ use crate::room::{
 };
 use crate::rooms::Rooms;
 use crate::rounds;
+use crate::voice::{Voice, VoiceError};
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -40,6 +41,9 @@ pub(crate) struct AppState {
     pub public_url: Option<String>,
     pub admin: Admin,
     pub music: Music,
+    pub voice: Voice,
+    /// What `{host}` reads as in question lines.
+    pub host_name: std::sync::Arc<str>,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -53,6 +57,17 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         Some(path) => crate::host::Script::load(path)?,
         None => crate::host::Script::builtin(),
     };
+    let voice = Voice::new(config.tts_url.as_deref(), &config.tts_cache_dir);
+    let host_name: std::sync::Arc<str> = script.host_name.as_str().into();
+    if voice.enabled() {
+        tracing::info!(
+            "host voice from {}, cached in {}",
+            config.tts_url.as_deref().unwrap_or_default(),
+            config.tts_cache_dir.display()
+        );
+        voice.warm(script.fixed_lines(), false);
+        warm_questions(&voice, &db, &host_name).await;
+    }
     let itunes = Itunes::new(&config.itunes_url, &config.music_country);
     if config.music_warmup {
         tokio::spawn(music::warm_up(db.clone(), itunes.clone()));
@@ -68,6 +83,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         db.clone(),
         script,
         music.clone(),
+        voice.clone(),
         config.timing.clone(),
         config.max_players,
         config.max_rooms,
@@ -82,6 +98,8 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         public_url: config.public_url.clone(),
         admin: Admin::new(config.admin_password.clone()),
         music,
+        voice,
+        host_name,
     };
 
     let dir = &config.static_dir;
@@ -93,6 +111,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             "/api/characters",
             get(|| async { Json(crate::characters::CHARACTERS) }),
         )
+        .route("/api/voice/{hash}", get(voice_line))
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{code}", get(room_info))
         .route("/media/{token}", get(media))
@@ -127,7 +146,43 @@ async fn health(State(app): State<AppState>) -> Response {
 /// Tells the TV which address phones should open. Behind a proxy or when the
 /// TV is on `localhost`, set PUBLIC_URL to the address phones can reach.
 async fn client_config(State(app): State<AppState>) -> Json<serde_json::Value> {
-    Json(json!({ "public_url": app.public_url }))
+    Json(json!({ "public_url": app.public_url, "voice": app.voice.enabled() }))
+}
+
+/// One of the host's lines as audio, made by the TTS service the first time it's asked for.
+async fn voice_line(State(app): State<AppState>, Path(hash): Path<String>) -> Response {
+    match app.voice.audio(&hash).await {
+        Ok((bytes, content_type)) => (
+            [
+                (axum::http::header::CONTENT_TYPE, content_type),
+                (axum::http::header::CACHE_CONTROL, "max-age=600"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Err(VoiceError::NotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(VoiceError::Unavailable(e)) => {
+            tracing::warn!("voice: {e}");
+            (StatusCode::SERVICE_UNAVAILABLE, e).into_response()
+        }
+    }
+}
+
+/// Queues every question and question line for the voice, behind anything already waiting.
+pub(crate) async fn warm_questions(voice: &Voice, db: &Db, host_name: &str) {
+    if !voice.enabled() {
+        return;
+    }
+    match db.voice_texts().await {
+        Ok(texts) => {
+            voice.warm(
+                texts.into_iter().map(|t| t.replace("{host}", host_name)),
+                false,
+            );
+            tracing::info!("voice: {} lines waiting to be made", voice.backlog());
+        }
+        Err(e) => tracing::error!("listing lines for the voice: {e:#}"),
+    }
 }
 
 #[derive(Deserialize)]

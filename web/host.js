@@ -12,13 +12,28 @@ let secsTimer = null;
 
 // ---------- The host: voice, speech bubble and callout graphics ----------
 // The server writes the script (see server/host-script.json) and sends the current line in
-// `state.host`; this page says it out loud and draws the graphics that go with it.
+// `state.host`; this page says it out loud and draws the graphics that go with it. With a TTS
+// service (see tts/), each piece of the line comes with recorded audio of Bix; anything without
+// audio, or whose audio isn't ready in time, is spoken by the browser instead.
+
+/** Ming's inline sound effects, like [Laughter]. Only the TTS service can perform them. */
+const SOUND_TAGS = /\[(Breathing|Cough|Sigh|Laughter|Uhm|Surprise-ah|Surprise-oh|Dissatisfaction-hnn|Confirmation-en|Question-(?:ei|ah|en|oh|huh))\]/g;
+const plain = (text) => text.replace(SOUND_TAGS, "").replace(/\s{2,}/g, " ").trim();
+/** How long to wait for a line's audio before the browser reads it instead. */
+const AUDIO_WAIT_MS = 3500;
+const MING = "ming";
 
 const voice = {
   on: TBX.load("tbx:voice") !== false,
   pick: TBX.load("tbx:voice-name"),
   chosen: null,
   queue: 0,
+  /** Set at boot when the server has a TTS service. */
+  ming: false,
+  /** Someone pressed V past Bix's own voice to a browser one. */
+  mingOff: TBX.load("tbx:ming-off") === true,
+  token: 0,
+  playing: null,
   /** English voices, best first. Edge's "Natural" voices and Chrome's Google voices are free and sound far less robotic. */
   ranked() {
     if (!("speechSynthesis" in window)) return [];
@@ -32,46 +47,120 @@ const voice = {
     const list = this.ranked();
     this.chosen = list.find((v) => v.name === this.pick) || list[0] || null;
   },
-  /** Cycles to the next voice; returns its name. */
+  /** Bix's own voice from the TTS service, unless someone picked a browser voice with V. */
+  usingMing() {
+    return this.ming && !this.mingOff;
+  },
+  /** Cycles to the next voice; returns its name. Bix's own voice comes first. */
   next() {
-    const list = this.ranked();
-    if (!list.length) return "the default voice";
-    const i = list.findIndex((v) => v === this.chosen);
-    this.chosen = list[(i + 1) % list.length];
-    this.pick = this.chosen.name;
-    TBX.save("tbx:voice-name", this.pick);
-    return this.chosen.name;
+    const names = [...(this.ming ? [MING] : []), ...this.ranked().map((v) => v.name)];
+    if (!names.length) return "the default voice";
+    const current = this.usingMing() ? MING : this.chosen && this.chosen.name;
+    const pick = names[(names.indexOf(current) + 1) % names.length];
+    if (this.ming) {
+      this.mingOff = pick !== MING;
+      TBX.save("tbx:ming-off", this.mingOff);
+    }
+    if (pick === MING) return "Bix (Ming TTS)";
+    this.pick = pick;
+    TBX.save("tbx:voice-name", pick);
+    this.choose();
+    return this.pick;
+  },
+  talking(on) {
+    hostBar.classList.toggle("talking", on);
   },
   say(text) {
+    text = text && plain(text);
     if (!this.on || !text || !("speechSynthesis" in window)) return;
     if (!this.chosen) this.choose();
     const u = new SpeechSynthesisUtterance(text);
     if (this.chosen) u.voice = this.chosen;
     u.rate = 1.05;
     u.pitch = 1.1;
-    u.onstart = () => { this.queue++; hostBar.classList.add("talking"); };
-    u.onend = u.onerror = () => { if (--this.queue <= 0) { this.queue = 0; hostBar.classList.remove("talking"); } };
+    u.onstart = () => { this.queue++; this.talking(true); };
+    u.onend = u.onerror = () => { if (--this.queue <= 0) { this.queue = 0; this.talking(false); } };
     speechSynthesis.speak(u);
     return u;
+  },
+  /** Starts loading a piece's audio. `ready` settles true once it can play, false if it can't. */
+  load(url) {
+    const audio = new Audio();
+    audio.preload = "auto";
+    const ready = new Promise((resolve) => {
+      audio.oncanplaythrough = () => resolve(true);
+      audio.onerror = () => resolve(false);
+    });
+    audio.src = url;
+    return { audio, ready };
+  },
+  /**
+   * Says a line made of `parts` ({text, audio}) in order, then calls `done`. All the audio starts
+   * loading at once, so later pieces get made while the first one plays.
+   */
+  speak(parts, done) {
+    this.hush();
+    const token = this.token;
+    const live = () => token === this.token;
+    const clips = parts.map((p) => (this.on && this.usingMing() && p.audio ? this.load(p.audio) : null));
+    let i = 0;
+    const next = () => {
+      if (!live()) return;
+      if (i >= parts.length) return done && done();
+      const text = parts[i].text;
+      const clip = clips[i++];
+      if (!clip) return this.browser(text, next);
+      const late = new Promise((resolve) => setTimeout(() => resolve(false), AUDIO_WAIT_MS));
+      Promise.race([clip.ready, late]).then((ok) => {
+        if (!live()) return;
+        if (!ok) {
+          clip.audio.src = "";
+          return this.browser(text, next);
+        }
+        const a = clip.audio;
+        this.playing = a;
+        let finished = false;
+        const end = () => { if (!finished) { finished = true; this.talking(false); next(); } };
+        a.onended = end;
+        a.onerror = end;
+        this.talking(true);
+        a.play().catch(() => { this.talking(false); finished = true; this.browser(text, next); });
+      });
+    };
+    next();
+  },
+  /** Reads `text` with the browser's voice, then calls `next`, even on TVs that never say it's done. */
+  browser(text, next) {
+    const u = this.say(text);
+    let called = false;
+    const go = () => { if (!called) { called = true; next(); } };
+    if (!u) return setTimeout(go, 300);
+    u.addEventListener("end", go);
+    setTimeout(go, 1500 + plain(text).length * 80);
   },
   /** Runs `fn` once the host has finished the line in state `s`, or soon if there's nothing to wait for. */
   afterLine(s, fn) {
     let done = false;
     const go = () => { if (!done) { done = true; fn(); } };
     const text = s.host ? s.host.text : "";
-    if (!this.on || !text || !("speechSynthesis" in window)) return setTimeout(go, 600);
+    if (!this.on || !text || !(this.usingMing() || "speechSynthesis" in window)) return setTimeout(go, 600);
     this.pending = { id: s.host.id, go };
-    // Some TV browsers never fire onend, so fall back on a rough speaking time.
-    setTimeout(go, 1500 + text.length * 80);
+    // In case the end of the line never gets reported, give up after a rough speaking time.
+    setTimeout(go, (this.usingMing() ? AUDIO_WAIT_MS : 0) + 1500 + text.length * 80);
   },
   /** Called when the last part of host line `id` has been spoken. */
   lineDone(id) {
     if (this.pending && this.pending.id === id) this.pending.go();
   },
   hush() {
+    this.token++;
     if ("speechSynthesis" in window) speechSynthesis.cancel();
+    if (this.playing) {
+      this.playing.pause();
+      this.playing = null;
+    }
     this.queue = 0;
-    hostBar.classList.remove("talking");
+    this.talking(false);
   },
 };
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", () => voice.choose());
@@ -82,7 +171,7 @@ $("#host-face").append(bixFace);
 let spokenId = null;
 let typeTimer = null;
 
-/** Speaks and shows a new host line, once per line. `extra` is read out after it (the question). */
+/** Speaks and shows a new host line, once per line. `extra` ({text, audio}) is read out after it (the question). */
 function hostSays(s, extra) {
   const h = s.host;
   if (!h) {
@@ -99,17 +188,17 @@ function hostSays(s, extra) {
   bubble.classList.add("fresh");
   // Type the line out at roughly speaking speed.
   clearInterval(typeTimer);
+  const said = plain(h.text);
   let shown = 0;
   typeTimer = setInterval(() => {
-    shown = Math.min(h.text.length, shown + 2);
-    bubble.textContent = h.text.slice(0, shown);
+    shown = Math.min(said.length, shown + 2);
+    bubble.textContent = said.slice(0, shown);
     bubble.scrollTop = bubble.scrollHeight;
-    if (shown >= h.text.length) clearInterval(typeTimer);
+    if (shown >= said.length) clearInterval(typeTimer);
   }, voice.on ? 140 : 30);
-  voice.hush();
-  const first = voice.say(h.text);
-  const last = (extra && voice.say(extra)) || first;
-  if (last) last.addEventListener("end", () => voice.lineDone(h.id));
+  const parts = h.voice && h.voice.length ? [...h.voice] : [{ text: h.text }];
+  if (extra) parts.push(extra);
+  voice.speak(parts, () => voice.lineDone(h.id));
   showCallouts(s);
   react(s);
 }
@@ -362,7 +451,8 @@ function render(s) {
   })[s.phase](s, phaseChanged);
   // The question is read out after the host's banter.
   // In Name That Tune the clip plays instead.
-  hostSays(s, s.phase === "question" && s.question.kind !== "song" ? s.question.prompt : null);
+  hostSays(s, s.phase === "question" && s.question.kind !== "song"
+    ? { text: s.question.prompt, audio: s.question.prompt_audio } : null);
 }
 
 // ---------- Music and stings ----------
@@ -850,7 +940,13 @@ function nextVoice() {
   const name = voice.next();
   toast(`Host voice: ${name}`);
   voice.hush();
-  voice.say(`Hi, I'm ${(state && state.host && state.host.name) || "your host"}. How do I sound?`);
+  // Replay what the host just said in the new voice.
+  if (state && state.host) {
+    const h = state.host;
+    voice.speak(h.voice && h.voice.length ? h.voice : [{ text: h.text }]);
+  } else {
+    voice.say("Hi, I'm your host. How do I sound?");
+  }
 }
 $("#voice-btn").addEventListener("click", nextVoice);
 
@@ -889,6 +985,7 @@ document.addEventListener("keydown", (e) => {
   try {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
+    voice.ming = !!cfg.voice;
   } catch { /* fall back to this page's address */ }
 
   // Opened from the admin panel with a room's link: take over that room.
