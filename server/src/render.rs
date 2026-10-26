@@ -33,7 +33,7 @@ use crate::settings::{self, Settings};
 use crate::voice::Voice;
 
 /// Log lines kept per job, in memory and in the database.
-const LOG_LINES: usize = 500;
+const LOG_LINES: usize = 2000;
 /// Longest log line kept; a dry run of the line writer prints whole API requests.
 const LINE_CHARS: usize = 400;
 /// How long a dry run's price stays good for starting the job.
@@ -140,7 +140,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Kind::Voice => "voice",
             Kind::Design => "design",

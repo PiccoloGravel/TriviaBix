@@ -402,6 +402,36 @@ async fn art_and_lines_jobs() {
     let job = s.finish(job["id"].as_i64().unwrap()).await;
     assert_eq!(job["state"], "done", "{job}");
     assert_eq!(job["details"]["progress"]["output_tokens"], 120);
+    // The whole log, to copy or download.
+    let res = reqwest::Client::new()
+        .get(format!(
+            "http://{}/api/admin/render/jobs/{}/log?download=1",
+            s.addr, job["id"]
+        ))
+        .header("cookie", &s.cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(
+        res.headers()["content-disposition"]
+            .to_str()
+            .unwrap()
+            .contains(&format!("triviabix-lines-job-{}.log", job["id"]))
+    );
+    assert!(
+        res.text()
+            .await
+            .unwrap()
+            .contains("Wrote lines for 1 questions")
+    );
+    let res = reqwest::get(format!(
+        "http://{}/api/admin/render/jobs/{}/log",
+        s.addr, job["id"]
+    ))
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 401, "only for the admin");
     // Saved where a container restart won't replace it.
     assert!(
         s.calls()
