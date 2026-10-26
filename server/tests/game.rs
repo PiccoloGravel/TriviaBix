@@ -477,6 +477,14 @@ async fn static_pages_are_served() {
         .await
         .unwrap();
     assert_eq!(qr.headers()["content-type"], "image/svg+xml");
+    let apk = reqwest::get(format!("http://{addr}/downloads/triviabix-cast.apk"))
+        .await
+        .unwrap();
+    assert!(apk.status().is_success(), "cast app: {}", apk.status());
+    assert_eq!(
+        apk.headers()["content-type"],
+        "application/vnd.android.package-archive"
+    );
     let tv = reqwest::get(format!("http://{addr}/tv")).await.unwrap();
     assert!(tv.text().await.unwrap().contains("host.js"));
 }

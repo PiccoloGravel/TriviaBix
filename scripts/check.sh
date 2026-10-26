@@ -18,6 +18,12 @@ cargo test --locked -p triviabix-questions --features cli
 
 echo "== web scripts"
 for f in web/*.js; do node --check "$f"; done
+# The TV page also runs in older TV browsers (Samsung's on 2019-2020 sets is Chromium 63-69),
+# so its scripts stay clear of ?? and ?. and catch without a binding.
+if grep -nE ' \?\? |[A-Za-z_)\]]\?\.[A-Za-z_\[(]|catch \{' web/common.js web/bix.js web/cutscenes.js web/sfx.js web/host.js; then
+    echo "newer syntax in a TV script (above); spell it out for older TV browsers"
+    exit 1
+fi
 
 if [ "${1:-}" = "--docker" ]; then
     echo "== docker image"

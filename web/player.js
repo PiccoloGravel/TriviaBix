@@ -384,9 +384,13 @@ async function tvAddress() {
   return `${base.replace(/^https?:\/\//, "")}/tv`;
 }
 document.querySelectorAll("[data-tv-help]").forEach((b) => b.addEventListener("click", async () => {
+  // Inside the cast app, the app walks through Smart View itself.
+  if (window.TriviaBixApp) return window.TriviaBixApp.cast();
   $("#tv-addr").textContent = await tvAddress();
   $("#tv-sheet").classList.remove("hidden");
 }));
+// The app is for Android; iPhones get the other ways.
+if (!/Android/i.test(navigator.userAgent)) $("#tv-app-steps").open = false;
 $("#tv-close").addEventListener("click", () => $("#tv-sheet").classList.add("hidden"));
 $("#tv-here").addEventListener("click", () => {
   if (conn && !confirm("This phone becomes the TV and leaves the game. Play on another phone. Go?")) return;
