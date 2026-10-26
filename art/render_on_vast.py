@@ -34,6 +34,15 @@ BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.15, 7
 OFFLOAD_GB = 40
 
 
+def ship_code(dest: Path):
+    """Copies the generator's code and what it reads (the catalog, the categories) into `dest`, laid out
+    as in the image's /app."""
+    for rel in ("art/generate.py", "art/library.py", "art/catalog.toml", "content/categories.toml",
+                *(str(p.relative_to(ROOT)) for p in sorted((ART / "backends").glob("*.py")))):
+        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, dest / rel)
+
+
 def event(name: str, **data):
     """A line the game server's admin panel reads (TBX_EVENTS=1)."""
     if os.environ.get("TBX_EVENTS"):
@@ -85,10 +94,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
 
     # 2. The rest on a rented GPU. The container writes TV files to /out/gen and originals to /out/assets.
-    cmd = (f"python3 art/generate.py --backend gpu --out /out/gen --library /out/assets "
-           f"--only {','.join(todo)} --force")
-    with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp:
+    # It runs this server's copy of the generator (uploaded to /in/code), so a fix takes effect without
+    # rebuilding the image; the image supplies PyTorch and the models' libraries.
+    cmd = (f"cp -r /in/code/. /app/ && cd /app && python3 art/generate.py --backend gpu --out /out/gen "
+           f"--library /out/assets --only {','.join(todo)} --force")
+    with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp, \
+            tempfile.TemporaryDirectory(prefix="triviabix-art-code-") as code:
+        ship_code(Path(code) / "code")
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
+               "--input", code,
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
                "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
                "--offload-below", str(OFFLOAD_GB), "--kind", "art"]

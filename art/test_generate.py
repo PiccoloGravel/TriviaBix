@@ -230,5 +230,16 @@ class Scenes(unittest.TestCase):
         self.assertEqual(stubs, [], "stub placeholders are in web/cutscenes/assets/gen; run with --backend gpu")
 
 
+
+class ShipCodeTest(unittest.TestCase):
+    def test_the_gpu_gets_this_servers_generator(self):
+        import render_on_vast
+        with tempfile.TemporaryDirectory() as d:
+            render_on_vast.ship_code(Path(d))
+            for rel in ("art/generate.py", "art/library.py", "art/catalog.toml", "art/backends/gpu.py",
+                        "art/backends/models.py", "content/categories.toml"):
+                self.assertTrue(Path(d, rel).is_file(), rel)
+            self.assertFalse(Path(d, "art/test_generate.py").exists())
+
 if __name__ == "__main__":
     unittest.main()
