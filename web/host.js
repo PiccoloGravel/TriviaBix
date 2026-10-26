@@ -966,6 +966,22 @@ function toggleFullscreen() {
 }
 $("#fs-btn").addEventListener("click", toggleFullscreen);
 
+// TV sticks and phones mirrored to a TV dim or sleep when nobody touches them; ask them not to.
+// Browsers only allow this over HTTPS or on localhost, so on a plain LAN address see docs/tv.md.
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if ("wakeLock" in navigator && !wakeLock && !document.hidden) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    }
+  } catch { /* not supported, or needs a press first; tried again on the next one */ }
+}
+document.addEventListener("visibilitychange", keepAwake);
+document.addEventListener("pointerdown", keepAwake);
+document.addEventListener("keydown", keepAwake);
+keepAwake();
+
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
   if (e.key === "Enter" || e.key === " ") {

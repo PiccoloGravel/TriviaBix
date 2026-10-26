@@ -199,6 +199,8 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route("/ws/play", get(ws_play))
         .merge(admin::routes(state.clone()))
         .route_service("/host", ServeFile::new(dir.join("host.html")))
+        // A short address to type with a TV remote.
+        .route_service("/tv", ServeFile::new(dir.join("host.html")))
         .route_service("/admin", ServeFile::new(dir.join("admin.html")))
         .route_service(
             "/admin/questions",

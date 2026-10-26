@@ -63,6 +63,13 @@
     #kick-list button { font-size: 14px; padding: 6px 10px; }
     .vip-row { display: flex; gap: 10px; }
     .vip-row button { flex: 1; }
+    .tv-sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto; }
+    .tv-sheet .screen { justify-content: flex-start; }
+    .tv-addr { font-family: "Bungee", sans-serif; font-size: 24px; color: var(--accent); background: var(--panel); border-radius: var(--radius); padding: 14px; text-align: center; word-break: break-all; }
+    .tv-steps { background: var(--panel); border-radius: var(--radius); padding: 12px 16px; font-size: 16px; }
+    .tv-steps summary { font-size: 18px; cursor: pointer; }
+    .tv-steps ol { padding-left: 22px; margin: 10px 0 0; }
+    .tv-steps li { margin-bottom: 6px; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
   </style>
 </head>
@@ -88,7 +95,7 @@
       <button class="big" type="submit">Play</button>
     </form>
     <p class="error" id="join-error"></p>
-    <a class="muted" href="/host" style="font-size:14px">Hosting? Open /host on the TV. It shows the room code.</a>
+    <button class="secondary" type="button" data-tv-help>📺 Put the game on the TV</button>
   </section>
 
   <section id="lobby" class="screen hidden" data-screen>
@@ -127,6 +134,7 @@
         </form>
         <p class="error" id="lobby-error" style="margin:0;font-size:14px"></p>
       </div>
+      <button class="secondary" type="button" data-tv-help>📺 Put the game on the TV</button>
       <a class="muted" id="admin-link" href="/admin" style="font-size:14px">Admin? Change the rating, length and teams here ↗</a>
     </div>
   </section>
@@ -243,6 +251,39 @@
     <button class="big hidden" id="again-btn">Pick the next game</button>
     <button class="secondary" id="leave-btn">Leave game</button>
   </section>
+
+  <div class="tv-sheet hidden" id="tv-sheet" role="dialog" aria-label="Put the game on the TV">
+    <div class="screen">
+      <h1 style="font-size:32px">📺 On the TV</h1>
+      <div>The TV runs itself: it opens a room and shows the code, and phones do the rest. Open this on the TV once and save it:</div>
+      <div class="tv-addr" id="tv-addr"></div>
+      <details class="tv-steps" open>
+        <summary>Fire TV, Google TV, Android TV</summary>
+        <ol>
+          <li>Install a browser app: <b>Silk</b> (Fire TV), or <b>Fully Kiosk Browser</b>, which also plays sound without the first click.</li>
+          <li>Open the address above and set it as the start page (or bookmark it).</li>
+          <li>Next time, just open the app.</li>
+        </ol>
+      </details>
+      <details class="tv-steps">
+        <summary>Smart TV with a browser (LG, Samsung, ...)</summary>
+        <ol>
+          <li>Open the TV's web browser and type the address above.</li>
+          <li>Bookmark it. Press OK once on the page to turn sound on.</li>
+        </ol>
+      </details>
+      <details class="tv-steps">
+        <summary>Chromecast, Apple TV, or no browser</summary>
+        <ol>
+          <li>Use a spare phone or tablet as the TV: tap the button below on it.</li>
+          <li>Mirror its screen: <b>Google Home → Cast my screen</b> on Android, <b>Screen Mirroring</b> on iPhone with an Apple TV.</li>
+          <li>Turn the phone sideways and keep it plugged in. Everyone plays on their own phones.</li>
+        </ol>
+      </details>
+      <button class="big" type="button" id="tv-here">Use this device as the TV</button>
+      <button class="secondary" type="button" id="tv-close">Close</button>
+    </div>
+  </div>
 
   <script src="/common.js"></script>
   <script src="/player.js"></script>

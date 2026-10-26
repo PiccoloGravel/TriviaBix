@@ -455,6 +455,7 @@ async fn static_pages_are_served() {
     for path in [
         "/",
         "/host",
+        "/tv",
         "/admin",
         "/admin/questions",
         "/admin-questions.js",
@@ -476,6 +477,8 @@ async fn static_pages_are_served() {
         .await
         .unwrap();
     assert_eq!(qr.headers()["content-type"], "image/svg+xml");
+    let tv = reqwest::get(format!("http://{addr}/tv")).await.unwrap();
+    assert!(tv.text().await.unwrap().contains("host.js"));
 }
 
 #[tokio::test]
