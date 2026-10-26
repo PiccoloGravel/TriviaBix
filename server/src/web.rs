@@ -51,6 +51,7 @@ pub(crate) struct AppState {
     pub render: crate::render::Render,
     pub settings: crate::settings::Settings,
     pub packs: crate::packs::Packs,
+    pub personas: crate::personas::Personas,
 }
 
 pub async fn router(config: Config) -> anyhow::Result<Router> {
@@ -103,7 +104,6 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         api_key: settings.get("LIDARR_API_KEY"),
         ..config.library.clone()
     });
-    tokio::spawn(library.clone().run(db.clone()));
     let music = Music {
         itunes,
         library,
@@ -130,6 +130,17 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         settings.clone(),
     );
     render.recover().await;
+    let personas = crate::personas::Personas::new(
+        db.clone(),
+        settings.clone(),
+        render.clone(),
+        &config.content_dir,
+    );
+    if let Err(e) = personas.sync().await {
+        tracing::warn!("personas: {e}");
+    }
+    // After the startup writes above, so its first sync doesn't find the database busy.
+    tokio::spawn(music.library.clone().run(db.clone()));
     let state = AppState {
         rooms,
         db,
@@ -144,6 +155,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         render: render.clone(),
         settings,
         packs,
+        personas,
     };
     // New questions and Claude's host lines are loaded and queued for the voice as soon as
     // they're written.
@@ -281,6 +293,7 @@ async fn voice_line(State(app): State<AppState>, Path(hash): Path<String>) -> Re
 /// Queues every line the game can know ahead, such as after Bix's voice changes, so the next
 /// voice run makes them all in the new voice.
 pub(crate) async fn warm_all(app: &AppState) {
+    app.voice.clear_queue();
     app.voice.warm(app.script.fixed_lines(), false);
     warm_questions(&app.voice, &app.db, &app.host_name).await;
     warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;

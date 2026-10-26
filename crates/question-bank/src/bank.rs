@@ -99,8 +99,14 @@ pub struct QuestionBank {
 }
 
 impl QuestionBank {
-    /// Load `<dir>/categories.toml` and every `.toml` and `.json` pack under `<dir>/packs`.
+    /// Load `<dir>/categories.toml` and every `.toml` and `.json` pack under `<dir>/packs`, with
+    /// the host lines under `<dir>/scripts` that aren't any persona's own (see [`Persona`]).
     pub fn load_dir(dir: impl AsRef<Path>) -> Result<Self, LoadError> {
+        Self::load_dir_as(dir, &Persona::default())
+    }
+
+    /// Like [`QuestionBank::load_dir`], with the host lines `persona` speaks.
+    pub fn load_dir_as(dir: impl AsRef<Path>, persona: &Persona) -> Result<Self, LoadError> {
         let dir = dir.as_ref();
         let cat_path = dir.join("categories.toml");
         let text = read(&cat_path)?;
@@ -125,7 +131,7 @@ impl QuestionBank {
         }
         let mut bank = Self::new(cats.categories, questions).map_err(LoadError::Invalid)?;
         bank.packs = packs;
-        bank.load_scripts(&dir.join("scripts"))?;
+        bank.load_scripts(&dir.join("scripts"), persona)?;
         let kept_path = dir.join(NOT_DUPLICATES);
         bank.kept = NotDuplicates::read(&kept_path).map_err(|message| LoadError::Parse {
             path: kept_path,
@@ -148,13 +154,21 @@ impl QuestionBank {
         Ok(bank)
     }
 
-    /// Attach every script file under `dir` to the questions it names.
-    fn load_scripts(&mut self, dir: &Path) -> Result<(), LoadError> {
+    /// Attach every script file under `dir` to the questions it names. Files in another persona's
+    /// folder are left out; the persona's own lines replace the others for the slots they cover.
+    fn load_scripts(&mut self, dir: &Path, persona: &Persona) -> Result<(), LoadError> {
         let mut files = Vec::new();
         collect_pack_files(dir, &mut files)?;
         files.sort();
+        let own_dir = persona.folder.as_ref().map(|f| dir.join(f));
         let mut problems = Vec::new();
+        // Question index -> (lines from shared files, the persona's own lines).
+        let mut found: BTreeMap<usize, (Vec<ScriptLine>, Vec<ScriptLine>)> = BTreeMap::new();
         for path in files {
+            let own = own_dir.as_ref().is_some_and(|d| path.starts_with(d));
+            if !own && path.starts_with(dir.join(PERSONAS_DIR)) {
+                continue;
+            }
             let file = ScriptFile::read(&path).map_err(|message| LoadError::Parse {
                 path: path.clone(),
                 message,
@@ -171,7 +185,7 @@ impl QuestionBank {
                         .push(problem(&at, "no question has this id; was it reworded?"));
                     continue;
                 };
-                let q = &mut self.questions[i];
+                let q = &self.questions[i];
                 if !entry.matches_prompt(q) {
                     self.warnings.push(problem(
                         &at,
@@ -181,12 +195,26 @@ impl QuestionBank {
                         ),
                     ));
                 }
+                let lines = found.entry(i).or_default();
                 for line in entry.lines(q.rating) {
                     for p in validate_line(&line) {
                         problems.push(problem(&at, &p));
                     }
-                    q.script.push(line);
+                    if own { &mut lines.1 } else { &mut lines.0 }.push(line);
                 }
+            }
+        }
+        for (i, (shared, own)) in found {
+            let q = &mut self.questions[i];
+            if persona.folder.is_none() {
+                q.script.extend(shared);
+                continue;
+            }
+            let covered: HashSet<ScriptSlot> = own.iter().map(|l| l.slot).collect();
+            q.script.extend(own);
+            if persona.fill_gaps {
+                q.script
+                    .extend(shared.into_iter().filter(|l| !covered.contains(&l.slot)));
             }
         }
         if problems.is_empty() {
@@ -493,6 +521,50 @@ fn collect_pack_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), LoadErro
     Ok(())
 }
 
+/// The folder under `scripts/` that holds each persona's own lines, one folder per persona.
+pub const PERSONAS_DIR: &str = "personas";
+
+/// Whose host lines a bank loads. By default, every script file except those in a persona's
+/// folder (`scripts/personas/<name>/`). With a folder, that persona's own lines, and where it has
+/// none for a question's slot, the shared ones if `fill_gaps`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Persona {
+    /// The persona's folder under `scripts/`, such as `personas/late-night`.
+    pub folder: Option<PathBuf>,
+    pub fill_gaps: bool,
+}
+
+impl Persona {
+    /// The persona in `SCRIPTS_PERSONA` (its folder under `scripts/`, which must be in
+    /// `personas/`), filling gaps with the shared lines unless `SCRIPTS_FILL_GAPS=0`.
+    pub fn from_env() -> Self {
+        let folder = std::env::var("SCRIPTS_PERSONA")
+            .ok()
+            .map(PathBuf::from)
+            .filter(|f| Self::is_folder(f));
+        Persona {
+            folder,
+            fill_gaps: std::env::var("SCRIPTS_FILL_GAPS").map_or(true, |v| v != "0"),
+        }
+    }
+
+    /// Whether `folder` names a persona's folder: `personas/<name>`, nothing more.
+    pub fn is_folder(folder: &Path) -> bool {
+        let mut parts = folder.components();
+        matches!(parts.next(), Some(std::path::Component::Normal(p)) if p == PERSONAS_DIR)
+            && matches!(parts.next(), Some(std::path::Component::Normal(_)))
+            && parts.next().is_none()
+    }
+
+    /// The same persona, with only its own lines: what's missing is what it hasn't said itself.
+    pub fn own_only(&self) -> Self {
+        Persona {
+            folder: self.folder.clone(),
+            fill_gaps: self.folder.is_none(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -673,6 +745,84 @@ answer = "Diamond"
         let bank = QuestionBank::load_dir(&dir).unwrap();
         assert!(bank.duplicates().is_empty());
         assert!(bank.warnings().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn each_persona_speaks_its_own_lines() {
+        let dir = std::env::temp_dir().join(format!("tbx-personas-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("packs")).unwrap();
+        std::fs::create_dir_all(dir.join("scripts/starter")).unwrap();
+        std::fs::create_dir_all(dir.join("scripts/personas/pirate")).unwrap();
+        std::fs::create_dir_all(dir.join("scripts/personas/robot")).unwrap();
+        std::fs::write(
+            dir.join("categories.toml"),
+            "[[category]]\nslug = \"science\"\nname = \"Science\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("packs/a.toml"),
+            "[pack]\ncategory = \"science\"\n[[question]]\nid = \"one\"\ntype = \"true_false\"\nprompt = \"Water is wet.\"\nanswer = true\n[[question]]\nid = \"two\"\ntype = \"true_false\"\nprompt = \"Fire is cold.\"\nanswer = false\n",
+        )
+        .unwrap();
+        let script = |q: &str, lead: &str, reveal: Option<&str>| {
+            let mut s = format!("[[script]]\nquestion = \"{q}\"\nlead_in = \"{lead}\"\n");
+            if let Some(r) = reveal {
+                s += &format!("reveal = \"{r}\"\n");
+            }
+            s
+        };
+        std::fs::write(
+            dir.join("scripts/starter/a.toml"),
+            script("one", "Shared one.", Some("Shared reveal."))
+                + &script("two", "Shared two.", None),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("scripts/personas/pirate/a.toml"),
+            script("one", "Arr, one.", None),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("scripts/personas/robot/a.toml"),
+            script("one", "Beep.", None),
+        )
+        .unwrap();
+        let texts = |p: &Persona, id: &str| -> Vec<String> {
+            let bank = QuestionBank::load_dir_as(&dir, p).unwrap_or_else(|e| panic!("{e}"));
+            bank.get(id)
+                .unwrap()
+                .script
+                .iter()
+                .map(|l| l.text.clone())
+                .collect()
+        };
+
+        // The original persona never hears another persona's lines.
+        let original = Persona::default();
+        assert_eq!(texts(&original, "one"), ["Shared one.", "Shared reveal."]);
+        let pirate = Persona {
+            folder: Some("personas/pirate".into()),
+            fill_gaps: true,
+        };
+        // Its own lead-in replaces the shared one; the shared reveal fills the gap.
+        assert_eq!(texts(&pirate, "one"), ["Arr, one.", "Shared reveal."]);
+        assert_eq!(texts(&pirate, "two"), ["Shared two."]);
+        // Only its own, to count what it still needs.
+        assert_eq!(texts(&pirate.own_only(), "one"), ["Arr, one."]);
+        assert!(texts(&pirate.own_only(), "two").is_empty());
+        assert_eq!(
+            original.own_only(),
+            Persona {
+                folder: None,
+                fill_gaps: true
+            }
+        );
+
+        assert!(Persona::is_folder(Path::new("personas/pirate")));
+        assert!(!Persona::is_folder(Path::new("personas")));
+        assert!(!Persona::is_folder(Path::new("personas/../starter")));
+        assert!(!Persona::is_folder(Path::new("starter/x")));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

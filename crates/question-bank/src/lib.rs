@@ -34,7 +34,8 @@ pub mod generate;
 pub mod import;
 
 pub use bank::{
-    load_pack, validate_question, Filter, LoadError, Problem, QuestionBank, Stats, NOT_DUPLICATES,
+    load_pack, validate_question, Filter, LoadError, Persona, Problem, QuestionBank, Stats,
+    NOT_DUPLICATES, PERSONAS_DIR,
 };
 pub use dupes::{
     screen, DuplicateIndex, DuplicatePair, KeptPair, Match, NotDuplicates, Screened, Verdict,

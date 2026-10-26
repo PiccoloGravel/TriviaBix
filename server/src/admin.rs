@@ -104,6 +104,15 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/packs/{id}", axum::routing::put(update_pack))
         .route("/api/admin/packs/{id}/use", post(use_pack))
         .route("/api/admin/packs/{id}/sample", get(pack_sample))
+        .route(
+            "/api/admin/personas",
+            get(list_personas).post(create_persona),
+        )
+        .route(
+            "/api/admin/personas/{id}",
+            axum::routing::put(update_persona),
+        )
+        .route("/api/admin/personas/{id}/use", post(use_persona))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -589,6 +598,11 @@ async fn settings_set(State(app): State<AppState>, Json(body): Json<SettingBody>
     match body.key.as_str() {
         "TTS_URL" => app.voice.set_default(s.get("TTS_URL").as_deref()),
         "BIX_VOICE" => voice_changed(&app).await,
+        "HOST_PERSONA" => {
+            if let Err(e) = app.personas.sync().await {
+                tracing::warn!("personas: {e}");
+            }
+        }
         "BIX_SPEED" => {
             if let Err(e) = app.packs.sync().await {
                 tracing::warn!("voice packs: {e}");
@@ -758,4 +772,121 @@ async fn pack_sample(State(app): State<AppState>, Path(id): Path<i64>) -> Respon
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// Bix's personas, the one in use first.
+async fn list_personas(State(app): State<AppState>) -> Response {
+    match app.personas.list().await {
+        Ok(personas) => Json(json!({
+            "personas": personas,
+            "busy": lines_running(&app),
+            "max_chars": triviabix_questions::MAX_PERSONA_CHARS,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        )
+            .into_response(),
+    }
+}
+
+/// A run writing or voicing lines is working for the persona in use, so switching waits.
+fn lines_running(app: &AppState) -> bool {
+    app.render.current(0).is_some_and(|j| {
+        j.state == "running"
+            && matches!(
+                j.kind,
+                crate::render::Kind::Lines | crate::render::Kind::Voice
+            )
+    })
+}
+
+const PERSONA_LATER: &str =
+    "A run is writing or voicing lines for the persona in use. Switch personas when it's done.";
+
+#[derive(Deserialize)]
+struct NewPersona {
+    name: String,
+    persona: String,
+    #[serde(default = "yes")]
+    fill_gaps: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+async fn create_persona(State(app): State<AppState>, Json(body): Json<NewPersona>) -> Response {
+    match app
+        .personas
+        .create(&body.name, &body.persona, body.fill_gaps)
+        .await
+    {
+        Ok(_) => list_personas(State(app)).await,
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct PersonaChange {
+    name: Option<String>,
+    persona: Option<String>,
+    fill_gaps: Option<bool>,
+}
+
+async fn update_persona(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<PersonaChange>,
+) -> Response {
+    if body.fill_gaps.is_some() && lines_running(&app) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": PERSONA_LATER })),
+        )
+            .into_response();
+    }
+    match app
+        .personas
+        .update(
+            id,
+            body.name.as_deref(),
+            body.persona.as_deref(),
+            body.fill_gaps,
+        )
+        .await
+    {
+        Ok(changed) => {
+            if changed {
+                lines_changed(&app).await;
+            }
+            list_personas(State(app)).await
+        }
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Switches Bix to a persona: its lines play from the next question on, and the next line and
+/// voice runs fill in what it lacks.
+async fn use_persona(State(app): State<AppState>, Path(id): Path<i64>) -> Response {
+    if lines_running(&app) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": PERSONA_LATER })),
+        )
+            .into_response();
+    }
+    if let Err(e) = app.personas.switch(id).await {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
+    }
+    tracing::info!("admin switched Bix's persona to {id}");
+    lines_changed(&app).await;
+    list_personas(State(app)).await
+}
+
+/// The lines in play changed: load them, and queue them for the voice.
+async fn lines_changed(app: &AppState) {
+    crate::web::load_content(&app.db, &app.content_dir).await;
+    crate::web::warm_all(app).await;
 }

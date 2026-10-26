@@ -521,6 +521,8 @@ struct Inner {
     previews: Mutex<HashMap<String, Preview>>,
     previewing: Mutex<bool>,
     missing: tokio::sync::Mutex<Option<(Instant, Missing)>>,
+    /// The persona Bix's lines are written for, and where they're saved.
+    persona: Mutex<triviabix_questions::Persona>,
     finished: broadcast::Sender<Kind>,
 }
 
@@ -567,8 +569,15 @@ impl Render {
             previews: Default::default(),
             previewing: Mutex::new(false),
             missing: Default::default(),
+            persona: Default::default(),
             finished: broadcast::channel(8).0,
         }))
+    }
+
+    /// Writes lines for this persona from now on (see crate::personas), and counts again.
+    pub async fn set_persona(&self, persona: triviabix_questions::Persona) {
+        *self.0.persona.lock().unwrap() = persona;
+        self.forget_missing().await;
     }
 
     /// Counts what's missing again next time, e.g. after the art models change.
@@ -1487,9 +1496,23 @@ impl Render {
             }
             Kind::Lines => {
                 let mut cmd = Command::new(&c.questions_bin);
+                let persona = self.0.persona.lock().unwrap().clone();
+                let into = match &persona.folder {
+                    // A persona's own folder, and only what it hasn't said itself counts as missing.
+                    Some(folder) => {
+                        cmd.env("SCRIPTS_PERSONA", folder);
+                        folder.clone()
+                    }
+                    None => {
+                        cmd.env_remove("SCRIPTS_PERSONA");
+                        PathBuf::from(LINES_FOLDER)
+                    }
+                };
                 cmd.arg("--content")
                     .arg(&self.0.content_dir)
-                    .args(["scripts", "generate", "--into", LINES_FOLDER, "--limit"])
+                    .args(["scripts", "generate", "--into"])
+                    .arg(into)
+                    .arg("--limit")
                     .arg(o.limit.unwrap_or(50).to_string())
                     .args(["--missing", o.missing.as_deref().unwrap_or("either")]);
                 if let Some(ids) = &o.ids {
