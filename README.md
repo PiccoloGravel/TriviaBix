@@ -49,8 +49,9 @@ each, and only placeholders that event fills in). Reveals and scoreboards stretc
 Every question can also have its own lines: a **lead-in** Bix says right after announcing the question, and a **reveal**
 line (a joke, anecdote, or fun fact) right after the answer, before his usual reactions and roasts. They're rated too, so a PG room
 hears the clean version and an MA room gets the spicy one. A question without its own lines falls back to the generic
-script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more, or edit
-them in the admin panel.
+script. Every question that ships has both; see [content/README.md](content/README.md#host-scripts) for writing more (by hand, or with
+`triviabix-questions scripts generate`, which has Claude write them if you set an Anthropic API key), or edit them in the
+admin panel.
 
 The voice is the browser's built-in text-to-speech, picking the best free voice it finds (Edge's "Natural" voices and Chrome's
 Google voices sound much better than the defaults). Press **V** on the TV to cycle voices; the choice is remembered.

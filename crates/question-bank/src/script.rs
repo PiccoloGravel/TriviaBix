@@ -45,7 +45,7 @@ impl OneOrMany {
         }
     }
 
-    fn from_texts(mut texts: Vec<String>) -> Self {
+    pub(crate) fn from_texts(mut texts: Vec<String>) -> Self {
         if texts.len() == 1 {
             OneOrMany::One(texts.remove(0))
         } else {
@@ -166,13 +166,22 @@ impl ScriptFile {
         toml::to_string_pretty(self).map_err(|e| e.to_string())
     }
 
-    /// Adds or replaces entries by question id, keeping the file's order. Returns how many
-    /// entries were new.
+    /// Adds or replaces entries by question id, keeping the file's order. A slot an entry leaves
+    /// out keeps the lines it had. Returns how many entries were new.
     pub fn merge(&mut self, entries: impl IntoIterator<Item = ScriptEntry>) -> usize {
         let mut added = 0;
         for e in entries {
             match self.scripts.iter_mut().find(|s| s.question == e.question) {
-                Some(slot) => *slot = e,
+                // A slot the new entry leaves out keeps its old lines.
+                Some(old) => {
+                    let lead_in = e.lead_in.or(old.lead_in.take());
+                    let reveal = e.reveal.or(old.reveal.take());
+                    *old = ScriptEntry {
+                        lead_in,
+                        reveal,
+                        ..e
+                    };
+                }
                 None => {
                     self.scripts.push(e);
                     added += 1;
@@ -306,6 +315,21 @@ reveal = { PG = "Tame.", MA = ["Spicy.", "Spicier."] }
         assert_eq!(file.merge([entry("a", "new"), entry("c", "c")]), 1);
         assert_eq!(file.scripts.len(), 3);
         assert_eq!(file.scripts[0], entry("a", "new"));
+
+        let reveal_only = ScriptEntry {
+            question: "b".into(),
+            prompt: None,
+            lead_in: None,
+            reveal: Some(Lines::Plain(OneOrMany::One("ta-da".into()))),
+        };
+        file.merge([reveal_only.clone()]);
+        assert_eq!(
+            file.scripts[1],
+            ScriptEntry {
+                lead_in: entry("b", "b").lead_in,
+                ..reveal_only
+            }
+        );
     }
 
     #[test]

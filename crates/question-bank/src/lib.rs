@@ -12,6 +12,8 @@ mod pack;
 mod script;
 
 #[cfg(feature = "cli")]
+pub mod generate;
+#[cfg(feature = "cli")]
 pub mod import;
 
 pub use bank::{load_pack, validate_question, Filter, LoadError, Problem, QuestionBank, Stats};
