@@ -66,9 +66,11 @@ BATCH_CMD = f"cd /app && {INLINE_PY}"
 JOB_IN = "/in"
 # Minutes from renting to the first line: pulling the image, downloading and loading the model.
 VOICE_BOOT_MIN = 8
-# Lines a minute the batch job makes on an RTX 4090 until a run has measured it (several copies of the model
-# at once, about 4 seconds of speech a line). Saved runs' measurements go in the asset store's SPEEDS file.
-VOICE_RATE = 60
+# Lines a minute the batch job makes on an RTX 4090 until a run has measured it (a few copies of the model,
+# each voicing 16 lines side by side). A guess: one line at a time measured about 40. Saved runs'
+# measurements go in the asset store's SPEEDS file, under VOICE_SPEED_KEY.
+VOICE_RATE = 150
+VOICE_SPEED_KEY = "voice-batched"
 SPEEDS = "gpu-speeds.json"
 # Candidate voices for Bix in the asset store (docs/assets.md). BIX_VOICE=clone:<key> picks one.
 SAMPLE_KIND = "voice-sample"
@@ -938,7 +940,7 @@ def voice_key(bix_voice: str, clip: tuple[bytes, str, str] | None) -> str:
 def voice_rate(store: Store) -> float:
     """Lines a minute the batch job makes on an RTX 4090: what the last run measured, else a guess."""
     try:
-        return float(json.loads((store.root / SPEEDS).read_text())["voice"]["lines_per_min"])
+        return float(json.loads((store.root / SPEEDS).read_text())[VOICE_SPEED_KEY]["lines_per_min"])
     except (OSError, ValueError, KeyError, TypeError):
         return VOICE_RATE
 
@@ -952,7 +954,7 @@ def remember_rate(store: Store, offer: dict, stats: dict):
     try:
         path = store.root / SPEEDS
         speeds = json.loads(path.read_text()) if path.exists() else {}
-        speeds["voice"] = {"lines_per_min": round(rate, 1), "gpu": offer.get("gpu_name"),
+        speeds[VOICE_SPEED_KEY] = {"lines_per_min": round(rate, 1), "gpu": offer.get("gpu_name"),
                            "workers": stats.get("workers"), "measured": int(time.time())}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(speeds, indent=2) + "\n")
