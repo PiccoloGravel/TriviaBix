@@ -61,6 +61,105 @@ rating = "PG-13"
 """
 
 
+class Themes(unittest.TestCase):
+    """Themes, category styles and the admin Art page's entries (art/studio.json in appdata)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        (self.tmp / "catalog.toml").write_text(CATALOG)
+        (self.tmp / "categories.toml").write_text(CATEGORIES)
+        self.root, self.lib = self.tmp / "art", self.tmp / "assets"
+        self.studio = {"themes": [{"id": "pixel", "name": "Pixel", "prompt": "pixel art", "palette": "pink and cyan"}],
+                       "category_styles": {"science": "test tubes and stars"}}
+
+    def jobs(self, studio=None, theme="bix"):
+        return {j.key: j for j in generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml",
+                                                     studio, theme)}
+
+    def gen(self, theme, studio, *args):
+        path = self.tmp / "studio.json"
+        path.write_text(json.dumps(studio))
+        return generate.main(["--out", str(generate.theme_out(self.root, theme)), "--library", str(self.lib),
+                              "--catalog", str(self.tmp / "catalog.toml"), "--categories", str(self.tmp / "categories.toml"),
+                              "--studio", str(path), "--theme", theme, *args])
+
+    def test_an_empty_studio_changes_nothing(self):
+        plain = self.jobs()
+        self.assertEqual(plain, self.jobs({}))
+        self.assertEqual({k: (j.prompt, j.seed, j.version) for k, j in plain.items()},
+                         {k: (j.prompt, j.seed, j.version) for k, j in self.jobs({"themes": self.studio["themes"]}).items()},
+                         "adding a theme leaves the default theme's art alone")
+
+    def test_a_theme_swaps_the_look_and_keeps_the_rest(self):
+        jobs = self.jobs(self.studio, "pixel")
+        self.assertTrue(jobs["sticker:trophy"].prompt.startswith("pixel art, pink and cyan, a trophy, on white"))
+        self.assertEqual(jobs["backdrop:stage"].version, "pixel-v1")
+        self.assertEqual(jobs["clip:stage"].prompt, "lights pulse")
+        self.assertEqual(generate.theme_out(self.root, "pixel"), self.root / "themes" / "pixel")
+        self.assertEqual(generate.theme_out(self.root, "bix"), self.root)
+        with self.assertRaises(SystemExit):
+            self.jobs(self.studio, "nope")
+        with self.assertRaises(SystemExit):
+            self.jobs({"themes": [{"id": "bix", "prompt": "x"}]})
+
+    def test_category_styles_go_on_the_card(self):
+        jobs = self.jobs(self.studio)
+        self.assertIn("Space., test tubes and stars, wide", jobs["category:science"].prompt)
+        self.assertNotIn("test tubes", jobs["category:after-dark"].prompt)
+        # A theme's own style for a category wins over the everywhere one.
+        studio = {**self.studio, "themes": [{**self.studio["themes"][0], "category_styles": {"science": "pixel planets"}}]}
+        self.assertIn("pixel planets", self.jobs(studio, "pixel")["category:science"].prompt)
+        self.assertIn("test tubes", self.jobs(studio)["category:science"].prompt)
+
+    def test_entries_add_change_and_hide_pieces(self):
+        studio = {"entries": [
+            {"kind": "sticker", "id": "duck", "prompt": "a rubber duck", "tags": ["funny"], "rating": "PG-13"},
+            {"kind": "sticker", "id": "trophy", "tags": ["winner", "gold"]},
+            {"kind": "backdrop", "id": "spicy", "hidden": True},
+            {"kind": "clip", "id": "spicy", "hidden": True},
+            {"kind": "backdrop", "id": "stage", "seed": 42, "theme": "pixel"},
+            {"kind": "category", "id": "science", "seed": 9, "tags": ["nerdy"]},
+        ], **{k: v for k, v in self.studio.items() if k == "themes"}}
+        jobs = self.jobs(studio)
+        self.assertTrue(jobs["sticker:duck"].custom)
+        self.assertEqual(jobs["sticker:duck"].rating, "PG-13")
+        self.assertEqual(jobs["sticker:trophy"].tags, ["winner", "gold"])
+        self.assertNotIn("backdrop:spicy", jobs)
+        self.assertEqual(jobs["category:science"].tags, ["category", "category:science", "nerdy"])
+        self.assertEqual(jobs["category:science"].seed, 9)
+        self.assertEqual(jobs["backdrop:stage"].seed, 0, "a new take in one theme leaves the others alone")
+        self.assertEqual(self.jobs(studio, "pixel")["backdrop:stage"].seed, 42)
+        with self.assertRaises(SystemExit):
+            self.jobs({"entries": [{"kind": "sticker", "id": "nothing"}]})  # a new piece needs a prompt
+        with self.assertRaises(SystemExit):
+            self.jobs({"entries": [{"kind": "backdrop", "id": "spicy", "hidden": True}]})  # its clip has no backdrop
+
+    def test_themes_are_kept_side_by_side_and_takes_come_back(self):
+        self.assertEqual(self.gen("bix", self.studio, "--kinds", "backdrop,sticker"), 0)
+        self.assertEqual(self.gen("pixel", self.studio, "--kinds", "backdrop,sticker"), 0)
+        bix = json.loads((self.root / "manifest.json").read_text())["files"]
+        pixel = json.loads((self.root / "themes" / "pixel" / "manifest.json").read_text())["files"]
+        self.assertEqual(set(bix), set(pixel))
+        self.assertNotEqual(bix["bg/stage.webp"]["original"], pixel["bg/stage.webp"]["original"])
+        # A new take, then the old one back: the old one is free.
+        studio = {**self.studio, "entries": [{"kind": "backdrop", "id": "stage", "seed": 5, "theme": "pixel"}]}
+        self.assertEqual(self.gen("pixel", studio, "--kinds", "backdrop"), 0)
+        made = len(list((self.lib / "image").rglob("*.png")))
+        self.assertEqual(self.gen("pixel", self.studio, "--kinds", "backdrop"), 0,
+                         "the first take is still in the asset store")
+        self.assertEqual(len(list((self.lib / "image").rglob("*.png"))), made)
+        listing = generate.listing(self.tmp / "catalog.toml", self.tmp / "categories.toml", studio, "pixel",
+                                   self.root, Library(self.lib), "stub")
+        stage = next(i for i in listing["items"] if i["key"] == "backdrop:stage")
+        self.assertEqual(sorted(t["seed"] for t in stage["takes"]), [0, 5])
+        self.assertEqual(stage["file"], "themes/pixel/bg/stage.webp")
+        self.assertEqual(stage["status"], "stale", "the TV still has seed 0's file; seed 5 is asked for")
+        made = {t["id"]: t["made"] for t in listing["themes"]}
+        self.assertEqual(made["bix"], 3)
+        self.assertEqual(next(c for c in listing["categories"] if c["slug"] == "science")["style"], "test tubes and stars")
+
+
+
 class FakeGpu(StubBackend, GpuModels):
     """Draws like the stub but files art under the gpu backend's names, like a real GPU run would."""
 

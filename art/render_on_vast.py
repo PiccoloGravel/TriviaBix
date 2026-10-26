@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -86,13 +87,15 @@ def model_access(repos: list[str], token: str | None) -> str | None:
     return None
 
 
-def ship_code(dest: Path):
-    """Copies the generator's code and what it reads (the catalog, the categories) into `dest`, laid out
-    as in the image's /app."""
-    for rel in ("art/generate.py", "art/library.py", "art/catalog.toml", "content/categories.toml",
+def ship_code(dest: Path, studio: Path | None = None):
+    """Copies the generator's code and what it reads (the catalog, the themes, the categories, and the
+    admin Art page's changes as art/studio.json) into `dest`, laid out as in the image's /app."""
+    for rel in ("art/generate.py", "art/library.py", "art/catalog.toml", "art/themes.toml", "content/categories.toml",
                 *(str(p.relative_to(ROOT)) for p in sorted((ART / "backends").glob("*.py")))):
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, dest / rel)
+    if studio and studio.exists():
+        shutil.copy2(studio, dest / "art" / "studio.json")
 
 
 def event(name: str, **data):
@@ -119,8 +122,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--disk", default="80", help="GB of disk; the models are about 45 GB (default 80)")
     ap.add_argument("--yes", action="store_true", help="rent without asking")
     ap.add_argument("--dry-run", action="store_true", help="show what would be made and the price, rent nothing")
+    ap.add_argument("--studio", type=Path, default=os.environ.get("ART_STUDIO") or None,
+                    help="the admin Art page's themes and entries, as in generate.py")
+    ap.add_argument("--theme", default="bix", help="the art theme to make; --out should be its folder")
     args = ap.parse_args(argv)
 
+    if args.studio and args.studio.exists():
+        # The admin page's changes as they were when the run started, for every step of it, even if
+        # someone edits a piece while it runs.
+        snap = Path(tempfile.mkdtemp(prefix="triviabix-studio-")) / "studio.json"
+        shutil.copy2(args.studio, snap)
+        args.studio = snap
     if not VAST.exists():
         raise SystemExit(f"{VAST} is missing: it comes with the vast.ai runner (gpu/README.md).")
 
@@ -128,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     picked = [a for flag, v in (("--only", args.only), ("--kinds", args.kinds)) if v for a in (flag, v)]
     if args.force:
         picked.append("--force")
-    common = ["--out", str(args.out), "--library", str(args.library), *picked]
+    look = ["--theme", args.theme] + (["--studio", str(args.studio)] if args.studio else [])
+    common = ["--out", str(args.out), "--library", str(args.library), *look, *picked]
     code = generate("--backend", "offline", *common)
     needs = args.out / ".needs-gpu"
     if code == 0 or not needs.exists():
@@ -161,10 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     fast = ("export HF_XET_HIGH_PERFORMANCE=1; if python3 -c 'import hf_transfer' 2>/dev/null || "
             "pip install -q hf_transfer >/dev/null 2>&1; then export HF_HUB_ENABLE_HF_TRANSFER=1; fi; ")
     cmd = (f"{fast}cp -r /in/code/. /app/ && cd /app && python3 art/generate.py --backend gpu --out /out/gen "
-           f"--library /out/assets --only {','.join(todo)} --force")
+           f"--library /out/assets --only {','.join(todo)} --force --theme {shlex.quote(args.theme)}"
+           + (" --studio art/studio.json" if args.studio and args.studio.exists() else ""))
     with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp, \
             tempfile.TemporaryDirectory(prefix="triviabix-art-code-") as code:
-        ship_code(Path(code) / "code")
+        ship_code(Path(code) / "code", args.studio)
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
                "--input", code, "--keep-partial",
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,

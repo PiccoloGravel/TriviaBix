@@ -1,0 +1,46 @@
+# Art themes: the same catalog drawn in another look. See README.md ("Themes").
+#
+# The default theme, "bix" (Bix cartoon), is the [style] in catalog.toml. Each theme here replaces its
+# `prompt` (the look) and adds a `palette`, and can add to what stickers and backdrops get with
+# `sticker` and `backdrop`, or give category cards their own template with `category`. Every theme's
+# art is kept apart, in its own folder on the TV side and its own style in the asset store, so
+# switching themes on the admin Art page and back again never makes anything twice.
+#
+# Bump a theme's `version` when its look changes, so new art is made instead of old art being reused.
+# More themes can be made on the admin Art page; those are saved in appdata, not here.
+
+[[theme]]
+id = "retro-arcade"
+name = "Retro arcade"
+description = "16-bit pixel art, like a 90s arcade cabinet."
+prompt = """TriviaBix TV game show graphics as 16-bit pixel art, crisp chunky pixels, retro 1990s arcade \
+video game style, dithered shading, CRT glow, bold readable shapes, no text"""
+palette = "limited palette of hot pink, cyan, lime green, purple and black"
+version = "v1"
+
+[[theme]]
+id = "comic-book"
+name = "Comic book"
+description = "Inked pop-art comic panels with halftone dots."
+prompt = """TriviaBix TV game show graphics as a vintage comic book panel, bold black ink lines, Ben-Day \
+halftone dots, dramatic action lines, pop art, high contrast, no text, no speech bubbles"""
+palette = "primary red, yellow and blue with black ink on cream paper"
+version = "v1"
+
+[[theme]]
+id = "claymation"
+name = "Claymation"
+description = "Handmade plasticine models on a miniature set."
+prompt = """TriviaBix TV game show graphics as a stop-motion claymation diorama, handmade plasticine models \
+with visible fingerprints, soft studio lighting, tactile miniature set, playful and cheeky, no text"""
+palette = "warm saturated candy colours"
+version = "v1"
+
+[[theme]]
+id = "synthwave"
+name = "Synthwave"
+description = "80s chrome, glowing grids and sunsets."
+prompt = """TriviaBix TV game show graphics as 1980s synthwave poster art, chrome highlights, glowing \
+neon grid floor, airbrushed retro futurism, lens flares, no text"""
+palette = "magenta, deep purple, teal and sunset orange gradients"
+version = "v1"

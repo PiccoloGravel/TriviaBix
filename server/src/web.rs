@@ -223,12 +223,16 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             "/admin/render",
             ServeFile::new(dir.join("admin-pipeline.html")),
         )
-        // Art made from the admin panel lives in appdata; the art the server ships is the fallback.
+        // Art made from the admin panel lives in appdata, in the theme in use (crate::art); the
+        // art the server ships is the fallback.
+        .nest("/cutscenes/assets/gen", Router::new().fallback(themed_art))
+        // Every theme's files by their own path, for the admin Art page.
         .nest_service(
-            "/cutscenes/assets/gen",
+            "/art-files",
             ServeDir::new(&config.render.art_dir)
                 .fallback(ServeDir::new(dir.join("cutscenes/assets/gen"))),
         )
+        .route_service("/admin/art", ServeFile::new(dir.join("admin-art.html")))
         .fallback_service(ServeDir::new(dir))
         // Browsers check the pages and scripts are current on every load (a cheap 304 when they
         // are), so an update reaches the admin panel and TV without a hard refresh.
@@ -238,6 +242,29 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         ))
         .layer(TraceLayer::new_for_http())
         .with_state(state))
+}
+
+/// The TV's generated art, in the theme in use: its own files first, then the default theme's,
+/// then the art the server ships. Its manifest lists both, the theme's winning.
+async fn themed_art(State(app): State<AppState>, req: axum::extract::Request) -> Response {
+    use tower::ServiceExt;
+    let render = &app.render;
+    let theme = render.art_theme();
+    let (art, shipped) = (render.art_dir().to_path_buf(), render.shipped_art());
+    let base = ServeDir::new(&art).fallback(ServeDir::new(&shipped));
+    if theme == crate::art::DEFAULT_THEME {
+        return base.oneshot(req).await.into_response();
+    }
+    if req.uri().path() == "/manifest.json"
+        && let Some(m) = crate::art::merged_manifest(&art, &shipped, &theme)
+    {
+        return Json(m).into_response();
+    }
+    ServeDir::new(render.theme_dir(&theme))
+        .fallback(base)
+        .oneshot(req)
+        .await
+        .into_response()
 }
 
 async fn health(State(app): State<AppState>) -> Response {
