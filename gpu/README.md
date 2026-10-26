@@ -145,8 +145,9 @@ the way into the container.
   the instance also destroys itself at the time limit, so it stops even if the computer running the
   script goes to sleep or loses its connection. If it can't, it exits, which stops the GPU charge; a
   stopped instance's disk costs pennies a day until `cleanup`.
-- **One at a time:** it won't rent a second TriviaBix instance while one is running (`--another` to
-  override).
+- **One of each kind at a time:** it won't rent a second instance for the same kind of job (voice, design,
+  or art with `run --kind art`) while one is running (`--another` to override). Different kinds, like
+  voice and art, run side by side, each on its own GPU.
 - `python3 gpu/vast.py list` shows what's running and its price; `python3 gpu/vast.py cleanup` destroys
   every TriviaBix instance, and `python3 gpu/vast.py destroy ID` one of them. Instances are labeled `triviabix-...` and nothing else on the account is
   touched.

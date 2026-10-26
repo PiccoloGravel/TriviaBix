@@ -624,12 +624,14 @@ def confirm(offer: dict, minutes: float, yes: bool, what: str):
         raise Abort("not renting")
 
 
-def refuse_doubles(vast: Vast, another: bool):
-    running = vast.ours()
+def refuse_doubles(vast: Vast, another: bool, kind: str = "job"):
+    """Refuses a second instance of the same kind (a voice run while one is voicing, say); instances of other
+    kinds, like art next to voice, are left alone so different jobs can run side by side."""
+    running = [i for i in vast.ours() if str(i.get("label") or "") == f"{LABEL}-{kind}"]
     if running and not another:
         ids = ", ".join(str(i["id"]) for i in running)
-        raise Abort(f"TriviaBix instances are already running ({ids}). Run `python3 gpu/vast.py cleanup` first, "
-                    "or pass --another to rent one more.")
+        raise Abort(f"TriviaBix {kind} instances are already running ({ids}). Run `python3 gpu/vast.py cleanup` "
+                    "first, or pass --another to rent one more.")
 
 
 def on_signals():
@@ -646,7 +648,7 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
             max_minutes: float = 60, disk: float = 40, env: dict | None = None, login: str | None = None,
             boot_minutes: float = 20, yes: bool = False, dry_run: bool = False, another: bool = False,
             vast: Vast | None = None, work_minutes: float | None = None, boot_estimate: float = 0,
-            offload_below_gb: float = 0) -> int:
+            offload_below_gb: float = 0, kind: str = "job") -> int:
     """Runs `cmd` in `image` on a rented GPU, copies the container's `out` folder into `to`, and destroys the
     instance. Returns the command's exit code. With `work_minutes` (the job's length on an RTX 4090), the GPU
     is picked by the expected cost of the whole job and the estimate is shown with the price."""
@@ -655,7 +657,8 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
     confirm(offers[0], max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
     if dry_run:
         return 0
-    return run_rented(vast, offers, image, cmd, to, out, max_minutes, disk, env, login, boot_minutes, another)
+    return run_rented(vast, offers, image, cmd, to, out, max_minutes, disk, env, login, boot_minutes, another,
+                      kind=kind)
 
 
 def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str = "/out", max_minutes: float = 60,
@@ -665,7 +668,7 @@ def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str
     """`run_job` once the price is confirmed. `inputs`, a folder, is uploaded to the instance's /in before
     `cmd` starts, in one go. `partial(folder)`, if given, is called every `partial_every` seconds with what
     the job has written to `out` since the last call, so results come home while it works."""
-    refuse_doubles(vast, another)
+    refuse_doubles(vast, another, kind)
     on_signals()
     job_inputs = JOB_IN if inputs else None
     with Rental(vast, offers, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login,
@@ -912,7 +915,7 @@ def design(description: str, texts: list[str] | str, count: int = 4, mode: str =
         env["HF_TOKEN"] = os.environ["HF_TOKEN"]
     with tempfile.TemporaryDirectory(prefix="triviabix-voice-") as tmp:
         code = run_job(image, cmd, tmp, DESIGN_OUT, min_vram, max_price, max_minutes, disk, env, login,
-                       boot_minutes, yes, dry_run, another, vast)
+                       boot_minutes, yes, dry_run, another, vast, kind="design")
         if dry_run:
             return code
         saved = 0
@@ -1069,7 +1072,7 @@ def serve_voice(server: str, password: str, bix_voice: str = "ip:US_James", hour
     confirm(offers[0], minutes, yes or dry_run, "would voice lines" if dry_run else "voicing lines")
     if dry_run:
         return
-    refuse_doubles(vast, another)
+    refuse_doubles(vast, another, "voice")
     on_signals()
     env = voice_env(bix_voice)
     cmd = VOICE_CMD
@@ -1137,7 +1140,8 @@ def main(argv=None) -> int:
                              'and GHCR_USER for ghcr.io)')
         sp.add_argument("--yes", action="store_true", help="rent without asking")
         sp.add_argument("--dry-run", action="store_true", help="show the GPU and price, rent nothing")
-        sp.add_argument("--another", action="store_true", help="rent even if a TriviaBix instance is running")
+        sp.add_argument("--another", action="store_true",
+                        help="rent even if a TriviaBix instance of the same kind is running")
 
     o = sub.add_parser("offers", help="list the cheapest suitable GPUs")
     o.add_argument("--min-vram", type=float, default=16)
@@ -1180,6 +1184,8 @@ def main(argv=None) -> int:
     r.add_argument("--boot-estimate", type=float, default=0, help="minutes to start up, for the estimate")
     r.add_argument("--offload-below", type=float, default=0,
                    help="GB of GPU memory under which the job runs slower (models moved in and out), for the estimate")
+    r.add_argument("--kind", default="job",
+                   help="what the job makes, e.g. art; one job of each kind can run at a time (default job)")
     renting(r, 16, 0.5)
 
     sub.add_parser("list", help="TriviaBix instances on your account")
@@ -1214,7 +1220,7 @@ def main(argv=None) -> int:
             return run_job(args.image, args.cmd, args.to, args.out, args.min_vram, args.max_price,
                            args.max_minutes, args.disk, env, args.login, args.boot_minutes, args.yes,
                            args.dry_run, args.another, work_minutes=args.work_minutes,
-                           boot_estimate=args.boot_estimate, offload_below_gb=args.offload_below)
+                           boot_estimate=args.boot_estimate, offload_below_gb=args.offload_below, kind=args.kind)
         elif args.command == "list":
             for i in Vast().ours():
                 up = (time.time() - (i.get("start_date") or time.time())) / 3600

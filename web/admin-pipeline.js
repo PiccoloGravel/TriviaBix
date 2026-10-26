@@ -40,12 +40,26 @@ let packs = { packs: [], built_in: [], speeds: [], voice_running: false };
 /** Bix's personas, the one in use first. */
 let personas = { personas: [], busy: false, max_chars: 2000 };
 let pipeline = { batches: [], questions: null };
-let checking = null;
+/** The kinds with a price check under way; different kinds can check at once. */
+const checking = new Set();
 /** The job shown in the panel, and how much of its log is on screen. */
 let shown = null;
 let logSeq = 0;
 let logLines = [];
 let timer = null;
+
+/** Every running job. Different kinds run side by side, each on its own GPU. */
+function runningJobs() {
+  return (status && status.jobs) || [];
+}
+
+/** Whether a `kind` job can't start now: one of the same kind is running, or a cleanup (which
+ * destroys every GPU) is running next to a GPU job. Matches the server's rule. */
+function blocked(kind) {
+  return runningJobs().some((j) => j.kind === kind
+    || (kind === "cleanup" && KINDS[j.kind].gpu)
+    || (j.kind === "cleanup" && KINDS[kind].gpu));
+}
 
 async function api(path, body, method = "POST") {
   const res = await fetch(`/api/admin/${path}`, body === undefined ? {} : {
@@ -98,13 +112,15 @@ async function load(refresh = false) {
     return;
   }
   render();
-  if (status.job && (status.job.state === "running" || !shown)) follow(status.job);
+  // The panel opens on the newest job, and moves on from a finished one to one still running.
+  if (status.job && (!shown || (shown.state !== "running" && status.job.state === "running" && status.job.id !== shown.id))) follow(status.job);
+  else renderRunning();
   schedule();
 }
 
 function schedule() {
   clearTimeout(timer);
-  const running = status && status.job && status.job.state === "running";
+  const running = runningJobs().length > 0;
   // A finished import shows up in the game a moment later, once the server has reloaded the packs.
   const loading = pipeline && pipeline.batches.some((b) => nextStep(b) === "Waiting to load" && Date.now() - b.started_at < 120000);
   timer = setTimeout(tick, running || loading ? 2000 : 15000);
@@ -117,6 +133,9 @@ async function tick() {
       follow(job, true);
       if (job.state !== "running") {
         toast(`${KINDS[job.kind].title}: ${STATES[job.state].toLowerCase()}`, job.state === "done");
+        await load();
+      } else if (runningJobs().some((j) => j.id !== job.id)) {
+        // The other running jobs' rows stay current too.
         await load();
       }
     } catch { /* try again */ }
@@ -201,7 +220,7 @@ function options(kind) {
 const QUOTE_TTL = 14 * 60 * 1000;
 
 function quoteBox(kind) {
-  if (checking === kind) return el("div", { class: "quote" }, "Checking… (this rents nothing)");
+  if (checking.has(kind)) return el("div", { class: "quote" }, "Checking… (this rents nothing)");
   if (quotes[kind] && Date.now() - quotes[kind].at > QUOTE_TTL) delete quotes[kind];
   const q = quotes[kind];
   if (!q) return null;
@@ -247,7 +266,7 @@ function quoteBox(kind) {
 
 function card(kind) {
   const k = KINDS[kind];
-  const running = status.job && status.job.state === "running";
+  const running = blocked(kind);
   if (kind === "import") {
     const go = el("button", { onclick: importNow }, "Import");
     go.disabled = running || !canRun(kind);
@@ -262,7 +281,7 @@ function card(kind) {
   }
   const n = missingCount(kind);
   const btn = el("button", { class: "secondary", onclick: () => check(kind) }, k.gpu ? "Check the price" : "Check what it'd write");
-  btn.disabled = running || !!checking || !canRun(kind);
+  btn.disabled = running || checking.has(kind) || !canRun(kind);
   return el("div", { class: "card" },
     el("h2", {}, el("span", { class: "step" }, k.step), k.title),
     el("div", {}, el("span", { class: "count" }, n == null ? "?" : n.toLocaleString()), " ", el("span", { class: "what" }, k.what)),
@@ -483,9 +502,8 @@ function renderDesign() {
       el("div", { id: "design-action" }));
     $("#design").replaceChildren(designForm, el("div", { id: "design-voices" }));
   }
-  const running = status.job && status.job.state === "running";
   const btn = el("button", { class: "secondary", onclick: () => check("design") }, "Check the price");
-  btn.disabled = running || !!checking || !canRun("design");
+  btn.disabled = blocked("design") || checking.has("design") || !canRun("design");
   $("#design-action").replaceChildren(quoteBox("design") || btn);
   // Redrawn only when the candidates change, so the refresh doesn't stop a clip being listened to.
   const drawn = JSON.stringify(voices);
@@ -616,14 +634,14 @@ function renderBatches() {
 }
 
 async function check(kind) {
-  checking = kind;
+  checking.add(kind);
   renderCards();
   try {
     quotes[kind] = { ...await api("render/preview", { kind, options: picked[kind] }), at: Date.now() };
   } catch (e) {
     toast(e.message);
   }
-  checking = null;
+  checking.delete(kind);
   renderCards();
 }
 
@@ -689,7 +707,7 @@ function progress(job) {
 function renderJob() {
   const box = $("#job");
   const job = shown;
-  if (!job) { box.replaceChildren(); return; }
+  if (!job) { box.replaceChildren(); renderRunning(); return; }
   const running = job.state === "running";
   const end = job.finished_at || Date.now();
   const [frac, says] = progress(job);
@@ -716,15 +734,41 @@ function renderJob() {
     says ? el("div", { class: "meta" }, says) : null,
     pre));
   pre.scrollTop = pre.scrollHeight;
+  renderRunning();
   renderCards();
+}
+
+/** One row for each other running job, to watch its log or cancel it. */
+function renderRunning() {
+  const others = runningJobs().filter((j) => !shown || j.id !== shown.id);
+  $("#running").replaceChildren(...others.map((job) => {
+    const [frac, says] = progress(job);
+    const cancel = el("button", { class: "danger small", onclick: () => cancelJob(job) }, job.cancelling ? "Stopping…" : "✖ Cancel");
+    cancel.disabled = job.cancelling;
+    return el("div", { class: "job running-row" },
+      el("div", { class: "job-head" },
+        el("b", {}, KINDS[job.kind].title),
+        el("span", { class: "badge running" }, STATES.running),
+        el("span", { class: "meta" },
+          el("span", {}, duration(Date.now() - job.started_at)),
+          job.gpu ? el("span", {}, job.gpu) : null,
+          job.cost != null ? el("span", {}, "so far ", el("b", {}, money(job.cost))) : null,
+          says ? el("span", {}, says) : null),
+        el("span", { style: "flex:1" }),
+        el("button", { class: "secondary small", onclick: () => openJob(job.id) }, "Show the log"),
+        cancel),
+      frac != null ? el("div", { class: "bar" }, el("div", { style: `width:${Math.round(frac * 100)}%` })) : null);
+  }));
 }
 
 async function cancelJob(job) {
   const gpu = KINDS[job.kind].gpu;
-  if (!confirm(gpu ? "Cancel and give the GPU back? Whatever is made so far is kept." : "Stop writing lines? Lines written so far are kept.")) return;
+  const what = KINDS[job.kind].title;
+  if (!confirm(gpu ? `Cancel ${what} and give its GPU back? Whatever is made so far is kept.` : `Stop ${what}? What's done so far is kept.`)) return;
   try {
     await api(`render/jobs/${job.id}/cancel`, {});
-    shown.cancelling = true;
+    job.cancelling = true;
+    if (shown && shown.id === job.id) shown.cancelling = true;
     renderJob();
   } catch (e) {
     toast(e.message);
@@ -773,7 +817,7 @@ function render() {
   renderCards();
   renderBatches();
   renderHistory();
-  $("#cleanup").disabled = !status.ready.vast_key || (status.job && status.job.state === "running");
+  $("#cleanup").disabled = !status.ready.vast_key || blocked("cleanup");
   if (status.missing.errors.length) console.warn("counting what's missing:", status.missing.errors);
 }
 

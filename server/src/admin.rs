@@ -514,7 +514,8 @@ struct RenderQuery {
     since: u64,
 }
 
-/// The Rendering page: what's set up, what's waiting to be made, the running job and past ones.
+/// The Rendering page: what's set up, what's waiting to be made, the running jobs (`job` is the
+/// newest, with its log) and past ones.
 async fn render_status(
     State(app): State<AppState>,
     Query(q): Query<RenderQuery>,
@@ -524,6 +525,7 @@ async fn render_status(
         "ready": r.ready(),
         "missing": r.missing(q.refresh).await,
         "job": r.current(q.since),
+        "jobs": r.running_jobs(),
         "history": r.history(20).await,
         "spent": r.spent().await,
     }))
@@ -756,9 +758,7 @@ const SWITCH_LATER: &str =
 
 /// A voice run in progress speaks in the pack in use, so switching waits until it's done.
 fn voice_running(app: &AppState) -> bool {
-    app.render
-        .current(0)
-        .is_some_and(|j| j.state == "running" && j.kind == crate::render::Kind::Voice)
+    app.render.running_any(&[crate::render::Kind::Voice])
 }
 
 #[derive(Deserialize)]
@@ -847,13 +847,8 @@ async fn list_personas(State(app): State<AppState>) -> Response {
 
 /// A run writing or voicing lines is working for the persona in use, so switching waits.
 fn lines_running(app: &AppState) -> bool {
-    app.render.current(0).is_some_and(|j| {
-        j.state == "running"
-            && matches!(
-                j.kind,
-                crate::render::Kind::Lines | crate::render::Kind::Voice
-            )
-    })
+    app.render
+        .running_any(&[crate::render::Kind::Lines, crate::render::Kind::Voice])
 }
 
 const PERSONA_LATER: &str =

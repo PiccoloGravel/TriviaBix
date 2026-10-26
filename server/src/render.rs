@@ -8,11 +8,13 @@
 //! how the panel shows a price before anything is rented and what a job cost afterwards.
 //!
 //! Starting a job takes two steps: a dry run that rents nothing and returns a one-time token with
-//! the GPU, price and most it can cost, then a start with that token. One job runs at a time.
+//! the GPU, price and most it can cost, then a start with that token. Jobs of different kinds run
+//! side by side, each on its own GPU with its own price check, log and cancel; two of the same kind
+//! never do (see `Kind::clashes`).
 //! Cancelling sends the tools SIGTERM, which they turn into destroying the instance; if a job
 //! ends (or the server restarts) with an instance still rented, it's destroyed by id.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
@@ -123,7 +125,7 @@ impl Default for RenderConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Voice,
@@ -156,6 +158,25 @@ impl Kind {
 
     fn parse(s: &str) -> Option<Self> {
         serde_json::from_value(Value::String(s.into())).ok()
+    }
+
+    /// Whether the two can't run at once: two of a kind, or a cleanup (which destroys every
+    /// TriviaBix instance) next to a job with a GPU.
+    fn clashes(self, other: Kind) -> bool {
+        self == other
+            || (self == Kind::Cleanup && other.rents())
+            || (other == Kind::Cleanup && self.rents())
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Kind::Voice => "A voice run",
+            Kind::Design => "A voice design run",
+            Kind::Art => "An art run",
+            Kind::Lines => "A line-writing run",
+            Kind::Cleanup => "A cleanup",
+            Kind::Import => "An import",
+        }
     }
 }
 
@@ -529,13 +550,38 @@ struct Inner {
     db: Db,
     voice: Voice,
     settings: Settings,
-    job: Mutex<Option<Job>>,
+    /// The running jobs, at most one of each kind, and the last finished one of each kind.
+    jobs: Mutex<Vec<Job>>,
     previews: Mutex<HashMap<String, Preview>>,
-    previewing: Mutex<bool>,
+    /// The kinds with a price check under way.
+    previewing: Mutex<HashSet<Kind>>,
     missing: tokio::sync::Mutex<Option<(Instant, Missing)>>,
     /// The persona Bix's lines are written for, and where they're saved.
     persona: Mutex<triviabix_questions::Persona>,
     finished: broadcast::Sender<Kind>,
+}
+
+/// Why a `kind` job can't start next to `jobs`, if one it clashes with is running.
+fn blocked(jobs: &[Job], kind: Kind) -> Option<String> {
+    let other = jobs
+        .iter()
+        .find(|j| j.view.state == "running" && kind.clashes(j.view.kind))?;
+    Some(if other.view.kind == kind {
+        format!(
+            "{} is already running. Wait for it, or cancel it.",
+            kind.title()
+        )
+    } else if kind == Kind::Cleanup {
+        format!(
+            "{} is using a GPU. Cancel it, or wait for it to give the GPU back, before destroying leftovers.",
+            other.view.kind.title()
+        )
+    } else {
+        format!(
+            "{} is destroying every GPU. Wait for it to finish.",
+            other.view.kind.title()
+        )
+    })
 }
 
 fn now_ms() -> u64 {
@@ -577,9 +623,9 @@ impl Render {
             static_dir,
             db,
             voice,
-            job: Mutex::new(None),
+            jobs: Default::default(),
             previews: Default::default(),
-            previewing: Mutex::new(false),
+            previewing: Default::default(),
             missing: Default::default(),
             persona: Default::default(),
             finished: broadcast::channel(8).0,
@@ -734,27 +780,62 @@ impl Render {
         })
     }
 
+    /// The job the panel opens on: the newest running one, or else the newest that finished.
     pub fn current(&self, since: u64) -> Option<JobView> {
-        self.0
-            .job
-            .lock()
-            .unwrap()
-            .as_ref()
+        let jobs = self.0.jobs.lock().unwrap();
+        jobs.iter()
+            .filter(|j| j.view.state == "running")
+            .max_by_key(|j| j.view.id)
+            .or_else(|| jobs.iter().max_by_key(|j| j.view.id))
             .map(|j| j.snapshot(since))
     }
 
-    fn running(&self) -> bool {
-        self.0
-            .job
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_some_and(|j| j.view.state == "running")
+    /// Every running job, oldest first, without their logs.
+    pub fn running_jobs(&self) -> Vec<JobView> {
+        let jobs = self.0.jobs.lock().unwrap();
+        let mut out: Vec<JobView> = jobs
+            .iter()
+            .filter(|j| j.view.state == "running")
+            .map(|j| j.snapshot(u64::MAX))
+            .collect();
+        out.sort_by_key(|v| v.id);
+        out
     }
 
-    /// One job: the live one, or from the history.
+    /// Whether any job is running, e.g. so an update waits for it.
+    pub fn running(&self) -> bool {
+        !self.running_jobs().is_empty()
+    }
+
+    /// Whether a job of one of these kinds is running.
+    pub fn running_any(&self, kinds: &[Kind]) -> bool {
+        self.0
+            .jobs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|j| j.view.state == "running" && kinds.contains(&j.view.kind))
+    }
+
+    /// Why a `kind` job can't start now, if one it clashes with is running.
+    fn blocked(&self, kind: Kind) -> Option<String> {
+        blocked(&self.0.jobs.lock().unwrap(), kind)
+    }
+
+    /// Runs `f` on the live job with this id, if it's still kept.
+    fn with_job<T>(&self, id: i64, f: impl FnOnce(&mut Job) -> T) -> Option<T> {
+        self.0
+            .jobs
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|j| j.view.id == id)
+            .map(f)
+    }
+
+    /// One job: a live one, or from the history.
     pub async fn job(&self, id: i64, since: u64) -> Option<JobView> {
-        if let Some(v) = self.current(since).filter(|v| v.id == id) {
+        if let Some(v) = self.with_job(id, |j| j.snapshot(since)) {
             return Some(v);
         }
         let row = sqlx::query("SELECT * FROM render_jobs WHERE id = ?")
@@ -905,24 +986,23 @@ impl Render {
             return Err("That job is free, so it needs no price check.".into());
         }
         let options = options.check(kind)?;
-        if self.running() {
-            return Err("A job is already running. Wait for it, or cancel it.".into());
+        if let Some(why) = self.blocked(kind) {
+            return Err(why);
         }
         let options = self.with_batch(kind, options).await?;
         // Cleared however the check ends, even if the page that asked goes away mid-check.
-        struct Busy<'a>(&'a Mutex<bool>);
+        struct Busy<'a>(&'a Mutex<HashSet<Kind>>, Kind);
         impl Drop for Busy<'_> {
             fn drop(&mut self) {
-                *self.0.lock().unwrap() = false;
+                self.0.lock().unwrap().remove(&self.1);
             }
         }
         let _busy = {
             let mut busy = self.0.previewing.lock().unwrap();
-            if *busy {
-                return Err("A price check is already running.".into());
+            if !busy.insert(kind) {
+                return Err("That price check is already running.".into());
             }
-            *busy = true;
-            Busy(&self.0.previewing)
+            Busy(&self.0.previewing, kind)
         };
         let out = self.dry_run(kind, &options).await?;
 
@@ -1235,11 +1315,12 @@ impl Render {
             .stderr(Stdio::piped())
             .process_group(0);
         {
-            let mut slot = self.0.job.lock().unwrap();
-            if slot.as_ref().is_some_and(|j| j.view.state == "running") {
-                drop(slot);
+            // Checked again under the lock it's added with, so two starts can't both get through.
+            let mut jobs = self.0.jobs.lock().unwrap();
+            if let Some(why) = blocked(&jobs, kind) {
+                drop(jobs);
                 self.forget(id);
-                return Err("A job is already running. Wait for it, or cancel it.".into());
+                return Err(why);
             }
             let mut job = Job {
                 view: JobView {
@@ -1268,7 +1349,7 @@ impl Render {
             let mut child = match cmd.spawn() {
                 Ok(child) => child,
                 Err(e) => {
-                    drop(slot);
+                    drop(jobs);
                     self.forget(id);
                     return Err(format!("Couldn't start the job: {e}"));
                 }
@@ -1278,11 +1359,14 @@ impl Render {
             let (tx, rx) = mpsc::unbounded_channel();
             pump(child.stdout.take(), tx.clone());
             pump(child.stderr.take(), tx);
-            *slot = Some(job);
+            let view = job.snapshot(0);
+            // Finished jobs of the same kind make way; their logs are in the history.
+            jobs.retain(|j| j.view.state == "running" || j.view.kind != kind);
+            jobs.push(job);
             let this = self.clone();
             tokio::spawn(async move { this.watch(id, child, rx).await });
+            Ok(view)
         }
-        Ok(self.current(0).unwrap())
     }
 
     fn forget(&self, id: i64) {
@@ -1305,26 +1389,23 @@ impl Render {
         // Both pipes close only once every process in the job is done, including a vast.py the
         // art job started, so this waits for the instance to be destroyed.
         while let Some(line) = rx.recv().await {
-            let rented = {
-                let mut slot = self.0.job.lock().unwrap();
-                let Some(job) = slot.as_mut() else { break };
-                match line.strip_prefix("@tbx ") {
-                    Some(ev) => match serde_json::from_str::<Value>(ev) {
-                        Ok(ev) => {
-                            job.event(&ev);
-                            (ev["event"] == "rented").then_some(job.view.instance)
-                        }
-                        Err(_) => {
-                            job.push(line);
-                            None
-                        }
-                    },
-                    None => {
+            let rented = self.with_job(id, |job| match line.strip_prefix("@tbx ") {
+                Some(ev) => match serde_json::from_str::<Value>(ev) {
+                    Ok(ev) => {
+                        job.event(&ev);
+                        (ev["event"] == "rented").then_some(job.view.instance)
+                    }
+                    Err(_) => {
                         job.push(line);
                         None
                     }
+                },
+                None => {
+                    job.push(line);
+                    None
                 }
-            };
+            });
+            let Some(rented) = rented else { break };
             // Saved straight away, so a restart can still find and destroy the instance.
             if let Some(Some(instance)) = rented {
                 let _ =
@@ -1338,28 +1419,22 @@ impl Render {
         let code = child.wait().await.ok().and_then(|s| s.code());
 
         // The tools always destroy what they rent; this is the backstop for a crash or a kill.
-        let leftover = {
-            let slot = self.0.job.lock().unwrap();
-            slot.as_ref()
-                .filter(|j| !j.view.released)
-                .and_then(|j| j.view.instance)
-        };
+        let leftover = self
+            .with_job(id, |j| j.view.instance.filter(|_| !j.view.released))
+            .flatten();
         if let Some(instance) = leftover
             && self.destroy(instance, Some(id)).await
         {
-            let mut slot = self.0.job.lock().unwrap();
-            if let Some(job) = slot.as_mut() {
+            self.with_job(id, |job| {
                 if let (Some(at), Some(price)) = (job.rented_at.take(), job.view.price_hr) {
                     let cost = price * at.elapsed().as_secs_f64() / 3600.0;
                     job.view.cost = Some(job.view.cost.unwrap_or(0.0) + cost);
                 }
                 job.view.released = true;
-            }
+            });
         }
 
-        let (view, log) = {
-            let mut slot = self.0.job.lock().unwrap();
-            let Some(job) = slot.as_mut() else { return };
+        let Some((view, log)) = self.with_job(id, |job| {
             job.view.exit_code = code;
             job.view.finished_at = Some(now_ms());
             job.view.state = if job.view.cancelling {
@@ -1373,6 +1448,8 @@ impl Render {
             job.pgid = None;
             let log: Vec<&str> = job.log.iter().map(|(_, l)| l.as_str()).collect();
             (job.view.clone(), log.join("\n"))
+        }) else {
+            return;
         };
         tracing::info!(id, state = %view.state, cost = ?view.cost, "render job finished");
         let saved = sqlx::query(
@@ -1405,29 +1482,22 @@ impl Render {
     /// Cancels the running job. The tools destroy their instance on SIGTERM; one that hasn't
     /// exited after a grace period is killed, and its instance destroyed by id.
     pub fn cancel(&self, id: i64) -> Result<(), String> {
-        let pgid = {
-            let mut slot = self.0.job.lock().unwrap();
-            let job = slot
-                .as_mut()
-                .filter(|j| j.view.id == id && j.view.state == "running")
-                .ok_or("That job isn't running.")?;
-            job.view.cancelling = true;
-            job.push("[admin] cancelled; stopping and giving the GPU back".into());
-            job.pgid.ok_or("That job is already stopping.")?
-        };
+        let pgid = self
+            .with_job(id, |job| {
+                if job.view.state != "running" {
+                    return Err("That job isn't running.");
+                }
+                job.view.cancelling = true;
+                job.push("[admin] cancelled; stopping and giving the GPU back".into());
+                job.pgid.ok_or("That job is already stopping.")
+            })
+            .unwrap_or(Err("That job isn't running."))?;
         tracing::info!(id, "render job cancelled");
         signal_group(pgid, libc::SIGTERM);
         let this = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(CANCEL_GRACE).await;
-            let still = this
-                .0
-                .job
-                .lock()
-                .unwrap()
-                .as_ref()
-                .filter(|j| j.view.id == id)
-                .and_then(|j| j.pgid);
+            let still = this.with_job(id, |j| j.pgid).flatten();
             if let Some(pgid) = still {
                 tracing::warn!(id, "render job ignored the stop; killing it");
                 signal_group(pgid, libc::SIGKILL);
@@ -1458,14 +1528,13 @@ impl Render {
             );
         }
         if let Some(id) = job {
-            let mut slot = self.0.job.lock().unwrap();
-            if let Some(j) = slot.as_mut().filter(|j| j.view.id == id) {
+            self.with_job(id, |j| {
                 j.push(if ok {
                     format!("[admin] destroyed instance {instance}")
                 } else {
                     format!("[admin] COULDN'T DESTROY instance {instance}: {said}. Use Destroy leftovers, or https://cloud.vast.ai/instances/")
                 });
-            }
+            });
         }
         ok
     }

@@ -203,8 +203,9 @@ the FLUX, BiRefNet and Wan art models), which GPUs may be rented, and each job's
 
 The limits: at most $0.50/hr for voice and $0.60/hr for art unless you change them in Settings, which
 never allows more than $2.00/hr; a voice run stops
-after 3 hours at most, an art run after its estimate plus half, and only one GPU at a time. A job
-rents at no more than a little over the price you confirmed. Whatever happens (it finishes, fails, is
+after 3 hours at most, an art run after its estimate plus half. Voice and art (and line writing) can run
+at the same time, each on its own GPU with its own price check, limit, log and Cancel button, but never two
+of the same kind. A job rents at no more than a little over the price you confirmed. Whatever happens (it finishes, fails, is
 cancelled, or the container restarts mid-job) the instance is destroyed; **Destroy leftover GPUs**
 clears anything started from the command line.
 

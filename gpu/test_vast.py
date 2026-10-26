@@ -241,6 +241,15 @@ class VastTest(Base):
         with unittest.mock.patch.dict(os.environ, {"GHCR_TOKEN": ""}):
             self.assertIsNone(login("ghcr.io/piccologravel/triviabix-tts:latest"))
 
+    def test_one_instance_of_each_kind_at_a_time(self):
+        class Running:
+            def ours(self):
+                return [{"id": 3, "label": "triviabix-voice"}]
+        self.vast.refuse_doubles(Running(), False, "art")  # art next to voice is fine
+        with self.assertRaisesRegex(self.vast.Abort, r"voice instances are already running \(3\)"):
+            self.vast.refuse_doubles(Running(), False, "voice")
+        self.vast.refuse_doubles(Running(), True, "voice")
+
     def test_extract_stays_inside(self):
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as t:
