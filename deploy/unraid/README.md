@@ -7,12 +7,31 @@ The TV page is then opened from any laptop or phone and cast to the TV.
 ## 1. Let Unraid pull the image (once)
 
 The first push to `main` after this is merged runs **Actions → Publish image** and creates the
-package. GitHub makes new packages private, so either:
+package. GitHub makes new packages private, so either make them public (profile → **Packages** →
+the package → **Package settings** → **Change visibility** → **Public**; nothing secret is in them)
+or keep them private and use a token:
 
-- **Make it public (simplest):** on GitHub open your profile → **Packages** → **triviabix** →
-  **Package settings** → **Change visibility** → **Public**. Nothing secret is in the image.
-- **Or keep it private:** create a classic personal access token with only `read:packages`, then in
-  the Unraid terminal run `docker login ghcr.io -u PiccoloGravel` and paste the token as the password.
+1. **Make the token.** On GitHub: <https://github.com/settings/tokens/new> (a *classic* token;
+   fine-grained tokens don't work with the container registry). Note: `TriviaBix pull`. Expiration:
+   up to you (a year is fine). Tick **only `read:packages`**. **Generate token** and copy it
+   (it starts with `ghp_`). Don't paste it into chat or commit it.
+2. **Rented GPUs (voice and art).** In the admin panel open **Settings → Private images (GitHub)**,
+   paste the token into **Package token**, **Save**, then **Test**. It says which of `triviabix`,
+   `triviabix-tts` and `triviabix-art` the token can pull. Every GPU job uses it from then on.
+3. **This server (Unraid or a VM).** Docker on the host pulls the game's own image, so the host has to
+   log in once. This is the one step the website can't do for you, because the game runs inside Docker
+   and can't log the host in. In the Unraid terminal (or the VM's shell):
+   ```sh
+   docker login ghcr.io -u PiccoloGravel
+   ```
+   and paste the token as the password. Unraid keeps `/root` in memory, so after a reboot this login
+   is gone. Already-pulled images keep working; you only need it again to update. To make it stick, add
+   a **User Scripts** script set to **At Startup of Array**:
+   ```sh
+   #!/bin/bash
+   docker login ghcr.io -u PiccoloGravel --password-stdin < /boot/config/ghcr-token
+   ```
+   with the token saved on its own line in `/boot/config/ghcr-token` (the flash drive survives reboots).
 
 ## 2. Install the container
 

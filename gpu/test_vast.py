@@ -142,6 +142,16 @@ class VastTest(Base):
         self.assertEqual(offer["minutes"], 30)
         self.assertAlmostEqual(offer["max_cost"], round(offer["price_hr"] / 2, 2))
 
+    def test_a_ghcr_token_logs_in_to_private_images(self):
+        login = self.vast.image_login
+        with unittest.mock.patch.dict(os.environ, {"GHCR_TOKEN": "ghp_x", "GHCR_USER": ""}):
+            self.assertEqual(login("ghcr.io/piccologravel/triviabix-tts:latest"),
+                             "-u PiccoloGravel -p ghp_x ghcr.io")
+            self.assertIsNone(login("docker.io/library/python:3.12"))
+            self.assertEqual(login("ghcr.io/a/b", "-u me -p t ghcr.io"), "-u me -p t ghcr.io")
+        with unittest.mock.patch.dict(os.environ, {"GHCR_TOKEN": ""}):
+            self.assertIsNone(login("ghcr.io/piccologravel/triviabix-tts:latest"))
+
     def test_extract_stays_inside(self):
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as t:

@@ -54,6 +54,11 @@ const CLAUDE: &str = "Claude (Bix's lines)";
 const VOICE: &str = "Bix's voice";
 const ART: &str = "Art";
 const LIDARR: &str = "Music library (Lidarr)";
+const GITHUB: &str = "Private images (GitHub)";
+
+/// The images on ghcr.io that TriviaBix runs, all under one owner.
+const GHCR_OWNER: &str = "piccologravel";
+const GHCR_IMAGES: &[&str] = &["triviabix", "triviabix-tts", "triviabix-art"];
 
 pub const FIELDS: &[Field] = &[
     Field {
@@ -89,12 +94,20 @@ pub const FIELDS: &[Field] = &[
         help: "The art needs a 24 GB GPU, so it costs a little more. Up to $2.00.",
     },
     Field {
-        key: "VAST_IMAGE_LOGIN",
-        group: VAST,
-        label: "Image registry login",
+        key: "GHCR_TOKEN",
+        group: GITHUB,
+        label: "Package token",
         kind: Kind::Secret,
         default: None,
-        help: "Only for a private GPU image, as \"-u USER -p TOKEN ghcr.io\". Leave empty for the public images.",
+        help: "Lets rented GPUs pull the private triviabix-tts and triviabix-art images. A classic token with only the read:packages scope, from github.com/settings/tokens. Leave empty if the images are public.",
+    },
+    Field {
+        key: "GHCR_USER",
+        group: GITHUB,
+        label: "GitHub username",
+        kind: Kind::Text,
+        default: Some("PiccoloGravel"),
+        help: "The account that made the token.",
     },
     Field {
         key: "HF_TOKEN",
@@ -362,7 +375,7 @@ impl Settings {
 
 impl Settings {
     /// Asks a service whether the settings in use work: Lidarr, the voice server, vast.ai,
-    /// Anthropic or Hugging Face. Only free calls that read the account, so nothing is spent.
+    /// Anthropic, Hugging Face or GitHub's package registry. Only free calls that read the account, so nothing is spent.
     pub async fn test(&self, service: &str) -> Result<String, String> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
@@ -454,6 +467,66 @@ impl Settings {
                     Some(n) => format!("Hugging Face knows this token as {n}."),
                     None => "Hugging Face accepted the token.".into(),
                 })
+            }
+            "github" => {
+                let token = need("GHCR_TOKEN", "the GitHub package token")?;
+                let user = self.get("GHCR_USER").unwrap_or("PiccoloGravel".into());
+                let mut can = vec![];
+                let mut cannot = vec![];
+                for image in GHCR_IMAGES {
+                    // The registry's own pull check: trade the token for a pull grant, then ask
+                    // for the image's manifest with it. Nothing is downloaded.
+                    let res = http
+                        .get("https://ghcr.io/token")
+                        .query(&[
+                            ("service", "ghcr.io".to_string()),
+                            ("scope", format!("repository:{GHCR_OWNER}/{image}:pull")),
+                        ])
+                        .basic_auth(&user, Some(&token))
+                        .send()
+                        .await;
+                    let grant: serde_json::Value = answer(res, "GitHub")
+                        .map_err(|e| {
+                            if e.ends_with("didn't accept the key.") {
+                                "GitHub didn't accept the token. Check the username, and that the token has the read:packages scope and hasn't expired.".into()
+                            } else {
+                                e
+                            }
+                        })?
+                        .json()
+                        .await
+                        .unwrap_or_default();
+                    let bearer = grant["token"].as_str().unwrap_or_default();
+                    let res = http
+                        .head(format!(
+                            "https://ghcr.io/v2/{GHCR_OWNER}/{image}/manifests/latest"
+                        ))
+                        .bearer_auth(bearer)
+                        .header(
+                            "accept",
+                            "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json",
+                        )
+                        .send()
+                        .await
+                        .map_err(|e| format!("Couldn't reach GitHub: {}", short(e)))?;
+                    if res.status().is_success() {
+                        can.push(*image);
+                    } else {
+                        cannot.push(*image);
+                    }
+                }
+                match (can.is_empty(), cannot.is_empty()) {
+                    (_, true) => Ok(format!("The token can pull {}.", can.join(", "))),
+                    (true, _) => Err(format!(
+                        "GitHub accepted the token, but it can't pull {}. Check it has read:packages and that {user} can see the packages.",
+                        cannot.join(", ")
+                    )),
+                    _ => Ok(format!(
+                        "The token can pull {}. It can't pull {} (not published yet, or not visible to {user}).",
+                        can.join(", "),
+                        cannot.join(", ")
+                    )),
+                }
             }
             _ => Err("There's nothing to test by that name.".into()),
         }

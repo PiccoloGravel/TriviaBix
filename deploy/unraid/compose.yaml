@@ -34,7 +34,8 @@ services:
       VAST_API_KEY: ${VAST_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       HF_TOKEN: ${HF_TOKEN:-}
-      VAST_IMAGE_LOGIN: ${VAST_IMAGE_LOGIN:-}
+      # A read:packages token so rented GPUs can pull the private ghcr.io images.
+      GHCR_TOKEN: ${GHCR_TOKEN:-}
     volumes:
       # triviabix.db (players, scores, admin edits) and content/ (question packs, host scripts).
       - /mnt/user/appdata/triviabix:/data

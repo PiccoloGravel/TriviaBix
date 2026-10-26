@@ -20,9 +20,10 @@ container on Unraid (below).
 2. Make an API key at <https://cloud.vast.ai/manage-keys/>. Keep it out of the repo and out of chat; set it
    as `VAST_API_KEY` where you run the script (on Unraid, in the User Scripts script or the container's
    variables).
-3. vast.ai has to be able to pull the voice image. After the first GitHub Actions build, make the package
-   public: GitHub → your profile → Packages → `triviabix-tts` → Package settings → Change visibility →
-   Public. (Or keep it private and pass `--login "-u PiccoloGravel -p <a read:packages token> ghcr.io"`.)
+3. vast.ai has to be able to pull the voice and art images. If they're private on GHCR, put a classic
+   GitHub token with only `read:packages` in the admin panel: **Settings → Private images (GitHub)**, then
+   press **Test**. From the command line, set `GHCR_TOKEN` (and `GHCR_USER` if it isn't PiccoloGravel), or
+   pass `--login "-u USER -p TOKEN ghcr.io"`. See [deploy/unraid](../deploy/unraid/README.md#1-let-unraid-pull-the-image-once).
 
 ## Bix's voice
 

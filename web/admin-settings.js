@@ -10,6 +10,7 @@ const TESTS = {
   "Claude (Bix's lines)": "anthropic",
   "Bix's voice": "voice",
   "Music library (Lidarr)": "lidarr",
+  "Private images (GitHub)": "github",
 };
 const SOURCES = { saved: "Saved here", env: "From the container", unset: "Not set" };
 

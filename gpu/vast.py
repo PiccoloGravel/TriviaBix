@@ -71,6 +71,18 @@ class Gone(Abort):
     """vast.ai has no such thing (404)."""
 
 
+def image_login(image: str, given: str | None = None) -> str | None:
+    """vast.ai's login for pulling `image`: the one given (--login or VAST_IMAGE_LOGIN), else, for an image
+    on ghcr.io, one made from GHCR_TOKEN (a read:packages token) and GHCR_USER. None for a public image."""
+    if given:
+        return given
+    token = os.environ.get("GHCR_TOKEN", "").strip()
+    if token and image.startswith("ghcr.io/"):
+        user = os.environ.get("GHCR_USER", "").strip() or "PiccoloGravel"
+        return f"-u {user} -p {token} ghcr.io"
+    return None
+
+
 def say(*args):
     print("[vast]", *args, file=sys.stderr, flush=True)
 
@@ -698,7 +710,8 @@ def main(argv=None) -> int:
         sp.add_argument("--max-price", type=float, default=price, help=f"$/hour, all in (default {price:g})")
         sp.add_argument("--disk", type=float, default=40, help="GB of disk (default 40)")
         sp.add_argument("--login", default=os.environ.get("VAST_IMAGE_LOGIN"),
-                        help='for a private image: "-u USER -p TOKEN ghcr.io" (or VAST_IMAGE_LOGIN)')
+                        help='for a private image: "-u USER -p TOKEN ghcr.io" (or VAST_IMAGE_LOGIN, or GHCR_TOKEN '
+                             'and GHCR_USER for ghcr.io)')
         sp.add_argument("--yes", action="store_true", help="rent without asking")
         sp.add_argument("--dry-run", action="store_true", help="show the GPU and price, rent nothing")
         sp.add_argument("--another", action="store_true", help="rent even if a TriviaBix instance is running")
@@ -743,6 +756,8 @@ def main(argv=None) -> int:
     d = sub.add_parser("destroy", help="destroy one TriviaBix instance by id")
     d.add_argument("id", type=int)
     args = p.parse_args(argv)
+    if hasattr(args, "login"):
+        args.login = image_login(args.image, args.login)
 
     try:
         if args.command == "offers":
