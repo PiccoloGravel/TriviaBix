@@ -37,7 +37,7 @@ It logs in to the game server's admin API and gets every line still waiting for 
 (renting nothing if there are none). It rents the GPU expected to finish the job for the least money,
 starts the `triviabix-tts` image there and uploads the whole backlog in one go. On the GPU,
 `tts/batch.py` (sent along, so the image needn't be rebuilt) loads a few copies of the model, as many as
-fit in its memory, and each voices 16 lines side by side in every model call (Ming's own sampler does
+fit in its memory (about 3.5 GB each, so four on a 16 GB card), and each voices 24 lines side by side in every model call (Ming's own sampler does
 one line at a time, which leaves the GPU mostly idle), longest lines first. Every minute
 the audio made so far comes back and is filed in `appdata/triviabix/assets/voice` through the game
 server, so a run that's stopped keeps what it made. When it's done the instance is destroyed. Cached

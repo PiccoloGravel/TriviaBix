@@ -36,11 +36,13 @@ sys.path.insert(0, os.environ.get("TTS_APP") or (os.path.dirname(os.path.abspath
 os.environ.setdefault("TQDM_DISABLE", "1")  # the reference sampler draws a progress bar per line
 import server  # noqa: E402
 
-# GPU memory one copy of the model takes while it works on a batch, with room to spare, in GB.
-PER_WORKER_GB = 5.0
-MAX_WORKERS = 4
+# GPU memory one copy of the model takes while it works on a batch, with room to spare, in GB. Two copies
+# voicing 16 lines each used 7.1 GB of an RTX 4060 Ti's 16 and kept it only 12-22% busy, so a 16 GB card
+# takes four.
+PER_WORKER_GB = 3.5
+MAX_WORKERS = 6
 # Lines one copy voices together.
-BATCH = 16
+BATCH = 24
 # How long to wait on the last lines after the queue is empty and nothing has come back.
 STUCK_S = 600
 # Stop if this many lines fail before any works: something is wrong with the GPU or model, not the lines.
