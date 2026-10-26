@@ -320,6 +320,8 @@ class Maker:
                 except NeedsGpu:
                     return
                 except Exception as e:  # noqa: BLE001 (make() retries these one at a time)
+                    if broken_gpu(e):
+                        raise SystemExit(f"Stopping: the GPU failed in a way every job would ({e!r})")
                     print(f"  a batch of {len(chunk)} failed ({e!r}); they'll be tried one at a time", file=sys.stderr)
                     continue
                 for job, img in zip(chunk, images):
@@ -340,6 +342,8 @@ class Maker:
             except NeedsGpu:
                 return
             except Exception as e:  # noqa: BLE001
+                if broken_gpu(e):
+                    raise SystemExit(f"Stopping: the GPU failed in a way every job would ({e!r})")
                 print(f"  cut-out for {job.key} failed ({e!r}); it'll be tried again", file=sys.stderr)
                 continue
             self.lib.put_image(cut_style, {"source": raw_path.stem, "op": "cutout"}, cut, model=cut_model,
@@ -386,6 +390,12 @@ class Maker:
         raise ValueError(job.kind)
 
 
+def broken_gpu(e: Exception) -> bool:
+    """A CUDA error (such as "no kernel image is available") leaves the GPU unusable for this run, so going
+    on would only fail every remaining job while the rental bills."""
+    return "CUDA error" in str(e)
+
+
 def run(jobs: list[Job], todo: list[Job], backend, out: Path, library: Library, art_version: str = "v1") -> int:
     by_key = {j.key: j for j in jobs}
     maker = Maker(backend, library, art_version, by_key)
@@ -404,6 +414,8 @@ def run(jobs: list[Job], todo: list[Job], backend, out: Path, library: Library, 
             print("  not in the asset store yet; needs a GPU run")
             continue
         except Exception as e:  # one bad prompt shouldn't throw away a paid-for GPU hour
+            if broken_gpu(e):
+                raise SystemExit(f"Stopping: the GPU failed in a way every job would ({e!r})")
             failed += 1
             print(f"  failed: {e!r}", file=sys.stderr)
             continue

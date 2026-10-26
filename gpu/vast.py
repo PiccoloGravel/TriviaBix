@@ -158,11 +158,13 @@ class Vast:
 
     def offers(self, min_vram_gb: float, max_price: float, disk_gb: float, limit: int = 40) -> list:
         """On-demand single-GPU offers that can run the images, cheapest first. bf16 needs Ampere or
-        newer (compute 8.0), and the images are built for CUDA 12.4."""
+        newer (compute 8.0), and the images' PyTorch (2.6, CUDA 12.4) has kernels up to Hopper (9.0):
+        on a newer card, such as an RTX 50-series (Blackwell, 12.0), every line fails with "no kernel
+        image is available"."""
         q = {
             "verified": {"eq": True}, "external": {"eq": False}, "rentable": {"eq": True},
             "rented": {"eq": False}, "num_gpus": {"eq": 1},
-            "gpu_ram": {"gte": min_vram_gb * 1000}, "compute_cap": {"gte": 800},
+            "gpu_ram": {"gte": min_vram_gb * 1000}, "compute_cap": {"gte": 800, "lte": max_compute_cap()},
             "cuda_max_good": {"gte": 12.4}, "reliability": {"gte": 0.98},
             "inet_down": {"gte": 200}, "direct_port_count": {"gte": 1},
             "disk_space": {"gte": disk_gb}, "dph_total": {"lte": max_price},
@@ -171,7 +173,7 @@ class Vast:
         }
         if gpus := gpu_names():
             q["gpu_name"] = {"in": gpus}
-        return self.call("POST", "/bundles/", q).get("offers") or []
+        return [o for o in self.call("POST", "/bundles/", q).get("offers") or [] if can_run(o)]
 
     def create(self, offer_id: int, body: dict) -> int:
         try:
@@ -588,8 +590,9 @@ def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float, work
     finish within `max_minutes` go last. Without it, cheapest first."""
     offers = vast.offers(min_vram, max_price, disk)
     if not offers:
-        raise Abort(f"no verified GPU with {min_vram:g} GB or more is available under ${max_price:.2f}/hr right "
-                    "now; raise --max-price or try again later")
+        raise Abort(f"no verified GPU with {min_vram:g} GB or more that the images can run (Ampere to Hopper; not "
+                    f"RTX 50-series yet) is available under ${max_price:.2f}/hr right now; raise --max-price or try "
+                    "again later")
     if work_minutes is None:
         return offers
     for o in offers:
@@ -791,6 +794,28 @@ class Game:
             "Content-Type": content_type, "X-Voice": voice, "X-Model": model or ""})
         with self.http.open(req, timeout=60) as res:
             res.read()
+
+
+# The newest GPUs the images' PyTorch can run, as vast.ai's compute_cap (major * 100 + minor * 10): 900 is
+# Hopper. Raise VAST_MAX_COMPUTE_CAP once the images move to a PyTorch built for Blackwell (CUDA 12.8).
+MAX_COMPUTE_CAP = 900
+# Blackwell cards by name, in case an offer's compute_cap is missing or wrong.
+BLACKWELL = re.compile(r"RTX 50\d0|RTX PRO \d+|\bB\d{3}\b|\bGB\d{3}\b|Blackwell", re.I)
+
+
+def max_compute_cap() -> int:
+    try:
+        return int(os.environ.get("VAST_MAX_COMPUTE_CAP") or MAX_COMPUTE_CAP)
+    except ValueError:
+        return MAX_COMPUTE_CAP
+
+
+def can_run(offer: dict) -> bool:
+    """Whether the images can run on `offer`'s GPU at all."""
+    cap = offer.get("compute_cap")
+    if cap is not None and not 800 <= float(cap) <= max_compute_cap():
+        return False
+    return max_compute_cap() > 900 or not BLACKWELL.search(str(offer.get("gpu_name") or ""))
 
 
 def gpu_names() -> list:

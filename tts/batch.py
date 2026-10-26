@@ -37,6 +37,12 @@ PER_WORKER_GB = 4.0
 MAX_WORKERS = 6
 # How long to wait on the last lines after the queue is empty and nothing has come back.
 STUCK_S = 600
+# Stop if this many lines fail before any works: something is wrong with the GPU or model, not the lines.
+FAIL_FAST = 5
+
+
+def first_line(text: str) -> str:
+    return (text.strip().splitlines() or [""])[0][:300]
 
 
 def gpu_gb() -> float:
@@ -66,6 +72,9 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results):
     except BaseException as e:  # noqa: BLE001 (report anything, even SystemExit, then stop)
         results.put(("dead", n, f"{type(e).__name__}: {e}", 0.0))
         return
+    if backend != "stub" and (unsupported := gpu_unsupported()):
+        results.put(("dead", n, unsupported, 0.0))
+        return
     results.put(("ready", n, "", 0.0))
     ext = fmt
     while True:
@@ -81,8 +90,34 @@ def work(n: int, spec: str, backend: str, fmt: str, out: str, jobs, results):
                 f.write(audio)
             os.replace(path + ".part", path)
             results.put(("made", n, key, time.monotonic() - started))
-        except Exception as e:  # one bad line shouldn't stop the run
-            results.put(("failed", n, f"{key}: {type(e).__name__}: {e}", time.monotonic() - started))
+        except Exception as e:  # one bad line shouldn't stop the run, but a broken GPU should
+            said = f"{type(e).__name__}: {e}"
+            if "CUDA error" in said:
+                # The CUDA context is unusable after this; hand the line back and stop this copy.
+                jobs.put(job)
+                results.put(("fatal", n, said, time.monotonic() - started))
+                return
+            results.put(("failed", n, f"{key}: {said}", time.monotonic() - started))
+
+
+def gpu_unsupported() -> str | None:
+    """Why this PyTorch build can't run on this GPU, if it can't (say, a newer card than the build knows,
+    which fails every line with "no kernel image is available"). Checked before any work is taken."""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return "no CUDA GPU is visible"
+        major, minor = torch.cuda.get_device_capability()
+        arches = torch.cuda.get_arch_list()
+    except Exception as e:  # noqa: BLE001
+        return f"couldn't check the GPU: {type(e).__name__}: {e}"
+    cap = major * 10 + minor
+    built = [int(a.split("_")[1]) for a in arches if a.split("_")[-1].isdigit()]
+    # Kernels for this exact architecture, or PTX for an older one the driver can compile up.
+    if f"sm_{cap}" in arches or any(a.startswith("compute_") and int(a.split("_")[1]) <= cap for a in arches):
+        return None
+    return (f"this PyTorch build ({torch.__version__}) has no kernels for {torch.cuda.get_device_name()} "
+            f"(sm_{cap}); it supports up to sm_{max(built) if built else '?'}")
 
 
 def load_lines(folder: str) -> list[tuple[str, str]]:
@@ -149,6 +184,7 @@ def main(argv=None) -> int:
     last_note = 0.0
     last_result = time.monotonic()
     stopped = None
+    errors: dict[str, int] = {}
     while made + failed < total:
         if args.stop_at and time.time() > args.stop_at:
             stopped = "the time limit is near"
@@ -179,12 +215,23 @@ def main(argv=None) -> int:
             print(f"[batch] copy {n} couldn't load: {info}", flush=True)
             if ready == 0 and n == 0:
                 return 1
+        elif what == "fatal":
+            print(f"[batch] stopping: the GPU failed in a way that every line would ({first_line(info)})", flush=True)
+            stopped = "the GPU can't run the model"
+            break
         elif what == "made":
             made += 1
             busy_s += secs
         elif what == "failed":
             failed += 1
-            print(f"[batch] failed {info}", flush=True)
+            key, _, said = info.partition(": ")
+            said = first_line(said)
+            errors[said] = errors.get(said, 0) + 1
+            if errors[said] == 1:
+                print(f"[batch] failed {key}: {said}", flush=True)
+            if made == 0 and failed >= FAIL_FAST:
+                stopped = f"the first {failed} lines all failed"
+                break
         now = time.monotonic()
         if now - last_note > 15 or made + failed == total:
             last_note = now
@@ -203,6 +250,9 @@ def main(argv=None) -> int:
     with open(os.path.join(args.out, "stats.json"), "w") as f:
         json.dump({"made": made, "failed": failed, "total": total, "workers": ready, "seconds": round(secs, 1),
                    "load_seconds": round((first_at or began) - began, 1), "busy_seconds": round(busy_s, 1)}, f)
+    for said, times in errors.items():
+        if times > 1:
+            print(f"[batch] {times} lines failed with: {said}", flush=True)
     print(f"[batch] done: {made} made, {failed} failed of {total} in {secs / 60:.1f} min"
           + (f"; stopped because {stopped}" if stopped else ""), flush=True)
     return 0 if made == total else 1
