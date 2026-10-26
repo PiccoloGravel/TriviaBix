@@ -61,6 +61,10 @@ categories, uploaded with the job, so a fix to them takes effect once the server
 image only supplies PyTorch and the models' libraries; rebuild it only when `requirements.txt` or the base
 image changes.
 
+Before renting, it checks that the GPU will be able to download the models: FLUX.1-schnell is gated, so it
+needs a Hugging Face token (Settings page) from an account that accepted its terms on huggingface.co. If
+not, the price check says so and nothing is rented.
+
 **On a rented GPU (vast.ai) from the command line.** Needs `gpu/vast.py` from the vast.ai runner and `VAST_API_KEY`.
 
 ```bash

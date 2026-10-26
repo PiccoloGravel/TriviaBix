@@ -20,7 +20,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
+
+from backends.models import CUTOUT_MODEL, IMAGE_MODEL, VIDEO_MODEL
 
 ART = Path(__file__).resolve().parent
 ROOT = ART.parent
@@ -32,6 +37,45 @@ IMAGE = os.environ.get("ART_IMAGE", "ghcr.io/piccologravel/triviabix-art:latest"
 # less than OFFLOAD_GB has to move the models in and out, which gpu/vast.py counts in when picking one.
 BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.15, 7
 OFFLOAD_GB = 40
+
+
+def model_access(repos: list[str], token: str | None) -> str | None:
+    """Why the GPU couldn't download one of `repos` from Hugging Face, if it couldn't: a gated model (FLUX.1)
+    needs a token from an account that accepted its terms. Checked before renting, so a run doesn't pay for
+    a GPU only to fail at the first download. If Hugging Face can't be reached from here, the run goes ahead."""
+    hub = os.environ.get("HF_ENDPOINT", "https://huggingface.co").rstrip("/")
+    for repo in dict.fromkeys(repos):
+        try:
+            with urllib.request.urlopen(f"{hub}/api/models/{repo}", timeout=20) as res:
+                info = json.load(res)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return f"the art model {repo} doesn't exist on Hugging Face; check the model on the Settings page"
+            continue
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            print(f"Couldn't check {repo} on Hugging Face ({e}); going ahead.")
+            continue
+        if not info.get("gated"):
+            continue
+        terms = f"{hub}/{repo}"
+        if not token:
+            return (f"{repo} is a gated model: accept its terms at {terms} while logged in to Hugging Face, then "
+                    "add a Hugging Face token (read access) on the admin Settings page")
+        files = [s["rfilename"] for s in info.get("siblings") or [] if not s["rfilename"].startswith(".")
+                 and s["rfilename"] != "README.md"]
+        probe = "model_index.json" if "model_index.json" in files else (files or ["config.json"])[0]
+        req = urllib.request.Request(f"{hub}/{repo}/resolve/main/{urllib.parse.quote(probe)}", method="HEAD",
+                                     headers={"Authorization": f"Bearer {token}"})
+        try:
+            urllib.request.urlopen(req, timeout=20).close()
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return (f"the Hugging Face token on the Settings page can't download {repo} ({e.code}). Accept the "
+                        f"model's terms at {terms} with the account the token belongs to, or add a token from that "
+                        "account (read access)")
+        except (urllib.error.URLError, OSError) as e:
+            print(f"Couldn't check {repo} on Hugging Face ({e}); going ahead.")
+    return None
 
 
 def ship_code(dest: Path):
@@ -92,6 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     limit = max(30, int(BOOT_MIN + work * 2))
     event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit)
     print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
+    if problem := model_access([IMAGE_MODEL, CUTOUT_MODEL, VIDEO_MODEL], os.environ.get("HF_TOKEN")):
+        print(f"Not renting a GPU: {problem}.", file=sys.stderr)
+        return 1
 
     # 2. The rest on a rented GPU. The container writes TV files to /out/gen and originals to /out/assets.
     # It runs this server's copy of the generator (uploaded to /in/code), so a fix takes effect without
