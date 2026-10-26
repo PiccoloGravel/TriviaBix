@@ -6,6 +6,7 @@
 //! [`Question::public_view`], and scores answers with [`Question::check`].
 
 mod bank;
+mod dupes;
 mod judge;
 mod model;
 mod pack;
@@ -16,7 +17,12 @@ pub mod generate;
 #[cfg(feature = "cli")]
 pub mod import;
 
-pub use bank::{load_pack, validate_question, Filter, LoadError, Problem, QuestionBank, Stats};
+pub use bank::{
+    load_pack, validate_question, Filter, LoadError, Problem, QuestionBank, Stats, NOT_DUPLICATES,
+};
+pub use dupes::{
+    screen, DuplicateIndex, DuplicatePair, KeptPair, Match, NotDuplicates, Screened, Verdict,
+};
 pub use judge::{normalize, text_matches};
 pub use model::*;
 pub use pack::{generated_id, slugify, PackFile, PackMeta, PackQuestion};

@@ -4,13 +4,6 @@ author = "TriviaBix"
 category = "sports"
 
 [[question]]
-type = "closest_number"
-prompt = "How many players does a soccer team have on the field at once?"
-answer = 11
-unit = "players"
-difficulty = "easy"
-
-[[question]]
 type = "true_false"
 prompt = "Michael Phelps has won more Olympic gold medals than anyone else in history."
 answer = true

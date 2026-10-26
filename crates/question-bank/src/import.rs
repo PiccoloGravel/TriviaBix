@@ -8,7 +8,7 @@ use std::time::Duration;
 use base64::Engine;
 use serde::Deserialize;
 
-use crate::judge::normalize;
+pub use crate::dupes::{screen, Screened};
 use crate::model::*;
 use crate::pack::generated_id;
 
@@ -377,13 +377,6 @@ fn parse_difficulty(s: &str) -> Difficulty {
     }
 }
 
-/// Drop questions whose prompt is already in `existing_prompts` (normalized) or repeats in `new`.
-pub fn dedupe(new: Vec<Question>, existing_prompts: &mut HashSet<String>) -> Vec<Question> {
-    new.into_iter()
-        .filter(|q| existing_prompts.insert(normalize(&q.prompt)))
-        .collect()
-}
-
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(20))
@@ -479,7 +472,38 @@ mod tests {
 #[cfg(test)]
 mod pack_tests {
     use super::*;
-    use crate::{PackFile, PackMeta, PackQuestion};
+    use crate::{DuplicateIndex, Match, PackFile, PackMeta, PackQuestion};
+
+    #[test]
+    fn screening_skips_reworded_questions_already_in_the_bank() {
+        let bank = parse_trivia_api(
+            r#"[{"category":"music","id":"a","correctAnswer":"Bon Jovi","incorrectAnswers":["Poison"],
+              "question":{"text":"Which band sang 'Livin' on a Prayer'?"},"tags":[],"difficulty":"easy"}]"#,
+        )
+        .unwrap();
+        let mut index = DuplicateIndex::of(&bank);
+        let fetched = parse_trivia_api(
+            r#"[{"category":"music","id":"b","correctAnswer":"Bon Jovi","incorrectAnswers":["Poison"],
+                 "question":{"text":"'Livin' on a Prayer' was a hit for which band?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"c","correctAnswer":"Queen","incorrectAnswers":["Poison"],
+                 "question":{"text":"Which band sang 'Bohemian Rhapsody'?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"d","correctAnswer":"Queen","incorrectAnswers":["Poison"],
+                 "question":{"text":"Bohemian Rhapsody was sung by which band?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"e","correctAnswer":"Queen","incorrectAnswers":["Queen"],
+                 "question":{"text":"A broken one"},"tags":[],"difficulty":"easy"}]"#,
+        )
+        .unwrap();
+        let out = screen(fetched, &mut index, false);
+        let ids = |v: &[(Question, Match)]| v.iter().map(|(q, _)| q.id.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            out.fresh.iter().map(|q| q.id.as_str()).collect::<Vec<_>>(),
+            vec!["trivia-api-c"]
+        );
+        // One matches the bank, the other an earlier question in the same batch.
+        assert_eq!(ids(&out.skipped), vec!["trivia-api-b", "trivia-api-d"]);
+        assert_eq!(out.skipped[0].1.id, "trivia-api-a");
+        assert_eq!(out.invalid, 1);
+    }
 
     #[test]
     fn imported_questions_write_and_reload_as_a_pack() {

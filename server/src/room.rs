@@ -1221,13 +1221,34 @@ impl Room {
             .await
             .map_err(load_error)?;
         let played: HashSet<i64> = self.used_question_ids.iter().copied().collect();
-        let (plan, reset) = rounds::plan(
+        // Also skip what other games played lately, up to half the pool so there's still a mix.
+        let recent = self
+            .db
+            .recently_played(pool.len() / 2)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("reading recent plays: {e:#}");
+                Vec::new()
+            });
+        let mut avoid = played.clone();
+        avoid.extend(recent);
+        let (mut plan, mut reset) = rounds::plan(
             &pool,
             self.settings.trivia_rounds,
             self.settings.per_round,
-            &played,
+            &avoid,
             &mut rand::rng(),
         );
+        if reset && avoid.len() > played.len() {
+            // Not enough left after skipping other games' questions; just skip this room's.
+            (plan, reset) = rounds::plan(
+                &pool,
+                self.settings.trivia_rounds,
+                self.settings.per_round,
+                &played,
+                &mut rand::rng(),
+            );
+        }
         if reset {
             // Ran out of unseen questions; repeats beat a short game.
             self.used_question_ids.clear();
@@ -1264,6 +1285,10 @@ impl Room {
         }
         self.used_question_ids
             .extend(questions.iter().map(|q| q.id));
+        let dealt: Vec<i64> = questions.iter().map(|q| q.id).collect();
+        if let Err(e) = self.db.record_plays(&dealt).await {
+            tracing::warn!("recording plays: {e:#}");
+        }
         self.questions = questions;
         Ok(())
     }

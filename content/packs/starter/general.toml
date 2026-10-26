@@ -11,12 +11,6 @@ unit = "sides"
 difficulty = "easy"
 
 [[question]]
-type = "true_false"
-prompt = "A group of crows is called a murder."
-answer = true
-host_quip = "Which is also what happens to your score if you miss this."
-
-[[question]]
 type = "type_answer"
 prompt = "What is the only letter that doesn't appear in any US state name?"
 answers = ["Q"]
@@ -63,9 +57,3 @@ choices = ["Racecar", "Racetrack", "Carousel", "Radar gun"]
 answer = "Racecar"
 difficulty = "easy"
 
-[[question]]
-type = "type_answer"
-prompt = "What color do you get when you mix blue and yellow paint?"
-answers = ["Green"]
-difficulty = "easy"
-host_quip = "A warm-up. You're welcome."

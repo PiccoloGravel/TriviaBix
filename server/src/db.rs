@@ -52,11 +52,11 @@ impl Rating {
     }
 }
 
-/// SQL that is true for questions the game can play: still in a pack, and a type the phones
-/// support (multiple choice with up to four choices, or true/false).
+/// SQL that is true for questions the game can play: still in a pack, not hidden as a duplicate,
+/// and a type the phones support (multiple choice with up to four choices, or true/false).
 macro_rules! playable {
     () => {
-        "active = 1 AND kind IN ('multiple_choice', 'true_false')
+        "active = 1 AND hidden = 0 AND kind IN ('multiple_choice', 'true_false')
          AND json_array_length(wrong) BETWEEN 1 AND 3"
     };
 }

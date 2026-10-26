@@ -57,8 +57,3 @@ lead_in = "Map question. Find the boot."
 PG = "And Sicily is the ball it's about to kick."
 PG-13 = "Italy: shaped like a boot, run like a group chat."
 
-[[script]]
-question = "geography-6f9042c7"
-prompt = "What is the smallest country in the world?"
-lead_in = "Tiny country question."
-reveal = "It's so small, but it still has its own national soccer team. Mostly priests and Swiss Guards."

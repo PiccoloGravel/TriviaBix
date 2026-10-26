@@ -1,6 +1,5 @@
 //! `triviabix-questions`: validate, inspect, export, and import trivia packs.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -37,13 +36,23 @@ enum Command {
         #[arg(long, default_value = "PG", value_parser = parse_rating)]
         rating: Rating,
     },
+    /// List questions that look like the same question asked twice.
+    Dupes {
+        /// Only the sure ones, not the ones that might be different questions.
+        #[arg(long)]
+        sure: bool,
+    },
     /// Write the whole bank as one JSON array, for seeding a database.
     Export {
         #[arg(long, default_value = "questions.json")]
         out: PathBuf,
     },
-    /// Pull questions from a trivia site into a new pack file.
+    /// Pull questions from a trivia site into a new pack file. Questions the bank already has,
+    /// even worded differently, are skipped.
     Import {
+        /// Also skip questions that only might be duplicates, instead of adding them to check.
+        #[arg(long, global = true)]
+        strict: bool,
         #[command(subcommand)]
         source: ImportSource,
     },
@@ -182,6 +191,16 @@ fn run(cli: &Cli) -> Result<(), String> {
             for w in bank.warnings() {
                 println!("warning: {w}");
             }
+            let sure = bank
+                .duplicates()
+                .iter()
+                .filter(|p| p.verdict == Verdict::Duplicate)
+                .count();
+            if sure > 0 {
+                return Err(format!(
+                    "{sure} questions are asked twice (see the warnings above, or run `dupes`)"
+                ));
+            }
             println!(
                 "OK: {} questions in {} categories",
                 bank.questions().len(),
@@ -277,7 +296,38 @@ fn run(cli: &Cli) -> Result<(), String> {
                 out.display()
             );
         }
-        Command::Import { source } => import_cmd(&content, source)?,
+        Command::Import { source, strict } => import_cmd(&content, source, *strict)?,
+        Command::Dupes { sure } => {
+            let bank = load(&content)?;
+            let pairs: Vec<DuplicatePair> = bank
+                .duplicates()
+                .into_iter()
+                .filter(|p| !sure || p.verdict == Verdict::Duplicate)
+                .collect();
+            let prompt = |id: &str| bank.get(id).map_or(String::new(), |q| q.prompt.clone());
+            let pack = |id: &str| {
+                bank.pack_of(id)
+                    .map_or(String::new(), |p| format!(" [{}]", p.display()))
+            };
+            for p in &pairs {
+                println!(
+                    "{:<9} {:.2}\n  {}{} {:?}\n  {}{} {:?}",
+                    p.verdict.as_str(),
+                    p.score,
+                    p.a,
+                    pack(&p.a),
+                    prompt(&p.a),
+                    p.b,
+                    pack(&p.b),
+                    prompt(&p.b),
+                );
+            }
+            println!(
+                "{} pairs. Delete one of each, or list a pair in {}/{NOT_DUPLICATES} to keep both.",
+                pairs.len(),
+                content.display()
+            );
+        }
         Command::Scripts { action } => scripts_cmd(&content, action)?,
     }
     Ok(())
@@ -287,7 +337,7 @@ fn load(dir: &Path) -> Result<QuestionBank, String> {
     QuestionBank::load_dir(dir).map_err(|e| e.to_string())
 }
 
-fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
+fn import_cmd(content: &Path, source: &ImportSource, strict: bool) -> Result<(), String> {
     let (questions, pack_name, default_out) = match source {
         ImportSource::Opentdb {
             list_categories: true,
@@ -360,9 +410,10 @@ fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
         }
     };
 
-    // Skip anything already in the bank or in the file being added to.
-    let mut existing: Vec<Question> = QuestionBank::load_dir(content)
-        .map(|b| b.questions().to_vec())
+    // Skip anything already in the bank or in the file being added to, including the same
+    // question worded differently.
+    let mut index = QuestionBank::load_dir(content)
+        .map(|b| b.duplicate_index())
         .unwrap_or_default();
     let mut pack = if default_out.exists() {
         let text = std::fs::read_to_string(&default_out).map_err(|e| e.to_string())?;
@@ -376,26 +427,43 @@ fn import_cmd(content: &Path, source: &ImportSource) -> Result<(), String> {
             questions: vec![],
         }
     };
-    existing.extend(pack.resolve("existing"));
-    let mut seen: HashSet<String> = existing.iter().map(|q| normalize(&q.prompt)).collect();
+    for q in pack.resolve("existing") {
+        index.add(&q);
+    }
     let fetched = questions.len();
-    let fresh = import::dedupe(questions, &mut seen);
-    let fresh: Vec<Question> = fresh
-        .into_iter()
-        .filter(|q| validate_question(q).is_empty())
-        .collect();
-    let added = fresh.len();
-    pack.questions.extend(fresh.iter().map(PackQuestion::from));
+    let checked = import::screen(questions, &mut index, strict);
+    for (q, m) in &checked.skipped {
+        println!(
+            "skip  {:?}\n      same as {} {:?}",
+            q.prompt, m.id, m.prompt
+        );
+    }
+    for (q, m) in &checked.flagged {
+        println!(
+            "check {:?}\n      looks like {} {:?}",
+            q.prompt, m.id, m.prompt
+        );
+    }
+    let added = checked.fresh.len();
+    pack.questions
+        .extend(checked.fresh.iter().map(PackQuestion::from));
 
     if let Some(dir) = default_out.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     std::fs::write(&default_out, pack.to_toml()?).map_err(|e| e.to_string())?;
     println!(
-        "Fetched {fetched}, added {added} new questions to {} ({} skipped as duplicates or invalid)",
+        "Fetched {fetched}, added {added} new questions to {}. Skipped {} duplicates and {} invalid.",
         default_out.display(),
-        fetched - added
+        checked.skipped.len(),
+        checked.invalid,
     );
+    if !checked.flagged.is_empty() {
+        println!(
+            "{} added questions look a bit like ones you have (marked \"check\" above). Run `triviabix-questions dupes` to review them.",
+            checked.flagged.len()
+        );
+    }
     println!("Review them, then run `triviabix-questions validate`.");
     Ok(())
 }

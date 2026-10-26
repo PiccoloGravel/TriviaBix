@@ -57,22 +57,6 @@ fun_fact = "The Empire State Building gets hit about 20 times a year."
 
 [[question]]
 type = "multiple_choice"
-prompt = "What is the hardest natural substance on Earth?"
-choices = ["Diamond", "Quartz", "Titanium", "Granite"]
-answer = "Diamond"
-difficulty = "easy"
-
-[[question]]
-type = "closest_number"
-prompt = "Roughly how fast does light travel, in kilometers per second?"
-answer = 299792
-unit = "km/s"
-tolerance = 1000
-difficulty = "hard"
-tags = ["space"]
-
-[[question]]
-type = "multiple_choice"
 prompt = "What is the largest animal that has ever lived?"
 choices = ["Blue whale", "Argentinosaurus", "Megalodon", "African elephant"]
 answer = "Blue whale"

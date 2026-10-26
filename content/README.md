@@ -86,10 +86,40 @@ cargo run -p triviabix-questions --features cli -- import trivia-api --amount 50
 ```
 
 Imports land in `packs/imported/`, mapped onto our categories and tagged with their
-source (`opentdb`, `trivia-api`) and decade where the site gives one. Questions already in
-the bank are skipped, and running the same import again adds to the same file. Imported
-questions are rated PG, and each keeps its source and license so attribution travels with
-it. Skim a fresh import before a party: these sites are crowd-sourced.
+source (`opentdb`, `trivia-api`) and decade where the site gives one. Running the same
+import again adds to the same file. Imported questions are rated PG, and each keeps its
+source and license so attribution travels with it. Skim a fresh import before a party:
+these sites are crowd-sourced.
+
+## Duplicates
+
+The bank shouldn't ask the same thing twice, even in different words. Two questions count as
+the same when they share the answer and most of their words ("What is the capital of
+Australia?" and "Name Australia's capital city."), ignoring filler like "which" or "the".
+Questions that are only similar, such as a true/false statement and a question about the same
+fact, are flagged as "might be the same" instead.
+
+- **Imports** skip anything the bank (or the pack being added to) already asks, and print each
+  skipped question next to the one it matched. Near misses are added but marked `check`;
+  pass `--strict` to skip those too.
+- **`validate`** fails if two questions are the same, and warns about the near misses.
+- **`dupes`** lists every look-alike pair with its pack file.
+- **The admin panel's Duplicates page** (`/admin/duplicates`) lists look-alikes across
+  everything the server has, including old seeded questions. Keep one and the other is hidden
+  (it stops being played, even after a reload), or mark the pair as different questions.
+
+If two questions really are different, list them in `not-duplicates.toml` (next to
+`categories.toml`) so they stop being reported:
+
+```toml
+[[pair]]
+ids = ["history-1a2b3c4d", "movies-5e6f7a8b"]
+note = "One asks about the ship, the other about the film"
+```
+
+Games also avoid repeats: a game never deals the same question twice, a room skips what it
+already played, and new games skip the questions played most recently in any room until
+there aren't enough fresh ones left.
 
 ## Host scripts
 

@@ -1,10 +1,4 @@
 [[script]]
-question = "sports-9c042a82"
-prompt = "How many players does a soccer team have on the field at once?"
-lead_in = "Soccer question. How many on the pitch?"
-reveal = "A team needs at least seven players on the field, or the match is called off. Red cards add up."
-
-[[script]]
 question = "sports-f632400d"
 prompt = "Michael Phelps has won more Olympic gold medals than anyone else in history."
 lead_in = "True or false. The most decorated Olympian."

@@ -15,13 +15,6 @@ fun_fact = "The Nahuatl word is āhuacatl. Think about that next time you order 
 host_quip = "Holy guacamole."
 
 [[question]]
-type = "multiple_choice"
-prompt = "Legend says Casanova ate 50 of which food for breakfast to boost his stamina?"
-choices = ["Oysters", "Figs", "Raw eggs", "Strawberries"]
-answer = "Oysters"
-tags = ["food"]
-
-[[question]]
 type = "type_answer"
 prompt = "Which Greek goddess of love was born from sea foam?"
 answers = ["Aphrodite"]

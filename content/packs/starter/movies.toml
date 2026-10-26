@@ -49,13 +49,6 @@ last_label = "Latest"
 fun_fact = "1993, 1999, 2009, and 2019."
 
 [[question]]
-type = "type_answer"
-prompt = "Which 1984 movie has the line \"I'll be back\"?"
-answers = ["The Terminator", "Terminator"]
-tags = ["80s"]
-host_quip = "Say it in the accent. I'll wait."
-
-[[question]]
 type = "multiple_choice"
 prompt = "Who played Captain Jack Sparrow?"
 choices = ["Johnny Depp", "Orlando Bloom", "Geoffrey Rush", "Javier Bardem"]
