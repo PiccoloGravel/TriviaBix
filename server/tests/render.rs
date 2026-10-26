@@ -263,11 +263,55 @@ async fn cancelling_gives_the_gpu_back() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // One job at a time.
-    let (code, _) = s
+    // One voice run at a time, and no cleanup while it has a GPU.
+    let (code, res) = s
+        .call(
+            "render/preview",
+            Some(json!({ "kind": "voice", "options": { "max_hours": 1 } })),
+        )
+        .await;
+    assert_eq!(code, 409, "{res}");
+    assert!(
+        res["error"]
+            .as_str()
+            .unwrap()
+            .contains("voice run is already running")
+    );
+    let (code, _) = s.call("render/cleanup", Some(json!({}))).await;
+    assert_eq!(code, 409);
+
+    // Art runs next to it, on its own GPU, price check and limit.
+    let (code, preview) = s
         .call("render/preview", Some(json!({ "kind": "art" })))
         .await;
-    assert_eq!(code, 409);
+    assert_eq!(code, 200, "{preview}");
+    assert_eq!(preview["max_cost"], 0.23);
+    let (code, art) = s
+        .call(
+            "render/start",
+            Some(json!({ "token": preview["token"], "confirm": true })),
+        )
+        .await;
+    assert_eq!(code, 200, "{art}");
+    let art = s.finish(art["id"].as_i64().unwrap()).await;
+    assert_eq!(art["state"], "done", "{art}");
+    assert_eq!(art["cost"], 0.067);
+    assert!(
+        s.calls().contains("--yes --max-price 0.47"),
+        "{}",
+        s.calls()
+    );
+
+    // The voice run carried on, and the page lists it as running.
+    let (_, status) = s.call("render", None).await;
+    let running: Vec<_> = status["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|j| j["id"].as_i64())
+        .collect();
+    assert_eq!(running, vec![Some(id)], "{status}");
+    assert_eq!(status["job"]["id"], id);
 
     let (code, res) = s
         .call(&format!("render/jobs/{id}/cancel"), Some(json!({})))
