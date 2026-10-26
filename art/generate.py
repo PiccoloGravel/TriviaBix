@@ -25,6 +25,7 @@ import sys
 import tempfile
 import time
 import tomllib
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -418,6 +419,8 @@ def run(jobs: list[Job], todo: list[Job], backend, out: Path, library: Library, 
                 raise SystemExit(f"Stopping: the GPU failed in a way every job would ({e!r})")
             failed += 1
             print(f"  failed: {e!r}", file=sys.stderr)
+            if failed == 1:  # the first in full, so the log shows where it came from
+                traceback.print_exc()
             continue
         dest = out / job.path
         dest.parent.mkdir(parents=True, exist_ok=True)

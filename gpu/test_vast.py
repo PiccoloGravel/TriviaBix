@@ -199,6 +199,17 @@ class VastTest(Base):
         self.assertEqual([c["image"] for c in self.fake.created[-2:]], ["img", "img"])
         self.assertNotIn("offer 6", log)
 
+    def test_a_job_that_runs_out_of_time_still_hands_back_what_it_made(self):
+        self.vast.PARTIAL_EVERY = 0.5
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to:
+                with self.assertRaisesRegex(self.vast.Abort, "ran past"):
+                    self.vast.run_job("img", f"mkdir -p {box}/assets && echo made > {box}/assets/a.png; sleep 60",
+                                      to, out=box, yes=True, max_minutes=0.08, another=True, keep_partial=True)
+                self.assertEqual(Path(to, "assets", "a.png").read_text().strip(), "made")
+        finally:
+            self.vast.PARTIAL_EVERY = 60
+
     def test_nothing_is_rented_when_every_offer_is_taken(self):
         self.fake.taken = {1}
         try:
