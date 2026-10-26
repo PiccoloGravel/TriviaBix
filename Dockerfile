@@ -25,8 +25,8 @@ COPY web /app/web
 # The rendering scripts, run from the admin panel's Rendering page.
 COPY gpu /app/gpu
 COPY art /app/art
-# Sent to a rented GPU by `gpu/vast.py design`, so new voices don't wait for a new voice image.
-COPY tts/make_voice.py /app/tts/make_voice.py
+# Sent to a rented GPU by `gpu/vast.py design` and `voice`, so they don't wait for a new voice image.
+COPY tts/make_voice.py tts/batch.py /app/tts/
 # Question packs and host scripts, loaded into the database at startup.
 COPY content /app/content
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh

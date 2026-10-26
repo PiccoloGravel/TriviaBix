@@ -416,6 +416,9 @@ impl Job {
                     .as_str()
                     .map(|g| format!("{g} {}GB", ev["vram_gb"]));
                 self.view.price_hr = ev["price_hr"].as_f64();
+                if let Some(e) = estimate(ev) {
+                    d["estimate"] = e;
+                }
             }
             Some("rented") => {
                 self.view.instance = ev["instance"].as_i64();
@@ -465,12 +468,19 @@ impl Job {
     }
 }
 
+/// The expected time and cost in a tool's `offer` event, if it gave them.
+fn estimate(offer: &Value) -> Option<Value> {
+    let minutes = offer["est_minutes"].as_f64()?;
+    Some(json!({ "minutes": minutes, "cost": offer["est_cost"].as_f64() }))
+}
+
 /// A dry run that can be started with its token.
 struct Preview {
     kind: Kind,
     options: Options,
     price_hr: Option<f64>,
     max_cost: Option<f64>,
+    estimate: Option<Value>,
     gpu: Option<String>,
     made: Instant,
 }
@@ -490,6 +500,8 @@ pub struct PreviewView {
     pub max_cost: Option<f64>,
     /// The longest the GPU may run, in minutes.
     pub minutes: Option<f64>,
+    /// How long the job is expected to take and cost on the quoted GPU: {minutes, cost}.
+    pub estimate: Option<Value>,
     pub details: Value,
     /// The tool's last words, when it failed (such as a missing API key or no GPU under the limit).
     pub error: Option<String>,
@@ -929,6 +941,7 @@ impl Render {
             price_hr: offer.and_then(|o| o["price_hr"].as_f64()),
             max_cost: offer.and_then(|o| o["max_cost"].as_f64()),
             minutes: offer.and_then(|o| o["minutes"].as_f64()),
+            estimate: offer.and_then(estimate),
             details,
             error: (!ok).then(|| out.last_words()),
             log: out.lines.iter().rev().take(40).rev().cloned().collect(),
@@ -944,6 +957,7 @@ impl Render {
                     options,
                     price_hr: view.price_hr,
                     max_cost: view.max_cost,
+                    estimate: view.estimate.clone(),
                     gpu: view.gpu.clone(),
                     made: Instant::now(),
                 },
@@ -983,6 +997,9 @@ impl Render {
         let mut details = json!({});
         if let Some(gpu) = preview.gpu {
             details["quoted_gpu"] = gpu.into();
+        }
+        if let Some(e) = preview.estimate {
+            details["estimate"] = e;
         }
         self.launch(
             preview.kind,
@@ -1455,7 +1472,9 @@ impl Render {
             Kind::Voice => {
                 let mut cmd = tool("gpu/vast.py");
                 cmd.args(["voice", "--server", &c.server_url, "--max-hours"])
-                    .arg(o.max_hours.unwrap_or(VOICE_MAX_HOURS).to_string());
+                    .arg(o.max_hours.unwrap_or(VOICE_MAX_HOURS).to_string())
+                    .arg("--library")
+                    .arg(&c.assets_dir);
                 cmd
             }
             Kind::Design => {

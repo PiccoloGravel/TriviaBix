@@ -1,6 +1,7 @@
 """The real generators. Needs an NVIDIA GPU with 24 GB or more and the packages in requirements.txt.
 
-- Pictures: FLUX.1-schnell (Apache-2.0), 4 steps, so a picture takes a few seconds.
+- Pictures: FLUX.1-schnell (Apache-2.0), 4 steps, so a picture takes a few seconds. Drawn several at a
+  time (ART_BATCH, default 8, or 4 on a 24 GB card).
 - Cut-outs: BiRefNet (MIT) takes the background off stickers.
 - Clips: Wan2.2-TI2V-5B (Apache-2.0) animates a backdrop still.
 
@@ -35,6 +36,9 @@ class GpuBackend(GpuModels):
         big = torch.cuda.get_device_properties(0).total_memory >= 40 * 2**30
         # On a 24 GB card the models don't fit whole, so parts move to the GPU only while they run.
         self.offload = os.environ.get("ART_OFFLOAD", "auto") == "on" or (os.environ.get("ART_OFFLOAD", "auto") == "auto" and not big)
+        # Pictures drawn per call to FLUX. More at once keeps the GPU busy; a batch that runs out of memory
+        # is split in half and tried again.
+        self.batch = int(os.environ.get("ART_BATCH") or (4 if self.offload else 8))
 
     def _use(self, name: str, load):
         """Keeps one model in memory at a time."""
@@ -67,6 +71,32 @@ class GpuBackend(GpuModels):
             max_sequence_length=256,
             generator=torch.Generator("cpu").manual_seed(seed),
         ).images[0]
+
+    def images(self, prompts: list[str], seeds: list[int], width: int, height: int) -> list[Image.Image]:
+        """Several pictures in one call, each from its own seed, so each comes out as `image` would make it
+        alone (the asset store's keys stay the same)."""
+        from diffusers import FluxPipeline
+
+        pipe = self._use("image", lambda: self._pipe(FluxPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)))
+        try:
+            return pipe(
+                list(prompts),
+                width=width,
+                height=height,
+                guidance_scale=0.0,
+                num_inference_steps=4,
+                max_sequence_length=256,
+                generator=[torch.Generator("cpu").manual_seed(s) for s in seeds],
+            ).images
+        except torch.cuda.OutOfMemoryError:
+            if len(prompts) == 1:
+                raise
+            gc.collect()
+            torch.cuda.empty_cache()
+            half = len(prompts) // 2
+            self.batch = max(1, half)
+            return (self.images(prompts[:half], seeds[:half], width, height)
+                    + self.images(prompts[half:], seeds[half:], width, height))
 
     def cutout(self, img: Image.Image) -> Image.Image:
         from torchvision import transforms

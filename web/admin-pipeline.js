@@ -218,7 +218,8 @@ function quoteBox(kind) {
   const d = q.details || {};
   const lines = [];
   if (kind === "voice") lines.push(`${d.backlog} lines to voice`);
-  if (kind === "art" && d.todo) lines.push(`${d.todo.count} pieces need a GPU${d.todo.clips ? ` (${d.todo.clips} clips)` : ""}, about ${d.todo.minutes} minutes`);
+  if (kind === "voice") lines.push("All of them go up to the GPU in one batch and come back as they're made.");
+  if (kind === "art" && d.todo) lines.push(`${d.todo.count} pieces need a GPU${d.todo.clips ? ` (${d.todo.clips} clips)` : ""}, made in batches`);
   if (kind === "design" && d.todo) {
     const reused = d.todo.total - d.todo.count;
     lines.push(`${plural(d.todo.count, "new candidate")} to make` + (reused ? `; ${reused} already made, so free` : ""));
@@ -234,6 +235,8 @@ function quoteBox(kind) {
     head,
     ...lines.map((l) => el("div", {}, l)),
     said,
+    q.estimate ? el("div", {}, "Expected to take about ", el("b", {}, duration(q.estimate.minutes * 60000)),
+      " and cost about ", el("b", {}, money(q.estimate.cost)), ` on this GPU, picked for the lowest total cost.`) : null,
     q.max_cost != null ? el("div", {}, `Stops after ${duration(q.minutes * 60000)} at most, so it can cost at most `, el("b", {}, money(q.max_cost)), ".") : null,
     el("div", { class: "row" },
       el("button", { onclick: () => start(kind) }, q.max_cost != null ? `Start, up to ${money(q.max_cost)}` : "Start"),
@@ -531,8 +534,9 @@ async function check(kind) {
 
 async function start(kind) {
   const q = quotes[kind];
+  const expect = q.estimate ? ` Expected: about ${duration(q.estimate.minutes * 60000)}, about ${money(q.estimate.cost)}.` : "";
   const sure = q.max_cost != null
-    ? `Rent ${q.gpu} at ${money(q.price_hr)}/hr? It stops by itself after ${duration(q.minutes * 60000)}, so it can cost at most ${money(q.max_cost)}.`
+    ? `Rent ${q.gpu} at ${money(q.price_hr)}/hr?${expect} It stops by itself after ${duration(q.minutes * 60000)}, so it can cost at most ${money(q.max_cost)}.`
     : `Have Claude write lines for ${q.details.todo.count} questions? It's billed to your Anthropic account.`;
   if (!confirm(sure)) return;
   delete quotes[kind];
@@ -609,6 +613,7 @@ function renderJob() {
       el("span", {}, running ? `running ${duration(end - job.started_at)}` : `took ${duration(end - job.started_at)}`),
       job.gpu ? el("span", {}, el("b", {}, job.gpu), ` at ${money(job.price_hr)}/hr`) : null,
       job.cost != null ? el("span", {}, running ? "so far " : "cost ", el("b", {}, money(job.cost))) : null,
+      job.details && job.details.estimate ? el("span", {}, `expected about ${duration(job.details.estimate.minutes * 60000)}, ${money(job.details.estimate.cost)}`) : null,
       job.max_cost != null ? el("span", {}, `at most ${money(job.max_cost)}`) : null,
       job.instance && !job.released ? el("span", {}, `GPU ${job.instance} rented`) : null,
       job.instance && job.released ? el("span", {}, "GPU given back") : null),

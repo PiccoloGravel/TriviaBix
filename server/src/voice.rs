@@ -333,6 +333,91 @@ impl Voice {
         self.0.as_ref().map_or(0, |i| i.queue.lock().unwrap().len())
     }
 
+    /// Every line the game wants ahead of time that has no audio in `voice` yet, as (hash, text),
+    /// queued lines first, for a batch run that makes them all on a rented GPU and sends them back
+    /// with `import`.
+    pub fn backlog_lines(&self, voice: &str) -> Vec<(String, String)> {
+        let Some(inner) = &self.0 else { return vec![] };
+        let made = made(&inner.dir.join(slug(voice)));
+        let mut order: Vec<String> = inner.queue.lock().unwrap().iter().cloned().collect();
+        let mut rest: Vec<String> = inner.wanted.lock().unwrap().iter().cloned().collect();
+        rest.sort();
+        order.extend(rest);
+        let known = inner.known.lock().unwrap();
+        let mut seen = HashSet::new();
+        order
+            .into_iter()
+            .filter(|h| !made.contains(h) && seen.insert(h.clone()))
+            .filter_map(|h| known.get(&h).map(|t| (h, t.clone())))
+            .collect()
+    }
+
+    /// Files a line made elsewhere (a batch run) in `voice`'s folder, the same way lines made here
+    /// are, and takes it off the queue. As with a TTS service, the voice lines were actually made
+    /// in becomes the one Bix plays in, and what's waiting is worked out again for it.
+    pub async fn import(
+        &self,
+        hash: &str,
+        voice: &str,
+        model: Option<&str>,
+        content_type: &str,
+        bytes: &[u8],
+    ) -> Result<(), VoiceError> {
+        let inner = self.0.as_ref().ok_or(VoiceError::NotFound)?;
+        let text = inner
+            .known
+            .lock()
+            .unwrap()
+            .get(hash)
+            .cloned()
+            .ok_or(VoiceError::NotFound)?;
+        let voice = voice.trim();
+        if voice.is_empty() || voice.len() > 300 {
+            return Err(VoiceError::Unavailable("no voice given".into()));
+        }
+        let (ext, content_type) = FORMATS
+            .iter()
+            .find(|(_, t)| content_type.starts_with(t))
+            .copied()
+            .ok_or_else(|| {
+                VoiceError::Unavailable(format!("unexpected audio type {content_type:?}"))
+            })?;
+        if self.current_voice().as_deref() != Some(voice) {
+            self.set_voice(voice);
+            let made = made(&inner.dir.join(slug(voice)));
+            let left: Vec<String> = inner
+                .wanted
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|h| !made.contains(*h))
+                .cloned()
+                .collect();
+            inner.queued.lock().unwrap().extend(left.iter().cloned());
+            inner.queue.lock().unwrap().extend(left);
+        }
+        if let Some(model) = model.filter(|m| !m.is_empty()) {
+            *inner.model.lock().unwrap() = Some(model.to_string());
+        }
+        let dir = inner.dir.join(slug(voice));
+        inner
+            .file(
+                &dir,
+                Some(voice),
+                hash,
+                &text,
+                ext,
+                content_type,
+                bytes,
+                "batch",
+            )
+            .await
+            .map_err(|e| VoiceError::Unavailable(e.to_string()))?;
+        inner.queue.lock().unwrap().retain(|h| h != hash);
+        inner.queued.lock().unwrap().remove(hash);
+        Ok(())
+    }
+
     /// The audio for the line with this hash, from the cache or freshly made, with its content type.
     pub async fn audio(&self, hash: &str) -> Result<(Vec<u8>, &'static str), VoiceError> {
         let inner = self.0.as_ref().ok_or(VoiceError::NotFound)?;
@@ -422,6 +507,42 @@ impl Inner {
             Some(v) => self.dir.join(slug(v)),
             None => dir.to_path_buf(),
         };
+        if let Err(e) = self
+            .file(
+                &dir,
+                voice.as_deref(),
+                hash,
+                text,
+                ext,
+                content_type,
+                &bytes,
+                &server.base,
+            )
+            .await
+        {
+            tracing::warn!("couldn't cache voice line in {}: {e}", dir.display());
+        }
+        tracing::debug!(
+            live,
+            ms = started.elapsed().as_millis() as u64,
+            "voiced {text:?}"
+        );
+        Ok((bytes, content_type))
+    }
+
+    /// Saves a line's audio and metadata in the asset store and notes it as made.
+    #[allow(clippy::too_many_arguments)]
+    async fn file(
+        &self,
+        dir: &Path,
+        voice: Option<&str>,
+        hash: &str,
+        text: &str,
+        ext: &str,
+        content_type: &str,
+        bytes: &[u8],
+        generator: &str,
+    ) -> std::io::Result<()> {
         let meta = serde_json::json!({
             "kind": "voice",
             "style": voice,
@@ -434,24 +555,15 @@ impl Inner {
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
-            "generator": server.base,
+            "generator": generator,
         });
-        match save(&dir, voice.as_deref(), hash, ext, &bytes, &meta).await {
-            Ok(()) => {
-                if let Some((slug, made)) = self.ready.lock().unwrap().as_mut()
-                    && dir.ends_with(slug.as_str())
-                {
-                    made.insert(hash.to_string());
-                }
-            }
-            Err(e) => tracing::warn!("couldn't cache voice line in {}: {e}", dir.display()),
+        save(dir, voice, hash, ext, bytes, &meta).await?;
+        if let Some((slug, made)) = self.ready.lock().unwrap().as_mut()
+            && dir.ends_with(slug.as_str())
+        {
+            made.insert(hash.to_string());
         }
-        tracing::debug!(
-            live,
-            ms = started.elapsed().as_millis() as u64,
-            "voiced {text:?}"
-        );
-        Ok((bytes, content_type))
+        Ok(())
     }
 
     /// The voice the service is speaking with, which names the cache folder. While the service is
@@ -670,6 +782,37 @@ mod tests {
         assert!(!voice.enabled());
         assert_eq!(voice.url("Hi"), None);
         assert_eq!(voice.audio(&hash("Hi")).await, Err(VoiceError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn a_batch_run_files_lines_and_drains_the_backlog() {
+        let dir = std::env::temp_dir().join(format!("tbx-voice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let voice = Voice::new(None, &dir);
+        voice.warm(["Hello".to_string(), "Goodbye".to_string()], false);
+        let lines = voice.backlog_lines("ip:US_James");
+        assert_eq!(lines.len(), 2);
+        assert!(lines.contains(&(HELLO_KEY.to_string(), "Hello".to_string())));
+
+        let wav = b"RIFF....WAVE".to_vec();
+        assert_eq!(
+            voice
+                .import(&hash("Not a line"), "ip:US_James", None, "audio/wav", &wav)
+                .await,
+            Err(VoiceError::NotFound)
+        );
+        voice
+            .import(HELLO_KEY, "ip:US_James", Some("m"), "audio/wav", &wav)
+            .await
+            .unwrap();
+        assert!(dir.join(JAMES_SLUG).join(format!("{HELLO_KEY}.wav")).is_file());
+        assert_eq!(voice.current_voice().as_deref(), Some("ip:US_James"));
+        assert!(voice.is_ready("Hello"));
+        assert_eq!(voice.backlog_lines("ip:US_James").len(), 1);
+        assert_eq!(voice.backlog(), 1);
+        // Another voice still needs both.
+        assert_eq!(voice.backlog_lines("ip:UK_George").len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

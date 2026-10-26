@@ -81,9 +81,13 @@ class Library:
             img.load()
             return img, hit
         img = make()
+        return img, self.put_image(style, inputs, img, model=model, **meta)
+
+    def put_image(self, style: str, inputs: dict, img: Image.Image, *, model: str, **meta) -> Path:
+        """Stores a picture made elsewhere (such as in a batch) as a PNG."""
         buf = io.BytesIO()
         img.save(buf, "PNG")
-        return img, self.put("image", style, inputs, buf.getvalue(), ".png", model=model, content_type="image/png", **meta)
+        return self.put("image", style, inputs, buf.getvalue(), ".png", model=model, content_type="image/png", **meta)
 
 
 def default_root() -> Path:

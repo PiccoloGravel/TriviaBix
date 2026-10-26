@@ -2,7 +2,7 @@
 
     export VAST_API_KEY=...            # from https://cloud.vast.ai/manage-keys/ ; never put it in the repo
     python3 gpu/vast.py offers                                   # what you'd get, renting nothing
-    python3 gpu/vast.py voice --server http://192.168.1.20:8080  # make Bix's missing lines, then stop
+    python3 gpu/vast.py voice --server http://192.168.1.20:8080  # make all of Bix's missing lines in one batch
     python3 gpu/vast.py voice --server ... --hours 4             # also voice live lines for a game night
     python3 gpu/vast.py design --description "A tired game show host..."   # candidate voices for Bix
     python3 gpu/vast.py run --image IMAGE --cmd "python generate.py --out /out" --out /out --to ./art
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -59,6 +60,16 @@ CLONE_CMD = f"cd /app && TTS_TOKEN=$TBX_TOKEN exec {INLINE_PY}"
 # Designs candidate voices with the newest tts/make_voice.py.
 DESIGN_CMD = f"cd /app && {INLINE_PY}"
 DESIGN_OUT = "/out"
+# Voices a whole backlog in one go with the newest tts/batch.py (sent along, like make_voice.py), reading the
+# lines (and a cloned voice's clip) uploaded to JOB_IN.
+BATCH_CMD = f"cd /app && {INLINE_PY}"
+JOB_IN = "/in"
+# Minutes from renting to the first line: pulling the image, downloading and loading the model.
+VOICE_BOOT_MIN = 8
+# Lines a minute the batch job makes on an RTX 4090 until a run has measured it (several copies of the model
+# at once, about 4 seconds of speech a line). Saved runs' measurements go in the asset store's SPEEDS file.
+VOICE_RATE = 60
+SPEEDS = "gpu-speeds.json"
 # Candidate voices for Bix in the asset store (docs/assets.md). BIX_VOICE=clone:<key> picks one.
 SAMPLE_KIND = "voice-sample"
 
@@ -145,7 +156,7 @@ class Vast:
                     continue
                 raise Abort(f"couldn't reach vast.ai: {e}")
 
-    def offers(self, min_vram_gb: float, max_price: float, disk_gb: float, limit: int = 10) -> list:
+    def offers(self, min_vram_gb: float, max_price: float, disk_gb: float, limit: int = 40) -> list:
         """On-demand single-GPU offers that can run the images, cheapest first. bf16 needs Ampere or
         newer (compute 8.0), and the images are built for CUDA 12.4."""
         q = {
@@ -229,7 +240,8 @@ class Vast:
 
 # Started as `python3 -c ...` in the image, so the image only needs Python 3. The job J (see job_blob) comes
 # in one env var, TBX_JOB. The wrapper exports J's env plus TBX_TOKEN, TBX_PORT and TBX_OUT, then runs J's
-# cmd; in job mode it also serves /status and the tarred output dir on the port behind the token. At the
+# cmd; in job mode it also serves /status, /partial (output changed since a time) and the tarred output dir on
+# the port behind the token, and with J's input set it first waits for PUT /input, a tarball it unpacks there. At the
 # deadline, or once a finished job's result has waited `linger` seconds, it destroys its own instance
 # (vast.ai gives every instance CONTAINER_ID and CONTAINER_API_KEY) or, failing that, exits, which stops
 # the GPU billing.
@@ -266,12 +278,34 @@ def finish(why):
     os._exit(0)
 
 os.makedirs(out, exist_ok=True)
-proc = subprocess.Popen(["sh", "-c", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+proc = None
+inp = J.get("input")
+got_input = threading.Event()
+if not inp:
+    got_input.set()
 
-def pump():
-    for line in proc.stdout:
-        note(line.rstrip("\n"))
-threading.Thread(target=pump, daemon=True).start()
+def start():
+    global proc
+    proc = subprocess.Popen(["sh", "-c", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    def pump():
+        for line in proc.stdout:
+            note(line.rstrip("\n"))
+    threading.Thread(target=pump, daemon=True).start()
+
+def tar_of(after):
+    """The output files changed since `after`, so results can come home while the job still works."""
+    path = "/tmp/tbx-partial-%d.tgz" % threading.get_ident()
+    with tarfile.open(path, "w:gz") as t:
+        for root, dirs, files in os.walk(out):
+            for f in files:
+                full = os.path.join(root, f)
+                if f.endswith(".part"): continue
+                try:
+                    if os.path.getmtime(full) > after: t.add(full, arcname=os.path.relpath(full, out))
+                except OSError: pass
+    with open(path, "rb") as f: data = f.read()
+    os.remove(path)
+    return data
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -279,26 +313,57 @@ class H(BaseHTTPRequestHandler):
         if hmac.compare_digest(self.headers.get("Authorization", "").encode(), ("Bearer " + token).encode()):
             return True
         self.send_response(401); self.send_header("Content-Length", "0"); self.end_headers(); return False
-    def body(self, data, ctype="application/json"):
+    def body(self, data, ctype="application/json", headers=()):
         self.send_response(200); self.send_header("Content-Type", ctype)
+        for k, v in headers: self.send_header(k, v)
         self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_GET(self):
         if not self.ok(): return
         if self.path.startswith("/status"):
             since = int(self.path.partition("since=")[2] or 0)
             lines = [l for n, l in list(log) if n > since]
-            return self.body(json.dumps(dict(state, seq=seq[0], log=lines)).encode())
+            return self.body(json.dumps(dict(state, seq=seq[0], log=lines, started=proc is not None)).encode())
+        if self.path.startswith("/partial"):
+            now = time.time() - 1
+            data = tar_of(float(self.path.partition("after=")[2] or 0))
+            return self.body(data, "application/gzip", [("X-Until", "%.3f" % now)])
         if self.path == "/result" and state["state"] != "running":
             with open(RESULT, "rb") as f: return self.body(f.read(), "application/gzip")
         self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()
+    def do_PUT(self):
+        if not self.ok(): return
+        if self.path != "/input" or not inp or got_input.is_set():
+            self.send_response(409); self.send_header("Content-Length", "0"); self.end_headers(); return
+        size = int(self.headers.get("Content-Length", 0))
+        path = "/tmp/tbx-input.tgz"
+        with open(path, "wb") as f:
+            while size > 0:
+                chunk = self.rfile.read(min(size, 1 << 20))
+                if not chunk: break
+                f.write(chunk); size -= len(chunk)
+        os.makedirs(inp, exist_ok=True)
+        with tarfile.open(path) as t:
+            for m in t.getmembers():
+                if (m.isfile() or m.isdir()) and not m.name.startswith("/") and ".." not in m.name.split("/"):
+                    t.extract(m, inp)
+        note("[tbx] got the job's input; starting")
+        self.body(b'{"ok": true}')
+        got_input.set()
+
 if mode == "job":
     srv = ThreadingHTTPServer(("0.0.0.0", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 signal.signal(signal.SIGTERM, lambda *a: finish("stopped"))
+if inp:
+    note("[tbx] waiting for the job's input")
 while True:
     time.sleep(2)
     if time.time() > deadline:
         finish("time limit reached")
+    if proc is None:
+        if got_input.is_set():
+            start()
+        continue
     code = proc.poll()
     if code is not None and mode == "serve":
         time.sleep(1); finish("the service exited with %s" % code)
@@ -394,7 +459,7 @@ class Rental:
 
     def __init__(self, vast: Vast, offers: list | dict, image: str, cmd: str, mode: str, minutes: float,
                  env: dict | None = None, port: int = PORT, disk: float = 40, out: str = "/out",
-                 login: str | None = None, kind: str = "job"):
+                 login: str | None = None, kind: str = "job", inputs: str | None = None):
         # The offers to try in order, cheapest first, all within the price limit already confirmed: one can be
         # taken by someone else between pricing it and renting it.
         self.offers = [offers] if isinstance(offers, dict) else list(offers)
@@ -408,7 +473,7 @@ class Rental:
             "runtype": "args", "args": boot_args(), "image_login": login,
             "env": {f"-p {port}:{port}": "1",
                     "TBX_JOB": job_blob(mode=mode, cmd=cmd, out=out, token=self.token, port=port,
-                                        deadline=int(self.deadline), env=dict(env or {}))},
+                                        deadline=int(self.deadline), env=dict(env or {}), input=inputs)},
         }
 
     def __enter__(self):
@@ -484,21 +549,67 @@ def describe(offer: dict) -> str:
             f"{offer.get('geolocation') or 'unknown location'} (offer {offer.get('id')})")
 
 
-def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float) -> list:
-    """The suitable offers under `max_price`, cheapest first. The first is the one quoted; the rest are fallbacks."""
+# How fast each GPU gets through our jobs next to an RTX 4090 (1.0): rough figures for bf16 inference, to
+# pick the GPU that finishes a job for the least money rather than the one with the lowest hourly price.
+# A GPU not listed counts as UNKNOWN_SPEED. The voice job measures its real speed and remembers it.
+SPEED = {
+    "RTX 3080": 0.45, "RTX 3080 Ti": 0.5, "RTX 3090": 0.55, "RTX 3090 Ti": 0.6, "RTX 4060 Ti": 0.35,
+    "RTX 4070": 0.45, "RTX 4070 Ti": 0.55, "RTX 4070S Ti": 0.6, "RTX 4080": 0.75, "RTX 4080S": 0.78,
+    "RTX 4090": 1.0, "RTX 4090D": 0.9, "RTX 5080": 0.85, "RTX 5090": 1.35,
+    "RTX A4000": 0.3, "RTX A4500": 0.38, "RTX A5000": 0.45, "RTX A6000": 0.55, "RTX 6000Ada": 1.0,
+    "A10": 0.35, "A40": 0.5, "L4": 0.3, "L40": 0.95, "L40S": 1.05,
+    "A100 PCIE": 0.9, "A100X": 0.9, "A100 SXM4": 1.0, "H100 PCIE": 1.4, "H100 NVL": 1.6, "H100 SXM": 1.8,
+    "H200": 1.9,
+}
+UNKNOWN_SPEED = 0.5
+
+
+def speed(offer: dict, offload_below_gb: float = 0) -> float:
+    """`offer`'s GPU's speed next to an RTX 4090. Below `offload_below_gb` of GPU memory a job has to move
+    model parts in and out of it (the art models), which costs about 40%."""
+    name = " ".join(str(offer.get("gpu_name") or "").split())
+    s = SPEED.get(name, UNKNOWN_SPEED)
+    if offload_below_gb and offer.get("gpu_ram", 0) / 1024 < offload_below_gb:
+        s *= 0.6
+    return s
+
+
+def estimate(offer: dict, work_minutes: float, boot_minutes: float, offload_below_gb: float = 0) -> tuple[float, float]:
+    """Minutes and dollars `offer` would take for a job of `work_minutes` on an RTX 4090, plus starting up."""
+    minutes = boot_minutes + work_minutes / speed(offer, offload_below_gb)
+    return minutes, offer.get("dph_total", 0) * minutes / 60
+
+
+def pick_offers(vast: Vast, min_vram: float, max_price: float, disk: float, work_minutes: float | None = None,
+                boot_minutes: float = 0, max_minutes: float | None = None, offload_below_gb: float = 0) -> list:
+    """The suitable offers under `max_price`. The first is the one quoted; the rest are fallbacks. Given the
+    job's size (`work_minutes` on an RTX 4090), they're ordered by what the whole job is expected to cost,
+    so a faster card that finishes sooner wins over a cheaper one that takes longer, and cards that wouldn't
+    finish within `max_minutes` go last. Without it, cheapest first."""
     offers = vast.offers(min_vram, max_price, disk)
     if not offers:
         raise Abort(f"no verified GPU with {min_vram:g} GB or more is available under ${max_price:.2f}/hr right "
                     "now; raise --max-price or try again later")
-    return offers
+    if work_minutes is None:
+        return offers
+    for o in offers:
+        o["est_minutes"], o["est_cost"] = estimate(o, work_minutes, boot_minutes, offload_below_gb)
+    late = lambda o: bool(max_minutes) and o["est_minutes"] > max_minutes  # noqa: E731
+    return sorted(offers, key=lambda o: (late(o), round(o["est_cost"], 3), o["est_minutes"]))
 
 
 def confirm(offer: dict, minutes: float, yes: bool, what: str):
     worst = offer.get("dph_total", 0) * minutes / 60
+    expected = {}
+    if "est_minutes" in offer:
+        expected = {"est_minutes": round(min(offer["est_minutes"], minutes), 1),
+                    "est_cost": round(offer.get("dph_total", 0) * min(offer["est_minutes"], minutes) / 60, 2)}
     event("offer", gpu=offer.get("gpu_name"), vram_gb=round(offer.get("gpu_ram", 0) / 1024),
           price_hr=offer.get("dph_total", 0), location=offer.get("geolocation"), minutes=minutes,
-          max_cost=round(worst, 2))
+          max_cost=round(worst, 2), **expected)
     say(f"{what} on {describe(offer)}")
+    if expected:
+        say(f"expected to take about {expected['est_minutes']:.0f} minutes, about ${expected['est_cost']:.2f}")
     say(f"stops after {minutes:g} minutes at most, so it can cost at most ${worst:.2f} (plus pennies for disk)")
     if yes:
         return
@@ -529,20 +640,36 @@ def on_signals():
 def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 16, max_price: float = 0.5,
             max_minutes: float = 60, disk: float = 40, env: dict | None = None, login: str | None = None,
             boot_minutes: float = 20, yes: bool = False, dry_run: bool = False, another: bool = False,
-            vast: Vast | None = None) -> int:
+            vast: Vast | None = None, work_minutes: float | None = None, boot_estimate: float = 0,
+            offload_below_gb: float = 0) -> int:
     """Runs `cmd` in `image` on a rented GPU, copies the container's `out` folder into `to`, and destroys the
-    instance. Returns the command's exit code."""
+    instance. Returns the command's exit code. With `work_minutes` (the job's length on an RTX 4090), the GPU
+    is picked by the expected cost of the whole job and the estimate is shown with the price."""
     vast = vast or Vast()
-    offers = pick_offers(vast, min_vram, max_price, disk)
+    offers = pick_offers(vast, min_vram, max_price, disk, work_minutes, boot_estimate, max_minutes, offload_below_gb)
     confirm(offers[0], max_minutes, yes or dry_run, f"would run {image}" if dry_run else f"running {image}")
     if dry_run:
         return 0
+    return run_rented(vast, offers, image, cmd, to, out, max_minutes, disk, env, login, boot_minutes, another)
+
+
+def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str = "/out", max_minutes: float = 60,
+               disk: float = 40, env: dict | None = None, login: str | None = None, boot_minutes: float = 20,
+               another: bool = False, inputs: Path | None = None, partial=None, partial_every: float = 60,
+               kind: str = "job") -> int:
+    """`run_job` once the price is confirmed. `inputs`, a folder, is uploaded to the instance's /in before
+    `cmd` starts, in one go. `partial(folder)`, if given, is called every `partial_every` seconds with what
+    the job has written to `out` since the last call, so results come home while it works."""
     refuse_doubles(vast, another)
     on_signals()
-    with Rental(vast, offers, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login) as r:
+    job_inputs = JOB_IN if inputs else None
+    with Rental(vast, offers, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login,
+                kind=kind, inputs=job_inputs) as r:
         base = r.address(boot_minutes)
         say(f"job running at {base}")
-        since, status = 0, {}
+        if inputs:
+            send_inputs(r, base, Path(inputs), time.time() + boot_minutes * 60)
+        since, status, after, pulled = 0, {}, 0.0, time.time()
         while True:
             if time.time() > r.deadline:
                 raise Abort(f"the job ran past --max-minutes {max_minutes:g}; stopped it")
@@ -556,6 +683,9 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
             since = status.get("seq", since)
             if status.get("state") != "running":
                 break
+            if partial and time.time() - pulled > partial_every:
+                pulled = time.time()
+                after = pull_partial(r, base, after, partial)
             time.sleep(5)
         say(f"job {status['state']} (exit code {status.get('code')}); downloading {out}")
         with r.http(f"{base}/result", timeout=600) as res, tempfile.TemporaryFile() as tmp:
@@ -564,6 +694,47 @@ def run_job(image: str, cmd: str, to: str, out: str = "/out", min_vram: float = 
             n = extract(tmp, Path(to))
         say(f"saved {n} files into {to}")
         return int(status.get("code") or 0)
+
+
+def send_inputs(r: "Rental", base: str, folder: Path, ready_by: float):
+    """Uploads `folder` as one tarball to the instance's wrapper, which unpacks it in /in and starts the job."""
+    buf = tempfile.TemporaryFile()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        t.add(folder, arcname=".")
+    size = buf.tell()
+    while True:
+        buf.seek(0)
+        req = urllib.request.Request(f"{base}/input", buf.read(), method="PUT", headers={
+            "Authorization": f"Bearer {r.token}", "Content-Type": "application/gzip"})
+        try:
+            with urllib.request.urlopen(req, timeout=300):
+                say(f"uploaded the job's input ({size // 1024} KB)")
+                return
+        except urllib.error.HTTPError as e:
+            if e.code == 409:  # already has it (a retry after a lost answer)
+                return
+            raise Abort(f"the GPU refused the job's input ({e.code})")
+        except (urllib.error.URLError, OSError):  # still starting
+            pass
+        if time.time() > ready_by:
+            raise Abort("the GPU didn't take the job's input in time")
+        time.sleep(5)
+
+
+def pull_partial(r: "Rental", base: str, after: float, partial) -> float:
+    """Fetches what the job wrote since `after` and hands it to `partial`. Returns the next `after`."""
+    try:
+        with r.http(f"{base}/partial?after={after}", timeout=300) as res, tempfile.TemporaryFile() as tmp:
+            until = float(res.headers.get("X-Until") or after)
+            shutil.copyfileobj(res, tmp)
+            tmp.seek(0)
+            with tempfile.TemporaryDirectory(prefix="triviabix-partial-") as d:
+                if extract(tmp, Path(d)):
+                    partial(Path(d))
+            return until
+    except (urllib.error.URLError, OSError, ValueError, tarfile.TarError) as e:
+        say(f"couldn't fetch results so far ({e}); trying again shortly")
+        return after
 
 
 def extract(fileobj, dest: Path) -> int:
@@ -609,6 +780,17 @@ class Game:
 
     def use(self, url: str | None, token: str | None = None) -> dict:
         return self.call("PUT", "/api/admin/voice", {"url": url, "token": token})
+
+    def backlog(self, voice: str) -> list:
+        """The lines waiting for audio in `voice`, as {"key", "text"}."""
+        return self.call("GET", "/api/admin/voice/backlog?voice=" + urllib.parse.quote(voice))["lines"]
+
+    def put_line(self, key: str, audio: bytes, content_type: str, voice: str, model: str | None):
+        """Files one line's audio in the game server's asset store."""
+        req = urllib.request.Request(f"{self.base}/api/admin/voice/lines/{key}", audio, method="PUT", headers={
+            "Content-Type": content_type, "X-Voice": voice, "X-Model": model or ""})
+        with self.http.open(req, timeout=60) as res:
+            res.read()
 
 
 def gpu_names() -> list:
@@ -721,12 +903,131 @@ def design(description: str, texts: list[str] | str, count: int = 4, mode: str =
         return code if saved == len(todo) else (code or 1)
 
 
+def voice_key(bix_voice: str, clip: tuple[bytes, str, str] | None) -> str:
+    """The name tts/server.py gives this voice, which names its folder in the asset store."""
+    if clip:
+        return f"clone:{clip[2]}.wav:{hashlib.sha256(clip[0] + clip[1].encode()).hexdigest()[:12]}"
+    return bix_voice.strip() or "ip:US_James"
+
+
+def voice_rate(store: Store) -> float:
+    """Lines a minute the batch job makes on an RTX 4090: what the last run measured, else a guess."""
+    try:
+        return float(json.loads((store.root / SPEEDS).read_text())["voice"]["lines_per_min"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return VOICE_RATE
+
+
+def remember_rate(store: Store, offer: dict, stats: dict):
+    """Keeps how fast this run went, scaled to an RTX 4090, for the next estimate."""
+    secs = float(stats.get("seconds") or 0)
+    if stats.get("made", 0) < 50 or secs < 60:
+        return  # too short to tell
+    rate = stats["made"] / (secs / 60) / speed(offer)
+    try:
+        path = store.root / SPEEDS
+        speeds = json.loads(path.read_text()) if path.exists() else {}
+        speeds["voice"] = {"lines_per_min": round(rate, 1), "gpu": offer.get("gpu_name"),
+                           "workers": stats.get("workers"), "measured": int(time.time())}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(speeds, indent=2) + "\n")
+        say(f"measured {stats['made'] / (secs / 60):.0f} lines a minute on {offer.get('gpu_name')} with "
+            f"{stats.get('workers')} copies of the model; the next estimate uses it")
+    except OSError as e:
+        say(f"couldn't save the measured speed: {e}")
+
+
+class Uploader:
+    """Files the audio a batch run sends home in the game server, each line once."""
+
+    def __init__(self, game: Game, total: int):
+        self.game, self.total, self.done, self.failed = game, total, set(), 0
+
+    def __call__(self, folder: Path):
+        meta = folder / "voice.json"
+        if meta.exists():
+            self.meta = json.loads(meta.read_text())
+        meta = getattr(self, "meta", None)
+        if not meta:
+            return
+        for f in sorted(folder.glob(f"*.{meta['format']}")):
+            if f.stem in self.done:
+                continue
+            try:
+                self.game.put_line(f.stem, f.read_bytes(), meta["content_type"], meta["voice"], meta.get("model"))
+                self.done.add(f.stem)
+            except (urllib.error.URLError, OSError) as e:
+                self.failed += 1
+                say(f"couldn't file line {f.stem} in the game server: {e}")
+        event("backlog", lines=max(0, self.total - len(self.done)))
+
+
 def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
           min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
           login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
-          another: bool = False, vast: Vast | None = None):
-    """Rents a GPU running Bix's voice service, points the game server at it until the backlog is done (or
-    for `hours`, to voice live lines during a game), then points it back and destroys the instance."""
+          another: bool = False, vast: Vast | None = None, library: str | None = None):
+    """Makes every line waiting for Bix's voice in one batch job: the whole backlog goes up to a rented GPU,
+    which runs several copies of the model at once (tts/batch.py), and the audio comes back while it works.
+    With `hours`, instead keeps a voice service up that long for live lines during a game (serve_voice)."""
+    if hours:
+        return serve_voice(server, password, bix_voice, hours, max_hours, min_vram, max_price, disk, image, login,
+                           boot_minutes, yes, dry_run, another, vast)
+    clip = clone_clip(bix_voice) if bix_voice.startswith("clone:") else None
+    store = Store(library)
+    vast = vast or Vast()
+    game = Game(server, password)
+    key = voice_key(bix_voice, clip)
+    lines = game.backlog(key)
+    say(f"{len(lines)} lines waiting to be made in {key}")
+    event("backlog", lines=len(lines))
+    if not lines:
+        say("nothing to make; not renting anything")
+        return
+    minutes = max_hours * 60
+    rate = voice_rate(store)
+    offers = pick_offers(vast, min_vram, max_price, disk, len(lines) / rate, VOICE_BOOT_MIN, minutes)
+    confirm(offers[0], minutes, yes or dry_run, "would voice lines" if dry_run else "voicing lines")
+    if dry_run:
+        return
+    with tempfile.TemporaryDirectory(prefix="triviabix-voice-") as tmp:
+        inp, got = Path(tmp, "in"), Path(tmp, "out")
+        inp.mkdir()
+        with open(inp / "lines.jsonl", "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps({"key": line["key"], "text": line["text"]}) + "\n")
+        env = voice_env(bix_voice)
+        if clip:
+            (inp / "voice").mkdir()
+            (inp / "voice" / f"{clip[2]}.wav").write_bytes(clip[0])
+            (inp / "voice" / f"{clip[2]}.txt").write_text(clip[1] + "\n", encoding="utf-8")
+            env["BIX_VOICE"] = f"clone:{JOB_IN}/voice/{clip[2]}.wav"
+        if os.environ.get("HF_TOKEN"):
+            env["HF_TOKEN"] = os.environ["HF_TOKEN"]
+        env["TBX_PY"] = pack((ROOT / "tts" / "batch.py").read_text(encoding="utf-8"))
+        # Stop making lines 5 minutes before the time limit, so what's made always comes home.
+        stop_at = int(time.time() + minutes * 60 - 300)
+        cmd = f"{BATCH_CMD} --in {JOB_IN} --out {DESIGN_OUT} --stop-at {stop_at}"
+        upload = Uploader(game, len(lines))
+        code = run_rented(vast, offers, image, cmd, str(got), DESIGN_OUT, minutes, disk, env, login, boot_minutes,
+                          another, inputs=inp, partial=upload, kind="voice")
+        upload(got)
+        say(f"filed {len(upload.done)} of {len(lines)} lines in the game server")
+        try:
+            remember_rate(store, offers[0], json.loads((got / "stats.json").read_text()))
+        except (OSError, ValueError):
+            pass
+        if len(upload.done) < len(lines):
+            raise Abort(f"{len(lines) - len(upload.done)} lines weren't made; run it again to make the rest "
+                        "(lines already made are kept)")
+        return code
+
+
+def serve_voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
+                min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
+                login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
+                another: bool = False, vast: Vast | None = None):
+    """Rents a GPU running Bix's voice service and points the game server at it for `hours`, to voice live
+    lines during a game (and any backlog meanwhile), then points it back and destroys the instance."""
     clip = clone_clip(bix_voice) if bix_voice.startswith("clone:") else None
     vast = vast or Vast()
     game = Game(server, password)
@@ -819,10 +1120,12 @@ def main(argv=None) -> int:
     v = sub.add_parser("voice", help="make Bix's missing voice lines on a rented GPU")
     v.add_argument("--server", default=os.environ.get("TRIVIABIX_URL"), help="the game server, e.g. http://192.168.1.20:8080")
     v.add_argument("--voice", default=os.environ.get("BIX_VOICE", "ip:US_James"))
-    v.add_argument("--hours", type=float, default=0, help="stay up this long for live lines (default: until done)")
+    v.add_argument("--hours", type=float, default=0,
+                   help="keep a voice service up this long for live lines (default: voice the backlog in one batch)")
     v.add_argument("--max-hours", type=float, default=3, help="hard limit (default 3)")
     v.add_argument("--image", default=TTS_IMAGE)
     v.add_argument("--boot-minutes", type=float, default=25)
+    v.add_argument("--library", help="the asset store, where measured speeds are kept (default $ASSETS_DIR)")
     renting(v, 16, 0.5)
 
     g = sub.add_parser("design", help="make candidate voices for Bix on a rented GPU, kept in the asset store")
@@ -845,6 +1148,11 @@ def main(argv=None) -> int:
     r.add_argument("--max-minutes", type=float, default=60, help="hard limit (default 60)")
     r.add_argument("--boot-minutes", type=float, default=20)
     r.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
+    r.add_argument("--work-minutes", type=float,
+                   help="how long the job takes on an RTX 4090, to pick the GPU by the whole job's cost and show it")
+    r.add_argument("--boot-estimate", type=float, default=0, help="minutes to start up, for the estimate")
+    r.add_argument("--offload-below", type=float, default=0,
+                   help="GB of GPU memory under which the job runs slower (models moved in and out), for the estimate")
     renting(r, 16, 0.5)
 
     sub.add_parser("list", help="TriviaBix instances on your account")
@@ -866,7 +1174,8 @@ def main(argv=None) -> int:
             if not password:
                 raise Abort("set ADMIN_PASSWORD to the game server's admin password")
             voice(args.server, password, args.voice, args.hours, args.max_hours, args.min_vram, args.max_price,
-                  args.disk, args.image, args.login, args.boot_minutes, args.yes, args.dry_run, args.another)
+                  args.disk, args.image, args.login, args.boot_minutes, args.yes, args.dry_run, args.another,
+                  library=args.library)
         elif args.command == "design":
             if not 1 <= args.count <= 8:
                 raise Abort("make 1 to 8 candidates at a time")
@@ -877,7 +1186,8 @@ def main(argv=None) -> int:
             env = dict(e.split("=", 1) for e in args.env)
             return run_job(args.image, args.cmd, args.to, args.out, args.min_vram, args.max_price,
                            args.max_minutes, args.disk, env, args.login, args.boot_minutes, args.yes,
-                           args.dry_run, args.another)
+                           args.dry_run, args.another, work_minutes=args.work_minutes,
+                           boot_estimate=args.boot_estimate, offload_below_gb=args.offload_below)
         elif args.command == "list":
             for i in Vast().ours():
                 up = (time.time() - (i.get("start_date") or time.time())) / 3600
