@@ -87,7 +87,10 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/questions/{id}/hidden", post(set_hidden))
         .route("/api/admin/voice", get(voice_status).put(set_voice_server))
         .route("/api/admin/voice/backlog", get(voice_backlog))
-        .route("/api/admin/voice/lines/{hash}", axum::routing::put(import_voice_line))
+        .route(
+            "/api/admin/voice/lines/{hash}",
+            axum::routing::put(import_voice_line),
+        )
         .route("/api/admin/music", get(music_status))
         .route("/api/admin/music/sync", post(music_sync))
         .route("/api/admin/render", get(render_status))

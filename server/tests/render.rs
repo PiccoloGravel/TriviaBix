@@ -177,6 +177,7 @@ async fn voice_job_is_priced_confirmed_and_costed() {
     assert_eq!(preview["price_hr"], 0.3);
     assert_eq!(preview["max_cost"], 0.3);
     assert_eq!(preview["details"]["backlog"], 12);
+    assert_eq!(preview["estimate"], json!({ "minutes": 10.2, "cost": 0.05 }));
     assert!(s.calls().contains("--dry-run"));
     assert!(!s.calls().contains("--yes"));
     let token = preview["token"].as_str().unwrap();
@@ -209,6 +210,7 @@ async fn voice_job_is_priced_confirmed_and_costed() {
     assert_eq!(job["released"], true);
     assert_eq!(job["details"]["backlog_start"], 12);
     assert_eq!(job["details"]["backlog"], 0);
+    assert_eq!(job["details"]["estimate"]["minutes"], 10.2);
     assert!(
         job["log"]
             .as_array()
@@ -219,10 +221,11 @@ async fn voice_job_is_priced_confirmed_and_costed() {
     // Rented at no more than a little over the quoted price.
     assert!(
         s.calls()
-            .contains("voice --server http://127.0.0.1:1 --max-hours 1 --yes --max-price 0.36"),
+            .contains("voice --server http://127.0.0.1:1 --max-hours 1 --library "),
         "{}",
         s.calls()
     );
+    assert!(s.calls().contains("--yes --max-price 0.36"), "{}", s.calls());
 
     let (_, status) = s.call("render", None).await;
     assert_eq!(status["history"][0]["state"], "done");

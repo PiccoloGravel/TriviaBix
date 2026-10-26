@@ -12,7 +12,9 @@ code and weights). Without it, the TV uses the browser's built-in text-to-speech
   the asset store (`/data/assets/voice` in Docker, see [docs/assets.md](../docs/assets.md)), one folder per voice. Every later game plays it from disk.
 - At startup it queues every line it can know in advance: the host script's lines without names or
   scores in them, every question, and every question's own lead-in and reveal lines. They're made in the
-  background, one at a time. The first run takes a while; after that only new or edited lines are made.
+  background, one at a time, when a voice service is set. Without one, a voice run (admin Pipeline, or
+  `gpu/vast.py voice`) makes them all at once on a rented GPU with `batch.py`, several copies of the model
+  working side by side. After the first run only new or edited lines are made.
 - When a game starts, that game's questions and lines jump to the front of the queue. Editing a line in
   `/admin/questions` queues the new text right away.
 - Lines with live details (player names, scores, the round's category) are made when the TV asks for

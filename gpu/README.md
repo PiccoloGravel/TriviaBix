@@ -33,12 +33,28 @@ python3 gpu/vast.py voice --server http://192.168.1.20:8080 --dry-run   # shows 
 python3 gpu/vast.py voice --server http://192.168.1.20:8080             # does it
 ```
 
-It logs in to the game server's admin API, checks how many lines are waiting (and rents nothing if none
-are), rents the cheapest suitable GPU, starts the `triviabix-tts` image there with a one-time password,
-and points the game server's voice at it. The server sends it every missing line; the audio comes back
-into `appdata/triviabix/assets/voice`. When the backlog is empty it points the server back at `TTS_URL`
-(or none) and destroys the instance. Cached lines keep playing with no GPU at all; only new lines with
-player names fall back to the browser voice.
+It logs in to the game server's admin API and gets every line still waiting for audio in Bix's voice
+(renting nothing if there are none). It rents the GPU expected to finish the job for the least money,
+starts the `triviabix-tts` image there and uploads the whole backlog in one go. On the GPU,
+`tts/batch.py` (sent along, so the image needn't be rebuilt) loads several copies of the model, as many
+as fit in its memory, and works through the lines on all of them at once, longest first. Every minute
+the audio made so far comes back and is filed in `appdata/triviabix/assets/voice` through the game
+server, so a run that's stopped keeps what it made. When it's done the instance is destroyed. Cached
+lines keep playing with no GPU at all; only new lines with player names fall back to the browser voice.
+
+Each run measures how many lines a minute it made and keeps that in the asset store
+(`gpu-speeds.json`), so the next price check's "expected time and cost" is based on real numbers.
+Until the first run it guesses 60 lines a minute on an RTX 4090.
+
+`--hours N` instead keeps a voice service running on the GPU for N hours with the game server pointed
+at it, so live lines (new players' names) are in Bix's voice during a game night.
+
+### Picking the GPU
+
+Offers under `--max-price` are ordered by what the whole job is expected to cost, from a table of how
+fast each GPU model is next to an RTX 4090 (`SPEED` in vast.py): a card that costs twice as much an hour
+but finishes three times sooner wins. Cards that wouldn't finish within the time limit go last. The art
+job does the same, counting cards under 40 GB as slower, since they have to move the models in and out.
 
 ### What gets made ahead
 

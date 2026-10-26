@@ -60,7 +60,7 @@ if cmd == "voice":
     hours = float(opt("--max-hours", "3"))
     event("backlog", lines=12)
     event("offer", gpu="RTX 4090", vram_gb=24, price_hr=0.3, location="Norway", minutes=hours * 60,
-          max_cost=round(0.3 * hours, 2))
+          max_cost=round(0.3 * hours, 2), est_minutes=10.2, est_cost=0.05)
     if "--dry-run" in args:
         print("[vast] would voice lines on RTX 4090", file=sys.stderr)
         sys.exit(0)

@@ -43,6 +43,11 @@ All open weights that allow commercial use; downloaded from Hugging Face on firs
 Swap a model with `ART_IMAGE_MODEL`, `ART_CUTOUT_MODEL` or `ART_VIDEO_MODEL`. The store files art by
 model, so a new model makes new art next to the old instead of mixing them up.
 
+A run does one model at a time, so each loads once: first every missing picture (FLUX draws
+`ART_BATCH` of the same size per call, 8 by default or 4 on a 24 GB card, each from its own seed so it
+comes out as it would alone), then every sticker's cut-out, then the clips. A batch that runs out of
+memory is split in half and tried again.
+
 ## Making art
 
 **From the admin panel.** `/admin` → Rendering → Cutscene art → Check the price, then Start. It runs
