@@ -180,6 +180,16 @@ pub const FIELDS: &[Field] = &[
         help: "One of the model's built-in voices as ip:NAME (US_James, US_Emma, UK_George, UK_Charlotte), or a designed voice as clone:ID, which Pipeline → Design Bix's voice sets for you. A new voice gets its own folder of lines.",
     },
     Field {
+        key: "BIX_SPEED",
+        group: VOICE,
+        label: "Speaking speed",
+        kind: Kind::Choice {
+            options: &["1.0", "1.1", "1.15", "1.2", "1.25", "1.3", "1.4"],
+        },
+        default: Some("1.0"),
+        help: "How fast Bix talks: 1.2 is a fifth faster. The TV speeds his lines up as they play, keeping his pitch, so nothing is made again and it changes at once (refresh the TV page).",
+    },
+    Field {
         key: "ART_IMAGE_MODEL",
         group: ART,
         label: "Picture model",

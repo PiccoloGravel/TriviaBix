@@ -610,6 +610,7 @@ async fn list_voices(State(app): State<AppState>) -> Json<serde_json::Value> {
     Json(json!({
         "voices": app.render.voices(),
         "bix_voice": app.settings.get("BIX_VOICE"),
+        "speed": crate::web::voice_speed(&app.settings),
     }))
 }
 

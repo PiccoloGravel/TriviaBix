@@ -1805,3 +1805,36 @@ async fn a_voice_server_can_be_set_at_runtime_and_its_lines_outlive_it() {
     assert!(res.text().await.unwrap().contains("Zelda"));
     assert!(voice_on().await, "cached lines still play");
 }
+
+#[tokio::test]
+async fn bix_speaking_speed_reaches_the_tv() {
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let speed = || async {
+        let config: Value = http
+            .get(format!("http://{addr}/api/config"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        config["voice_speed"].as_f64().unwrap()
+    };
+    assert_eq!(speed().await, 1.0);
+    let cookie = admin_login(&addr).await;
+    let set = |value: &str| {
+        http.put(format!("http://{addr}/api/admin/settings"))
+            .header("cookie", &cookie)
+            .json(&json!({ "key": "BIX_SPEED", "value": value }))
+            .send()
+    };
+    assert_eq!(set("1.2").await.unwrap().status(), 200);
+    assert_eq!(speed().await, 1.2);
+    assert_eq!(
+        set("9").await.unwrap().status(),
+        400,
+        "only the listed speeds"
+    );
+    assert_eq!(speed().await, 1.2);
+}

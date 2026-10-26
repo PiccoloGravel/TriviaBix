@@ -24,6 +24,8 @@ const AUDIO_WAIT_MS = 3500;
 const MING = "ming";
 
 const voice = {
+  /** How fast Bix talks (Settings → Speaking speed); his lines play faster at the same pitch. */
+  speed: 1,
   on: TBX.load("tbx:voice") !== false,
   pick: TBX.load("tbx:voice-name"),
   chosen: null,
@@ -76,7 +78,7 @@ const voice = {
     if (!this.chosen) this.choose();
     const u = new SpeechSynthesisUtterance(text);
     if (this.chosen) u.voice = this.chosen;
-    u.rate = 1.05;
+    u.rate = 1.05 * this.speed;
     u.pitch = 1.1;
     u.onstart = () => { this.queue++; this.talking(true); };
     u.onend = u.onerror = () => { if (--this.queue <= 0) { this.queue = 0; this.talking(false); } };
@@ -118,6 +120,8 @@ const voice = {
           return this.browser(text, next);
         }
         const a = clip.audio;
+        a.preservesPitch = true;
+        a.playbackRate = this.speed;
         this.playing = a;
         let finished = false;
         const end = () => { if (!finished) { finished = true; this.talking(false); next(); } };
@@ -992,6 +996,7 @@ document.addEventListener("keydown", (e) => {
     const cfg = await (await fetch("/api/config")).json();
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
     voice.ming = !!cfg.voice;
+    voice.speed = cfg.voice_speed || 1;
   } catch { /* fall back to this page's address */ }
 
   // Opened from the admin panel with a room's link: take over that room.
