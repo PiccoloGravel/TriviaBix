@@ -117,6 +117,8 @@ class Vast:
             "order": [["dph_total", "asc"]], "type": "on-demand", "limit": limit,
             "allocated_storage": disk_gb,
         }
+        if gpus := gpu_names():
+            q["gpu_name"] = {"in": gpus}
         return self.call("POST", "/bundles/", q).get("offers") or []
 
     def create(self, offer_id: int, body: dict) -> int:
@@ -435,6 +437,20 @@ class Game:
         return self.call("PUT", "/api/admin/voice", {"url": url, "token": token})
 
 
+def gpu_names() -> list:
+    """VAST_GPU_NAMES (set on the admin panel's Settings page): only rent these GPU models, e.g.
+    "RTX 4090, RTX 3090". Empty means any GPU that's big enough."""
+    return [n.strip() for n in os.environ.get("VAST_GPU_NAMES", "").split(",") if n.strip()]
+
+
+def voice_env(bix_voice: str) -> dict:
+    """The voice service's settings on the GPU, with the model picked on the Settings page if any."""
+    env = {"BIX_VOICE": bix_voice, "PORT": str(PORT)}
+    if os.environ.get("TTS_MODEL"):
+        env["TTS_MODEL"] = os.environ["TTS_MODEL"]
+    return env
+
+
 def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
           min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
           login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
@@ -458,7 +474,7 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
         return
     refuse_doubles(vast, another)
     on_signals()
-    env = {"BIX_VOICE": bix_voice, "PORT": str(PORT)}
+    env = voice_env(bix_voice)
     with Rental(vast, offer, image, VOICE_CMD, "serve",
                 minutes, env=env, disk=disk, login=login, kind="voice") as r:
         base = r.address(boot_minutes)

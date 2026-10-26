@@ -112,6 +112,13 @@ class VastTest(Base):
         # Destroying twice (the instance already shut itself down) is fine.
         self.vast.Vast().destroy(7)
 
+    def test_only_the_chosen_gpus_are_rented(self):
+        with unittest.mock.patch.dict(os.environ, {"VAST_GPU_NAMES": "RTX 4090, RTX 3090 ,"}):
+            self.vast.Vast().offers(16, 0.5, 40)
+        self.assertEqual(self.fake.query["gpu_name"], {"in": ["RTX 4090", "RTX 3090"]})
+        self.vast.Vast().offers(16, 0.5, 40)
+        self.assertNotIn("gpu_name", self.fake.query)
+
     def test_dry_run_rents_nothing(self):
         before = len(self.fake.created)
         self.assertEqual(self.vast.run_job("img", "true", "/nonexistent", dry_run=True), 0)
@@ -217,7 +224,9 @@ class VoiceTest(Base):
         self.assertEqual(game.servers[0]["spoke"], 200)
         self.assertIsNone(game.servers[-1]["url"], "the game goes back to its own voice")
         self.assertEqual(self.fake.destroyed, [7])
-
+        self.assertNotIn("TTS_MODEL", self.fake.created[-1]["env"])
+        with unittest.mock.patch.dict(os.environ, {"TTS_MODEL": "someone/other-tts"}):
+            self.assertEqual(self.vast.voice_env("ip:US_James")["TTS_MODEL"], "someone/other-tts")
 
 class AssetsTest(unittest.TestCase):
     def test_put_find_index_import(self):

@@ -12,6 +12,9 @@ mod model;
 mod pack;
 mod script;
 
+/// The Claude model that writes host lines unless told otherwise.
+pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
+
 #[cfg(feature = "cli")]
 pub mod generate;
 #[cfg(feature = "cli")]

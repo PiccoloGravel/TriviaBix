@@ -6,6 +6,7 @@
     ["/admin/questions", "💬 Bix's lines"],
     ["/admin/duplicates", "🔁 Duplicates"],
     ["/admin/pipeline", "🏭 Pipeline"],
+    ["/admin/settings", "⚙️ Settings"],
   ];
   const path = location.pathname.replace(/\/$/, "") || "/admin";
   const here = path === "/admin/render" ? "/admin/pipeline" : path;

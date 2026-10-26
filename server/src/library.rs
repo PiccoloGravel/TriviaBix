@@ -92,6 +92,9 @@ pub struct LibraryStatus {
 #[derive(Clone)]
 pub struct Library {
     config: LibraryConfig,
+    /// Lidarr's address and key, which the Settings page can change while the server runs.
+    lidarr: Arc<Mutex<(Option<String>, Option<String>)>>,
+    changed: Arc<tokio::sync::Notify>,
     client: reqwest::Client,
     status: Arc<Mutex<LibraryStatus>>,
     /// Only one sync at a time.
@@ -218,11 +221,27 @@ impl Library {
             ..Default::default()
         };
         Self {
+            lidarr: Arc::new(Mutex::new((
+                config.lidarr_url.clone(),
+                config.api_key.clone(),
+            ))),
+            changed: Default::default(),
             config,
             client,
             status: Arc::new(Mutex::new(status)),
             running: Default::default(),
         }
+    }
+
+    /// Points the library at another Lidarr (from the Settings page) and syncs from it.
+    pub fn set_lidarr(&self, url: Option<String>, api_key: Option<String>) {
+        let configured = url.is_some() && api_key.is_some();
+        *self.lidarr.lock().unwrap() = (url, api_key);
+        let mut status = self.status.lock().unwrap();
+        status.configured = configured;
+        status.error = None;
+        drop(status);
+        self.changed.notify_one();
     }
 
     pub fn configured(&self) -> bool {
@@ -244,17 +263,17 @@ impl Library {
         path: &str,
         query: &[(&str, String)],
     ) -> anyhow::Result<T> {
-        let base = self.config.lidarr_url.as_deref().unwrap_or_default();
-        let key = self.config.api_key.as_deref().unwrap_or_default();
+        let (base, key) = self.lidarr.lock().unwrap().clone();
+        let (base, key) = (base.unwrap_or_default(), key.unwrap_or_default());
         self.client
             .get(format!("{}/api/v1/{path}", base.trim_end_matches('/')))
-            .header("X-Api-Key", key)
+            .header("X-Api-Key", &key)
             .query(query)
             .send()
             .await
             .with_context(|| format!("calling Lidarr at {base}"))?
             .error_for_status()
-            .context("Lidarr said no (check LIDARR_API_KEY)")?
+            .context("Lidarr said no (check the Lidarr API key in Settings)")?
             .json()
             .await
             .with_context(|| format!("reading Lidarr's {path} list"))
@@ -469,15 +488,21 @@ impl Library {
     /// Syncs at startup, then every `sync_every`.
     pub async fn run(self, db: Db) {
         if !self.configured() {
-            tracing::info!("LIDARR_URL / LIDARR_API_KEY not set, so the music library is off");
-            return;
+            tracing::info!("Lidarr isn't set up, so the music library is off until it is");
         }
         loop {
-            self.sync(&db).await;
-            if self.config.sync_every.is_zero() {
-                return;
+            if self.configured() {
+                self.sync(&db).await;
             }
-            tokio::time::sleep(self.config.sync_every).await;
+            // Again on schedule, or straight away when the Settings page changes Lidarr.
+            if self.config.sync_every.is_zero() || !self.configured() {
+                self.changed.notified().await;
+            } else {
+                tokio::select! {
+                    _ = tokio::time::sleep(self.config.sync_every) => {}
+                    _ = self.changed.notified() => {}
+                }
+            }
         }
     }
 }

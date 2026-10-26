@@ -54,8 +54,8 @@ struct Server {
 }
 
 struct Inner {
-    /// `TTS_URL`, what `set_server(None)` goes back to.
-    default: Option<Server>,
+    /// `TTS_URL` (or the Settings page's), what `set_server(None)` goes back to.
+    default: Mutex<Option<Server>>,
     server: Mutex<Option<Server>>,
     client: reqwest::Client,
     dir: PathBuf,
@@ -99,7 +99,7 @@ impl Voice {
             .map(|v| (v, Instant::now() - VOICE_TTL));
         let inner = Arc::new(Inner {
             server: Mutex::new(default.clone()),
-            default,
+            default: Mutex::new(default),
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(3))
                 .build()
@@ -178,7 +178,7 @@ impl Voice {
                 base: u.trim_end_matches('/').to_string(),
                 token: token.filter(|t| !t.is_empty()).map(str::to_string),
             }),
-            None => inner.default.clone(),
+            None => inner.default.lock().unwrap().clone(),
         };
         *inner.server.lock().unwrap() = server;
         // Ask the new service which voice it speaks before filing anything.
@@ -186,6 +186,21 @@ impl Voice {
             *at = Instant::now() - VOICE_TTL;
         }
         inner.wake.notify_one();
+    }
+
+    /// Changes the service the game goes back to after a rented GPU, from the Settings page.
+    /// Takes over now unless a rented GPU is in use.
+    pub fn set_default(&self, url: Option<&str>) {
+        let Some(inner) = &self.0 else { return };
+        let new = url.map(|u| Server {
+            base: u.trim_end_matches('/').to_string(),
+            token: None,
+        });
+        let old = std::mem::replace(&mut *inner.default.lock().unwrap(), new);
+        let current = self.server();
+        if current == old.map(|s| s.base) {
+            self.set_server(None, None);
+        }
     }
 
     /// The service lines come from now, without its token, if there is one.

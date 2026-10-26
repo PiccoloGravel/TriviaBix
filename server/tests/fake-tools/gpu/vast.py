@@ -4,13 +4,15 @@ anything, and writes each call to calls.log next to this folder.
 voice --max-hours picks a scenario: 0.25 runs until stopped (for cancelling), 0.5 rents and then
 crashes without destroying (for the server's backstop), anything else finishes at once.
 """
-import json, signal, sys, time
+import json, os, signal, sys, time
 from pathlib import Path
 
 LOG = Path(__file__).resolve().parent.parent / "calls.log"
 args = sys.argv[1:]
 with LOG.open("a") as f:
-    f.write(" ".join(["vast", *args]) + "\n")
+    # Which key it was given, so the tests can tell the Settings page's key reached it.
+    key = os.environ.get("VAST_API_KEY")
+    f.write(" ".join(["vast", *args]) + (f" [key {key}]" if key else "") + "\n")
 
 
 def event(name, **data):

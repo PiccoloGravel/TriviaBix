@@ -20,9 +20,11 @@ services:
       # Bix's voice. Set to http://tts:8000 and start with --profile voice (see tts/README.md).
       # Empty means the TV uses the browser's text-to-speech.
       TTS_URL: ${TTS_URL:-}
-      # Rendering jobs on the admin panel's Rendering page (optional).
+      # Pipeline jobs on the admin panel (optional; these can also be set on its Settings page).
       VAST_API_KEY: ${VAST_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      VAST_IMAGE_LOGIN: ${VAST_IMAGE_LOGIN:-}
     volumes:
       - triviabix-data:/data
       # The folder Lidarr keeps your music in, read-only.
