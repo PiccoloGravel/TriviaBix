@@ -73,9 +73,9 @@ JOB_IN = "/in"
 # Minutes from renting to the first line: pulling the image, downloading and loading the model.
 VOICE_BOOT_MIN = 8
 # Lines a minute the batch job makes on an RTX 4090 until a run has measured it (a few copies of the model,
-# each voicing 16 lines side by side). A guess: one line at a time measured about 40. Saved runs'
-# measurements go in the asset store's SPEEDS file, under VOICE_SPEED_KEY.
-VOICE_RATE = 150
+# each voicing 24 lines side by side). Two copies on an RTX 4060 Ti made 142 a minute, about 400 on a 4090;
+# a guess below that. Saved runs' measurements go in the asset store's SPEEDS file, under VOICE_SPEED_KEY.
+VOICE_RATE = 300
 VOICE_SPEED_KEY = "voice-batched"
 SPEEDS = "gpu-speeds.json"
 # Candidate voices for Bix in the asset store (docs/assets.md). BIX_VOICE=clone:<key> picks one.
