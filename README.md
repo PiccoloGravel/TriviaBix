@@ -6,8 +6,9 @@ A Jackbox-style party trivia game: the host screen goes on the TV and players an
 
 Everything is played from phones. The TV is display only.
 
-1. Open `http://<server>:8080/host` on the TV (a smart TV browser, a cast Chrome tab, or a laptop on HDMI).
-   It opens a room straight away and shows the room code and a QR code. Browsers keep a page silent until it has been
+1. Open `http://<server>:8080/tv` on the TV (the same page as `/host`). No laptop needed: a browser app on a Fire TV or
+   Google TV stick, or a smart TV's own browser, works; see [docs/tv.md](docs/tv.md). **📺 Put the game on the TV** on
+   any phone shows the address and the steps. It opens a room straight away and shows the room code and a QR code. Browsers keep a page silent until it has been
    clicked once, so click the TV page once if you want the host's voice and Name That Tune clips.
 2. Players open `http://<server>:8080` on their phones (or scan the QR code on the TV), type the 4-letter room code and a name.
    Each player picks a character (24 to choose from, one per player per room) and can change their name or character in the lobby.

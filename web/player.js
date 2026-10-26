@@ -372,6 +372,31 @@ $("#leave-btn").addEventListener("click", () => {
   refreshJoinChars();
 });
 
+// ---------- Putting the game on the TV ----------
+
+// The TV page opens its own room, so all a TV needs is a browser at this address.
+async function tvAddress() {
+  let base = location.origin;
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    if (cfg.public_url) base = cfg.public_url.replace(/\/$/, "");
+  } catch { /* this page's address works for the TV too */ }
+  return `${base.replace(/^https?:\/\//, "")}/tv`;
+}
+document.querySelectorAll("[data-tv-help]").forEach((b) => b.addEventListener("click", async () => {
+  $("#tv-addr").textContent = await tvAddress();
+  $("#tv-sheet").classList.remove("hidden");
+}));
+$("#tv-close").addEventListener("click", () => $("#tv-sheet").classList.add("hidden"));
+$("#tv-here").addEventListener("click", () => {
+  if (conn && !confirm("This phone becomes the TV and leaves the game. Play on another phone. Go?")) return;
+  if (conn) {
+    conn.close();
+    TBX.save(PLAYER_KEY, null);
+  }
+  location.href = "/tv";
+});
+
 // ---------- Boot ----------
 
 (async function boot() {
