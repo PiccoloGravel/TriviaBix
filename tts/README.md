@@ -9,7 +9,7 @@ code and weights). Without it, the TV uses the browser's built-in text-to-speech
 - The game server sends the TV each host line in pieces, each with an `/api/voice/<hash>` link, plus one
   for the question being read out.
 - The game server asks this service for the audio the first time a line is needed and keeps it in
-  `TTS_CACHE_DIR` (`/data/tts` in Docker), one folder per voice. Every later game plays it from disk.
+  the asset store (`/data/assets/voice` in Docker, see [docs/assets.md](../docs/assets.md)), one folder per voice. Every later game plays it from disk.
 - At startup it queues every line it can know in advance: the host script's lines without names or
   scores in them, every question, and every question's own lead-in and reveal lines. They're made in the
   background, one at a time. The first run takes a while; after that only new or edited lines are made.
@@ -38,6 +38,9 @@ On Unraid with bridge networking, run this container separately (publish port 80
 `--runtime=nvidia` and `NVIDIA_VISIBLE_DEVICES`) and set the game server's `TTS_URL` to
 `http://<unraid-ip>:8000`.
 
+No NVIDIA GPU? [gpu/README.md](../gpu/README.md) runs this same image on a rented vast.ai GPU, pointed at
+your game server until the lines are made.
+
 ### Settings
 
 | Variable | Default | |
@@ -46,6 +49,7 @@ On Unraid with bridge networking, run this container separately (publish port 80
 | `TTS_FORMAT` | `ogg` | `ogg` (small), `flac` or `wav` |
 | `TTS_DEVICE` | `cuda:0` | `cpu` works in principle but is untested and slow: expect only pre-made lines to come out in Bix's voice |
 | `TTS_MODEL` | `inclusionAI/Ming-3.0-tts-0.5b` | A Hub id or a local folder |
+| `TTS_TOKEN` | | When set, `/v1/speech` needs `Authorization: Bearer <token>`. `gpu/vast.py` sets one on rented GPUs |
 | `TTS_BACKEND` | `ming` | `stub` makes beeps instead, for testing without a GPU |
 
 Changing the voice makes a fresh cache folder, so everything is regenerated in the new voice.

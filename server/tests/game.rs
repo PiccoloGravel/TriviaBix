@@ -1522,6 +1522,8 @@ struct FakeTts {
     url: String,
     live: Arc<Mutex<Vec<String>>>,
     warm: Arc<AtomicUsize>,
+    /// The bearer token each speech request came with.
+    tokens: Arc<Mutex<Vec<Option<String>>>>,
 }
 
 impl FakeTts {
@@ -1530,8 +1532,15 @@ impl FakeTts {
 
         async fn speech(
             State(f): State<FakeTts>,
+            headers: axum::http::HeaderMap,
             axum::Json(body): axum::Json<Value>,
         ) -> impl axum::response::IntoResponse {
+            f.tokens.lock().unwrap().push(
+                headers
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string),
+            );
             let text = body["text"].as_str().unwrap().to_string();
             if body["priority"] == "warm" {
                 f.warm.fetch_add(1, Ordering::SeqCst);
@@ -1655,4 +1664,77 @@ async fn the_tv_gets_bix_lines_as_audio_from_the_tts_service() {
         tts.warm.load(Ordering::SeqCst) > 10,
         "lines should be pre-generated in the background"
     );
+}
+
+#[tokio::test]
+async fn a_voice_server_can_be_set_at_runtime_and_its_lines_outlive_it() {
+    let tts = FakeTts::start().await;
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let voice_on = || async {
+        let config: Value = http
+            .get(format!("http://{addr}/api/config"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        config["voice"].as_bool().unwrap()
+    };
+    assert!(!voice_on().await, "no TTS service and nothing cached yet");
+
+    let cookie = admin_login(&addr).await;
+    let set = |url: Option<String>| {
+        http.put(format!("http://{addr}/api/admin/voice"))
+            .header("cookie", &cookie)
+            .json(&json!({ "url": url, "token": "gpu-token" }))
+            .send()
+    };
+    let status: Value = set(Some(tts.url.clone()))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["server"], tts.url.as_str());
+    assert!(status["backlog"].as_u64().unwrap() > 10, "{status}");
+    assert!(voice_on().await);
+
+    // The backlog queued at startup goes to the new service, with its token.
+    for _ in 0..50 {
+        if tts.warm.load(Ordering::SeqCst) > 10 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(tts.warm.load(Ordering::SeqCst) > 10);
+    assert!(
+        tts.tokens
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|t| t.as_deref() == Some("Bearer gpu-token"))
+    );
+
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let _phone = open(&addr, &format!("/ws/play?code={code}&name=Zelda")).await;
+    let s = wait_state(&mut host, |s| {
+        s["host"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("Zelda"))
+    })
+    .await;
+    let url = s["host"]["voice"][0]["audio"].as_str().unwrap().to_string();
+    let get = || http.get(format!("http://{addr}{url}")).send();
+    assert_eq!(get().await.unwrap().status(), 200);
+
+    // The GPU goes away: what it made keeps playing, and new lines are left to the browser.
+    let status: Value = set(None).await.unwrap().json().await.unwrap();
+    assert!(status["server"].is_null());
+    let res = get().await.unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(res.text().await.unwrap().contains("Zelda"));
+    assert!(voice_on().await, "cached lines still play");
 }

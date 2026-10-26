@@ -1,11 +1,15 @@
 //! Bix's voice from the TTS service in `tts/` (Ming-3.0-tts). Every line is synthesized once and
-//! cached on disk by its text, under a folder per voice, so editing a line or switching voices
-//! makes new audio and everything else is reused.
+//! kept in the asset store (docs/assets.md) by its text, under a folder per voice, so editing a
+//! line or switching voices makes new audio and everything else is reused.
 //!
 //! Lines the game can know ahead of time (the host script's lines without names in them, every
 //! question and its own lead-in and reveal lines) are pre-generated in the background. Lines with
 //! live details such as player names are made when the TV asks for them; the TV falls back on the
 //! browser's voice for anything that isn't ready in time, or when `TTS_URL` isn't set.
+//!
+//! The service can also be swapped at runtime (see `set_server`), so `gpu/vast.py` can point the
+//! game at a rented GPU, let it work through the backlog, then hand back. Lines it made stay in
+//! the cache and keep playing after the GPU is gone.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -16,6 +20,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::sync::Notify;
 
+/// The file in the cache folder naming the voice it was last filled in.
+const CURRENT: &str = "current-voice.txt";
+const NO_SERVER: &str = "no TTS service is set";
 /// Longest line the service will take.
 const MAX_TEXT: usize = 1000;
 /// How long to trust the service's answer about which voice it speaks with.
@@ -38,8 +45,18 @@ pub enum VoiceError {
 #[derive(Clone)]
 pub struct Voice(Option<Arc<Inner>>);
 
-struct Inner {
+/// A TTS service to ask for new lines.
+#[derive(Clone)]
+struct Server {
     base: String,
+    /// Sent as a bearer token, for a service out on the internet (`TTS_TOKEN` there).
+    token: Option<String>,
+}
+
+struct Inner {
+    /// `TTS_URL`, what `set_server(None)` goes back to.
+    default: Option<Server>,
+    server: Mutex<Option<Server>>,
     client: reqwest::Client,
     dir: PathBuf,
     /// Hash -> text for every line the game might ask for, so the endpoint can't be used to
@@ -48,6 +65,8 @@ struct Inner {
     /// One synthesis per line at a time; a second request for the same line waits for the first.
     busy: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     voice: Mutex<Option<(String, Instant)>>,
+    /// The model the service last said it runs, for the asset store's metadata.
+    model: Mutex<Option<String>>,
     queue: Mutex<VecDeque<String>>,
     queued: Mutex<HashSet<String>>,
     wake: Notify,
@@ -57,17 +76,27 @@ struct Inner {
 struct Health {
     ready: bool,
     voice: String,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 impl Voice {
-    /// The voice for `TTS_URL`, caching audio under `dir`. With no URL, every line is left to the
-    /// TV's own text-to-speech.
+    /// The voice for `TTS_URL`, caching audio under `dir`. With no URL and nothing cached yet,
+    /// every line is left to the TV's own text-to-speech until a service is set with `set_server`.
     pub fn new(url: Option<&str>, dir: &Path) -> Self {
-        let Some(base) = url.map(|u| u.trim_end_matches('/').to_string()) else {
-            return Voice(None);
-        };
+        let default = url.map(|u| Server {
+            base: u.trim_end_matches('/').to_string(),
+            token: None,
+        });
+        // The voice the cache was last filled in, so its lines play while no service is up.
+        let last = std::fs::read_to_string(dir.join(CURRENT))
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .map(|v| (v, Instant::now() - VOICE_TTL));
         let inner = Arc::new(Inner {
-            base,
+            server: Mutex::new(default.clone()),
+            default,
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(3))
                 .build()
@@ -75,7 +104,8 @@ impl Voice {
             dir: dir.to_path_buf(),
             known: Default::default(),
             busy: Default::default(),
-            voice: Default::default(),
+            voice: Mutex::new(last),
+            model: Default::default(),
             queue: Default::default(),
             queued: Default::default(),
             wake: Notify::new(),
@@ -88,12 +118,24 @@ impl Voice {
         Voice(None)
     }
 
+    /// Whether the TV should ask for Bix's voice: there's a service to make lines, or lines made
+    /// earlier in the cache.
     pub fn enabled(&self) -> bool {
-        self.0.is_some()
+        self.0.as_ref().is_some_and(|i| {
+            i.server.lock().unwrap().is_some() || i.voice.lock().unwrap().is_some()
+        })
     }
 
     /// Where the TV fetches `text` from, or `None` with no TTS service.
     pub fn url(&self, text: &str) -> Option<String> {
+        if !self.enabled() {
+            return None;
+        }
+        self.register(text).map(|hash| format!("/api/voice/{hash}"))
+    }
+
+    /// Remembers `text` as a line the game may ask for, and returns its hash.
+    fn register(&self, text: &str) -> Option<String> {
         let inner = self.0.as_ref()?;
         let text = text.trim();
         if text.is_empty() || text.len() > MAX_TEXT {
@@ -106,7 +148,42 @@ impl Voice {
             .unwrap()
             .entry(hash.clone())
             .or_insert_with(|| text.to_string());
-        Some(format!("/api/voice/{hash}"))
+        Some(hash)
+    }
+
+    /// Switches to another TTS service, such as one on a rented GPU, or back to `TTS_URL` with
+    /// `None`. Lines already made stay cached either way.
+    pub fn set_server(&self, url: Option<&str>, token: Option<&str>) {
+        let Some(inner) = &self.0 else { return };
+        let server = match url {
+            Some(u) => Some(Server {
+                base: u.trim_end_matches('/').to_string(),
+                token: token.filter(|t| !t.is_empty()).map(str::to_string),
+            }),
+            None => inner.default.clone(),
+        };
+        *inner.server.lock().unwrap() = server;
+        // Ask the new service which voice it speaks before filing anything.
+        if let Some((_, at)) = inner.voice.lock().unwrap().as_mut() {
+            *at = Instant::now() - VOICE_TTL;
+        }
+        inner.wake.notify_one();
+    }
+
+    /// The service lines come from now, without its token, if there is one.
+    pub fn server(&self) -> Option<String> {
+        let inner = self.0.as_ref()?;
+        inner
+            .server
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.base.clone())
+    }
+
+    /// Lines being made right now.
+    pub fn in_flight(&self) -> usize {
+        self.0.as_ref().map_or(0, |i| i.busy.lock().unwrap().len())
     }
 
     /// Queues lines to be made in the background. `soon` puts them ahead of the rest, for a game
@@ -115,8 +192,9 @@ impl Voice {
         let Some(inner) = &self.0 else { return };
         let mut fresh = Vec::new();
         for text in texts {
-            let Some(url) = self.url(&text) else { continue };
-            let hash = url.rsplit('/').next().unwrap().to_string();
+            let Some(hash) = self.register(&text) else {
+                continue;
+            };
             if soon || inner.queued.lock().unwrap().insert(hash.clone()) {
                 fresh.push(hash);
             }
@@ -188,10 +266,12 @@ impl Inner {
         live: bool,
     ) -> Result<(Vec<u8>, &'static str), VoiceError> {
         let unavailable = |e: String| VoiceError::Unavailable(e);
+        let server = self
+            .current()
+            .ok_or_else(|| unavailable(NO_SERVER.into()))?;
         let started = Instant::now();
-        let res = self
-            .client
-            .post(format!("{}/v1/speech", self.base))
+        let res = server
+            .auth(self.client.post(format!("{}/v1/speech", server.base)))
             .timeout(Duration::from_secs(if live { 30 } else { 180 }))
             .json(&serde_json::json!({ "text": text, "priority": if live { "live" } else { "warm" } }))
             .send()
@@ -228,7 +308,21 @@ impl Inner {
             Some(v) => self.dir.join(slug(v)),
             None => dir.to_path_buf(),
         };
-        if let Err(e) = save(&dir, voice.as_deref(), hash, ext, &bytes).await {
+        let meta = serde_json::json!({
+            "kind": "voice",
+            "style": voice,
+            "inputs": { "text": text },
+            "key": hash,
+            "file": format!("{hash}.{ext}"),
+            "content_type": content_type,
+            "bytes": bytes.len(),
+            "model": self.model.lock().unwrap().clone(),
+            "created": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            "generator": server.base,
+        });
+        if let Err(e) = save(&dir, voice.as_deref(), hash, ext, &bytes, &meta).await {
             tracing::warn!("couldn't cache voice line in {}: {e}", dir.display());
         }
         tracing::debug!(
@@ -251,16 +345,28 @@ impl Inner {
         match self.health().await {
             Ok(key) => {
                 *self.voice.lock().unwrap() = Some((key.clone(), Instant::now()));
+                if last.as_ref().is_none_or(|(k, _)| *k != key) {
+                    let _ = tokio::fs::create_dir_all(&self.dir).await;
+                    if let Err(e) = tokio::fs::write(self.dir.join(CURRENT), &key).await {
+                        tracing::warn!("couldn't note the voice in {}: {e}", self.dir.display());
+                    }
+                }
                 Ok(key)
             }
             Err(e) => last.map(|(key, _)| key).ok_or(e),
         }
     }
 
+    fn current(&self) -> Option<Server> {
+        self.server.lock().unwrap().clone()
+    }
+
     async fn health(&self) -> Result<String, VoiceError> {
-        let health: Health = self
-            .client
-            .get(format!("{}/healthz", self.base))
+        let server = self
+            .current()
+            .ok_or_else(|| VoiceError::Unavailable(NO_SERVER.into()))?;
+        let health: Health = server
+            .auth(self.client.get(format!("{}/healthz", server.base)))
             .timeout(Duration::from_secs(5))
             .send()
             .await
@@ -269,6 +375,9 @@ impl Inner {
             .json()
             .await
             .map_err(|e| VoiceError::Unavailable(e.to_string()))?;
+        if health.model.is_some() {
+            *self.model.lock().unwrap() = health.model.clone();
+        }
         if !health.ready {
             return Err(VoiceError::Unavailable(
                 "the TTS service is still loading".into(),
@@ -278,10 +387,24 @@ impl Inner {
     }
 }
 
-/// Works through the pre-generation queue one line at a time, backing off while the service is down.
+impl Server {
+    fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.token {
+            Some(token) => req.bearer_auth(token),
+            None => req,
+        }
+    }
+}
+
+/// Works through the pre-generation queue one line at a time, backing off while the service is
+/// down, and waiting while there's none.
 async fn warm_worker(inner: Arc<Inner>) {
     let mut made = 0usize;
     loop {
+        if inner.current().is_none() {
+            inner.wake.notified().await;
+            continue;
+        }
         let next = inner.queue.lock().unwrap().pop_front();
         let Some(hash) = next else {
             if made > 0 {
@@ -295,9 +418,13 @@ async fn warm_worker(inner: Arc<Inner>) {
             Ok(_) => made += 1,
             Err(VoiceError::NotFound) => {}
             Err(VoiceError::Unavailable(e)) => {
-                tracing::warn!("voice: {e}; trying again in 30s");
                 inner.queue.lock().unwrap().push_front(hash);
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                if inner.current().is_some() {
+                    tracing::warn!("voice: {e}; trying again in 30s");
+                    // A new service (set_server) cuts the wait short.
+                    let _ =
+                        tokio::time::timeout(Duration::from_secs(30), inner.wake.notified()).await;
+                }
                 continue;
             }
         }
@@ -320,25 +447,39 @@ async fn save(
     hash: &str,
     ext: &str,
     bytes: &[u8],
+    meta: &serde_json::Value,
 ) -> std::io::Result<()> {
     tokio::fs::create_dir_all(dir).await?;
     if let Some(voice) = voice {
-        // So a person browsing the cache can tell the folders apart.
-        tokio::fs::write(dir.join("voice.txt"), voice).await?;
+        // Names the style folder, as for every kind of asset.
+        tokio::fs::write(dir.join("style.txt"), voice).await?;
     }
-    // Write then rename, so a half-written file is never served.
-    let tmp = dir.join(format!("{hash}.{ext}.part"));
+    write_new(&dir.join(format!("{hash}.{ext}")), bytes).await?;
+    let meta = serde_json::to_vec_pretty(meta).expect("JSON");
+    write_new(&dir.join(format!("{hash}.json")), &meta).await
+}
+
+/// Write then rename, so a half-written file is never served.
+async fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".part");
     tokio::fs::write(&tmp, bytes).await?;
-    tokio::fs::rename(&tmp, dir.join(format!("{hash}.{ext}"))).await
+    tokio::fs::rename(&tmp, path).await
 }
 
+/// A voice line's key in the asset store: the hash of its inputs as canonical JSON.
 fn hash(text: &str) -> String {
-    let digest = Sha256::digest(text.as_bytes());
-    digest[..16].iter().map(|b| format!("{b:02x}")).collect()
+    let inputs = serde_json::json!({ "text": text }).to_string();
+    hex(&Sha256::digest(inputs.as_bytes())[..16])
 }
 
+/// A style's folder name in the asset store.
 fn slug(voice: &str) -> String {
-    hash(voice)[..12].to_string()
+    hex(&Sha256::digest(voice.as_bytes())[..6])
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Ming's inline sound effects, such as `[Laughter]`. The TTS service performs them; anywhere
@@ -373,9 +514,14 @@ pub fn without_tags(text: &str) -> String {
 mod tests {
     use super::*;
 
+    const HELLO_KEY: &str = "ef73ae6a8b47cd3601ab3fad1fb8099e";
+    const JAMES_SLUG: &str = "8f7aee184357";
+
     #[test]
     fn hashes_are_stable() {
-        assert_eq!(hash("Hello"), "185f8db32271fe25f561a6fc938b2e26");
+        // The same keys gpu/assets.py makes: key_of({"text": "Hello"}) and slug_of("ip:US_James").
+        assert_eq!(hash("Hello"), HELLO_KEY);
+        assert_eq!(slug("ip:US_James"), JAMES_SLUG);
         assert_eq!(hash("Hello").len(), 32);
         assert_ne!(slug("ip:US_James"), slug("ip:UK_George"));
     }

@@ -30,7 +30,7 @@ services:
 
   # Bix's self-hosted voice (optional). Needs an NVIDIA GPU and the Nvidia Driver plugin. Start the
   # stack with the "voice" profile and set TTS_URL=http://tts:8000 in .env (see deploy/unraid/README.md).
-  # Spoken lines are cached under /data/tts in triviabix's appdata.
+  # Spoken lines are kept under /data/assets/voice in triviabix's appdata.
   tts:
     image: ghcr.io/piccologravel/triviabix-tts:latest
     container_name: triviabix-tts

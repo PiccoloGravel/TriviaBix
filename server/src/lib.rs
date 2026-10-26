@@ -40,7 +40,7 @@ pub struct Config {
     pub admin_password: Option<String>,
     /// The TTS service that gives Bix his voice (see tts/). Without it the TV uses the browser's.
     pub tts_url: Option<String>,
-    /// Where synthesized lines are kept.
+    /// Where synthesized lines are kept: the asset store's voice folder (docs/assets.md).
     pub tts_cache_dir: PathBuf,
 }
 
@@ -83,7 +83,10 @@ impl Config {
                 .ok()
                 .filter(|p| !p.is_empty()),
             tts_url: std::env::var("TTS_URL").ok().filter(|u| !u.is_empty()),
-            tts_cache_dir: var("TTS_CACHE_DIR", PathBuf::from("data/tts")),
+            tts_cache_dir: var(
+                "TTS_CACHE_DIR",
+                var("ASSETS_DIR", PathBuf::from("data/assets")).join("voice"),
+            ),
         }
     }
 }

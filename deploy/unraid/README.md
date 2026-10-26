@@ -102,7 +102,10 @@ Ming-3.0-tts model instead (see [tts/README.md](../../tts/README.md) for how it 
      `http://<unraid-ip>:8000`.
 3. The first start downloads the model (about 3 GB). `http://<unraid-ip>:8000/healthz` says
    `"ready": true` when it's loaded. TriviaBix then makes every question and fixed line in the background,
-   once, and keeps them in `appdata/triviabix/tts`. Until a line is ready, the browser voice reads it.
+   once, and keeps them in `appdata/triviabix/assets/voice`. Until a line is ready, the browser voice reads it.
+
+No GPU in the Unraid box? Leave `TTS_URL` empty and rent one on vast.ai when there are lines to make:
+see [gpu/README.md](../../gpu/README.md). Everything it makes stays in `appdata/triviabix/assets`.
 
 For a custom, cheekier Bix, run `python make_voice.py --count 4` in the voice container's console, listen
 to the clips in `appdata/triviabix-tts/voices`, rename the one you like to `bix.wav` (and its `.txt` to
