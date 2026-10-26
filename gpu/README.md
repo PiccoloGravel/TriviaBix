@@ -51,6 +51,11 @@ at it, so live lines (new players' names) are in Bix's voice during a game night
 
 ### Picking the GPU
 
+Only GPUs the images' PyTorch (2.6, CUDA 12.4) can run are rented: Ampere to Hopper (compute 8.0 to 9.0).
+RTX 50-series and other Blackwell cards are left out until the images move to a newer PyTorch; then set
+`VAST_MAX_COMPUTE_CAP=1200`. If a GPU still fails with a CUDA error, the run stops at once instead of
+failing every line.
+
 Offers under `--max-price` are ordered by what the whole job is expected to cost, from a table of how
 fast each GPU model is next to an RTX 4090 (`SPEED` in vast.py): a card that costs twice as much an hour
 but finishes three times sooner wins. Cards that wouldn't finish within the time limit go last. The art

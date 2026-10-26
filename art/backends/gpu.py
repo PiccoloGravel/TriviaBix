@@ -31,6 +31,13 @@ class GpuBackend(GpuModels):
     def __init__(self):
         if not torch.cuda.is_available():
             raise SystemExit("No CUDA GPU here. Use --backend stub, or run on a GPU box (see render_on_vast.py).")
+        major, minor = torch.cuda.get_device_capability()
+        arches = torch.cuda.get_arch_list()
+        cap = major * 10 + minor
+        if f"sm_{cap}" not in arches and not any(a.startswith("compute_") and int(a.split("_")[1]) <= cap for a in arches):
+            # Every model would fail with "no kernel image is available"; stop before paying for downloads.
+            raise SystemExit(f"This PyTorch build ({torch.__version__}) has no kernels for {torch.cuda.get_device_name()} "
+                             f"(sm_{cap}); it was built for {', '.join(arches)}.")
         self.device = "cuda"
         self.loaded: tuple[str, object] | None = None
         big = torch.cuda.get_device_properties(0).total_memory >= 40 * 2**30

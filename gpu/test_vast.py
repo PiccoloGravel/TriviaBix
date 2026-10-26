@@ -369,6 +369,23 @@ class VoiceTest(Base):
         finally:
             self.fake.offers = saved
 
+    def test_gpus_the_images_cannot_run_are_never_offered(self):
+        saved = self.fake.offers
+        self.fake.offers = [
+            {"id": 4, "gpu_name": "RTX 5060 Ti", "gpu_ram": 16311, "dph_total": 0.12, "compute_cap": 1200},
+            {"id": 5, "gpu_name": "RTX 5090", "gpu_ram": 32607, "dph_total": 0.2},  # no compute_cap given
+            {"id": 6, "gpu_name": "RTX 3090", "gpu_ram": 24576, "dph_total": 0.18, "compute_cap": 860},
+        ]
+        try:
+            picked = self.vast.pick_offers(self.vast.Vast(), 16, 1, 40, work_minutes=60)
+            self.assertEqual([o["id"] for o in picked], [6])
+            self.assertEqual(self.fake.query["compute_cap"], {"gte": 800, "lte": 900})
+            with unittest.mock.patch.dict(os.environ, {"VAST_MAX_COMPUTE_CAP": "1200"}):
+                ids = {o["id"] for o in self.vast.pick_offers(self.vast.Vast(), 16, 1, 40)}
+            self.assertEqual(ids, {4, 5, 6}, "a Blackwell-ready image can say so")
+        finally:
+            self.fake.offers = saved
+
     def test_voice_with_hours_serves_live_lines_then_hands_back(self):
         tts = Path(__file__).resolve().parent.parent / "tts"
         self.vast.VOICE_CMD = (f"cd {tts} && TTS_BACKEND=stub TTS_TOKEN=$TBX_TOKEN PORT=$TBX_PORT "
