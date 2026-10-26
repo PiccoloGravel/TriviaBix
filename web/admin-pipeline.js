@@ -300,6 +300,10 @@ function renderDesign() {
   const btn = el("button", { class: "secondary", onclick: () => check("design") }, "Check the price");
   btn.disabled = running || !!checking || !canRun("design");
   $("#design-action").replaceChildren(quoteBox("design") || btn);
+  // Redrawn only when the candidates change, so the refresh doesn't stop a clip being listened to.
+  const drawn = JSON.stringify(voices);
+  if (drawn === renderDesign.drawn) return;
+  renderDesign.drawn = drawn;
   const spec = voices.bix_voice || "ip:US_James";
   const inUse = voices.voices.some((v) => v.current);
   $("#design-voices").replaceChildren(
@@ -310,12 +314,20 @@ function renderDesign() {
       : el("p", { class: "muted" }, "No candidates yet. Describe the voice above, check the price and start."));
 }
 
+/** Each candidate's player, kept across redraws so a clip that's playing carries on. */
+const players = new Map();
+
+function player(key) {
+  if (!players.has(key)) players.set(key, el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${key}/clip` }));
+  return players.get(key);
+}
+
 function voiceCard(v) {
   const use = v.current
     ? el("span", { class: "badge done" }, "✓ Bix's voice")
     : el("button", { class: "small", onclick: () => useVoice(v) }, "Use this voice");
   return el("div", { class: `voice${v.current ? " current" : ""}` },
-    el("audio", { controls: "", preload: "none", src: `/api/admin/voices/${v.key}/clip` }),
+    player(v.key),
     el("div", { class: "row" }, el("b", {}, `Take ${v.seed ?? "?"}`), el("span", { style: "flex:1" }), use),
     v.text ? el("div", { class: "said" }, `“${v.text}”`) : null,
     el("div", { class: "muted small", title: v.description || "" }, v.description || ""));
