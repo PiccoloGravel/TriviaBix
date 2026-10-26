@@ -30,6 +30,10 @@ class FakeVast:
 
     def __init__(self):
         self.created, self.destroyed, self.procs = [], [], {}
+        # Offer ids someone else rents first, and what instances say while starting.
+        self.taken, self.status_msg = set(), None
+        self.offers = [{"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.31,
+                        "geolocation": "Testland"}]
         fake = self
 
         class H(BaseHTTPRequestHandler):
@@ -50,11 +54,14 @@ class FakeVast:
                 assert self.headers["Authorization"] == "Bearer test-key"
                 q = self.body()
                 fake.query = q
-                self.reply({"offers": [{"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.31,
-                                        "geolocation": "Testland"}]})
+                self.reply({"offers": fake.offers})
 
             def do_PUT(self):
                 b = self.body()
+                ask = int(self.path.rstrip("/").rsplit("/", 1)[1])
+                if ask in fake.taken:
+                    return self.reply({"success": False, "error": "no_such_ask",
+                                       "msg": f"Instance type by id {ask} is not available."}, 400)
                 fake.created.append(b)
                 port = free_port()
                 env = {k: v for k, v in b["env"].items() if not k.startswith("-p ")}
@@ -68,6 +75,8 @@ class FakeVast:
                     return self.reply({"instances": [{"id": i, "label": "triviabix-job"} for i in fake.procs
                                                      if i not in fake.destroyed]})
                 proc, port = fake.procs[7]
+                if fake.status_msg:
+                    return self.reply({"instances": {"actual_status": "loading", "status_msg": fake.status_msg}})
                 self.reply({"instances": {"actual_status": "running", "public_ipaddr": "127.0.0.1",
                                           "ports": {"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": str(port)}]}}})
 
@@ -111,6 +120,43 @@ class VastTest(Base):
         self.assertLessEqual(self.fake.query["dph_total"]["lte"], 0.5)
         # Destroying twice (the instance already shut itself down) is fine.
         self.vast.Vast().destroy(7)
+
+    def test_a_taken_offer_falls_back_to_the_next_cheapest(self):
+        cheap = dict(self.fake.offers[0])
+        self.fake.offers = [{**cheap, "id": 5, "dph_total": 0.20}, {**cheap, "id": 6, "dph_total": 0.25}, cheap]
+        self.fake.taken = {5, 6}
+        err = io.StringIO()
+        os.environ["TBX_EVENTS"] = "1"
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to, \
+                    unittest.mock.patch("sys.stderr", err):
+                code = self.vast.run_job("img", "true", to, out=box, yes=True, max_minutes=2)
+        finally:
+            del os.environ["TBX_EVENTS"]
+            self.fake.offers, self.fake.taken = [cheap], set()
+        self.assertEqual(code, 0)
+        log = err.getvalue()
+        self.assertIn("offer 5 (RTX 4090) was just taken", log)
+        rented = next(json.loads(l[5:]) for l in log.splitlines() if l.startswith('@tbx {"event": "rented"'))
+        self.assertEqual(rented["price_hr"], 0.31)
+
+    def test_nothing_is_rented_when_every_offer_is_taken(self):
+        self.fake.taken = {1}
+        try:
+            with self.assertRaisesRegex(self.vast.Abort, "nothing was rented"):
+                self.vast.run_job("img", "true", "/nonexistent", yes=True, max_minutes=2)
+        finally:
+            self.fake.taken = set()
+
+    def test_an_image_that_cannot_be_pulled_stops_at_once(self):
+        self.fake.status_msg = "Error response from daemon: Head https://ghcr.io/v2/x/tts: denied: denied"
+        try:
+            with self.assertRaisesRegex(self.vast.Abort, "couldn't download ghcr.io/x/tts.*Settings"):
+                self.vast.run_job("ghcr.io/x/tts", "sleep 30", "/nonexistent", yes=True, max_minutes=2,
+                                  another=True)
+        finally:
+            self.fake.status_msg = None
+        self.assertIn(7, self.fake.destroyed)
 
     def test_only_the_chosen_gpus_are_rented(self):
         with unittest.mock.patch.dict(os.environ, {"VAST_GPU_NAMES": "RTX 4090, RTX 3090 ,"}):

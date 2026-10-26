@@ -97,6 +97,14 @@ instance. The exit code is the job's. The image needs `python3` and no `ENTRYPOI
 started with `python3 -c`). From Python: `from vast import run_job`. Add the results to the asset store
 with `python3 gpu/assets.py import ./art-output --kind image --style <style>`.
 
+## When a GPU is taken or can't start
+
+Offers come and go fast. If the GPU that was priced is rented by someone else before the job rents it,
+`vast.py` rents the next cheapest one that matches, never above the price limit already confirmed (with
+`--max-price`, or the Settings page's limit for jobs from the admin panel). If every one is taken, nothing is
+rented or charged. If the GPU can't download the image (a private image without a login, say), the job
+stops at once with the reason, instead of waiting out the boot time, and the instance is destroyed.
+
 ## Limits on spending
 
 - **Price:** `--max-price` is the most per hour, all in (default $0.50). Only verified, reliable machines
