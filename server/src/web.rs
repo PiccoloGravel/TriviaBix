@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::Config;
@@ -197,6 +198,12 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
                 .fallback(ServeDir::new(dir.join("cutscenes/assets/gen"))),
         )
         .fallback_service(ServeDir::new(dir))
+        // Browsers check the pages and scripts are current on every load (a cheap 304 when they
+        // are), so an update reaches the admin panel and TV without a hard refresh.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state))
 }

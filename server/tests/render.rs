@@ -662,6 +662,12 @@ async fn the_host_persona_reaches_the_line_writer() {
     let (_, view) = s.call("settings", None).await;
     let persona = setting(&view, "HOST_PERSONA");
     assert_eq!(persona["kind"]["type"], "long_text");
+    // The page's script, which draws long_text as a textarea, is never served stale.
+    let res = reqwest::get(format!("http://{}/admin-settings.js", s.addr))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()["cache-control"], "no-cache");
+    assert!(res.text().await.unwrap().contains("textarea"));
     assert!(
         persona["default"]
             .as_str()
