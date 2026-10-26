@@ -31,7 +31,7 @@ pub struct Rooms {
 impl Rooms {
     pub fn new(
         db: Db,
-        script: Script,
+        script: Arc<Script>,
         itunes: Itunes,
         voice: Voice,
         timing: Timing,
@@ -41,7 +41,7 @@ impl Rooms {
         Self {
             inner: Default::default(),
             db,
-            script: Arc::new(script),
+            script,
             itunes,
             voice,
             timing,

@@ -240,6 +240,7 @@ async fn reload_content(State(app): State<AppState>) -> Response {
     match crate::web::load_content(&app.db, &app.content_dir).await {
         Some(report) => {
             crate::web::warm_questions(&app.voice, &app.db, &app.host_name).await;
+            crate::web::warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
             Json(report).into_response()
         }
         None => (
@@ -320,6 +321,10 @@ async fn set_voice_server(State(app): State<AppState>, Json(body): Json<VoiceSer
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response();
     }
     app.voice.set_server(url, body.token.as_deref());
+    if url.is_some() {
+        // New regulars since startup get their lines too.
+        crate::web::warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
+    }
     tracing::info!(
         "voice server is now {}",
         app.voice.server().as_deref().unwrap_or("none")

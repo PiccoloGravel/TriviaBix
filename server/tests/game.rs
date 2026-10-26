@@ -54,6 +54,7 @@ async fn start_server_with(tts_url: Option<String>) -> (String, String) {
         host_script: None,
         content_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/../content").into(),
         tts_url,
+        voice_names: vec!["Zelda".into()],
         tts_cache_dir: std::env::temp_dir().join(format!("triviabix-tts-{}", uuid::Uuid::new_v4())),
     };
     let app = triviabix::router(config).await.unwrap();
@@ -1664,6 +1665,57 @@ async fn the_tv_gets_bix_lines_as_audio_from_the_tts_service() {
         tts.warm.load(Ordering::SeqCst) > 10,
         "lines should be pre-generated in the background"
     );
+}
+
+#[tokio::test]
+async fn a_batch_run_voices_regulars_lines_so_games_need_no_live_tts() {
+    let tts = FakeTts::start().await;
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let cookie = admin_login(&addr).await;
+    let set = |url: Option<String>| {
+        http.put(format!("http://{addr}/api/admin/voice"))
+            .header("cookie", &cookie)
+            .json(&json!({ "url": url }))
+            .send()
+    };
+    set(Some(tts.url.clone())).await.unwrap();
+    // Work through the whole batch, as gpu/vast.py voice does.
+    for _ in 0..600 {
+        let s: Value = http
+            .get(format!("http://{addr}/api/admin/voice"))
+            .header("cookie", &cookie)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if s["backlog"] == 0 && s["in_flight"] == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    set(None).await.unwrap();
+
+    // Zelda is in VOICE_NAMES, so Bix greets her with a line that's already made.
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let _phone = open(&addr, &format!("/ws/play?code={code}&name=Zelda")).await;
+    let s = wait_state(&mut host, |s| {
+        s["host"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("Zelda"))
+    })
+    .await;
+    let url = s["host"]["voice"][0]["audio"].as_str().unwrap().to_string();
+    let res = http
+        .get(format!("http://{addr}{url}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "the greeting was made in the batch");
+    assert!(tts.live.lock().unwrap().is_empty(), "nothing was made live");
 }
 
 #[tokio::test]

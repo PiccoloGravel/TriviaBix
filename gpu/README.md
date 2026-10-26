@@ -34,11 +34,26 @@ into `appdata/triviabix/assets/voice`. When the backlog is empty it points the s
 (or none) and destroys the instance. Cached lines keep playing with no GPU at all; only new lines with
 player names fall back to the browser voice.
 
-For a game night with Bix's voice on everything, live names included, keep it up for a while:
+### What gets made ahead
 
-```sh
-python3 gpu/vast.py voice --server http://192.168.1.20:8080 --hours 3
-```
+Everything the game can know in advance, so a game night needs no GPU at all:
+
+- every fixed line, every question, and each question's own lead-in and reveal lines;
+- the host's lines with each category, round number and difficulty filled in;
+- the answer reveals ("It was Paris!") for every answer;
+- the lines about players (joining, fastest, streaks, last place, winning) for the 12 names that have
+  played the most, plus any in `VOICE_NAMES` (set it on the game server, e.g. `VOICE_NAMES=JDog,Sam,Alex`,
+  so they're ready before the first game).
+
+During a game, Bix picks from the lines that already have audio, so nearly everything he says is in his
+voice. Only lines that can't be known ahead (a newcomer's name, a score, someone's wrong answer) use the
+browser voice. With the starter questions that's roughly 6,000 lines; the first run takes a couple of
+hours and about $1, and after that only new questions, edits and new regulars are made. If a run hits
+`--max-hours`, the next one carries on where it stopped. Run it again after a few game nights so new
+regulars get their lines.
+
+Live lines are possible too (`--hours 3` keeps the GPU up for a game), but they travel over the internet
+and aren't needed for a good night.
 
 The first start takes about 10 minutes (image pull and a 3 GB model download); after that it's quick on
 the same machine type. Live lines travel over the internet, so a slow one falls back to the browser voice
@@ -63,7 +78,7 @@ with `python3 gpu/assets.py import ./art-output --kind image --style <style>`.
 
 - **Price:** `--max-price` is the most per hour, all in (default $0.50). Only verified, reliable machines
   with a single Ampere-or-newer GPU and fast internet are considered, cheapest first.
-- **Time:** `--max-hours` (voice, default 2) and `--max-minutes` (jobs, default 60). Before renting, it
+- **Time:** `--max-hours` (voice, default 3) and `--max-minutes` (jobs, default 60). Before renting, it
   prints the most the run can cost and asks; pass `--yes` to skip the question in scripts.
 - **Always destroyed:** when the work ends, fails, hits the time limit, or you press Ctrl-C. As a backstop
   the instance also destroys itself at the time limit, so it stops even if the computer running the

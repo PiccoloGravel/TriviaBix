@@ -68,6 +68,9 @@ struct Inner {
     /// The model the service last said it runs, for the asset store's metadata.
     model: Mutex<Option<String>>,
     queue: Mutex<VecDeque<String>>,
+    /// The voice folder's slug and the lines already made in it, so the host can tell which of his
+    /// lines have audio without touching the disk.
+    ready: Mutex<Option<(String, HashSet<String>)>>,
     queued: Mutex<HashSet<String>>,
     wake: Notify,
 }
@@ -107,6 +110,7 @@ impl Voice {
             voice: Mutex::new(last),
             model: Default::default(),
             queue: Default::default(),
+            ready: Default::default(),
             queued: Default::default(),
             wake: Notify::new(),
         });
@@ -132,6 +136,20 @@ impl Voice {
             return None;
         }
         self.register(text).map(|hash| format!("/api/voice/{hash}"))
+    }
+
+    /// Whether `text` has audio in the current voice already, so playing it needs no TTS service.
+    pub fn is_ready(&self, text: &str) -> bool {
+        let Some(inner) = &self.0 else { return false };
+        let Some((key, _)) = inner.voice.lock().unwrap().clone() else {
+            return false;
+        };
+        let slug = slug(&key);
+        let mut ready = inner.ready.lock().unwrap();
+        if ready.as_ref().is_none_or(|(s, _)| *s != slug) {
+            *ready = Some((slug.clone(), made(&inner.dir.join(&slug))));
+        }
+        ready.as_ref().unwrap().1.contains(&hash(text.trim()))
     }
 
     /// Remembers `text` as a line the game may ask for, and returns its hash.
@@ -322,8 +340,15 @@ impl Inner {
                 .map_or(0, |d| d.as_secs()),
             "generator": server.base,
         });
-        if let Err(e) = save(&dir, voice.as_deref(), hash, ext, &bytes, &meta).await {
-            tracing::warn!("couldn't cache voice line in {}: {e}", dir.display());
+        match save(&dir, voice.as_deref(), hash, ext, &bytes, &meta).await {
+            Ok(()) => {
+                if let Some((slug, made)) = self.ready.lock().unwrap().as_mut()
+                    && dir.ends_with(slug.as_str())
+                {
+                    made.insert(hash.to_string());
+                }
+            }
+            Err(e) => tracing::warn!("couldn't cache voice line in {}: {e}", dir.display()),
         }
         tracing::debug!(
             live,
@@ -430,6 +455,23 @@ async fn warm_worker(inner: Arc<Inner>) {
         }
         inner.queued.lock().unwrap().remove(&hash);
     }
+}
+
+/// The hashes of the lines made in a voice folder.
+fn made(dir: &Path) -> HashSet<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return HashSet::new();
+    };
+    entries
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().into_string().ok()?;
+            let (stem, ext) = name.split_once('.')?;
+            FORMATS
+                .iter()
+                .any(|(x, _)| *x == ext)
+                .then(|| stem.to_string())
+        })
+        .collect()
 }
 
 async fn cached(dir: &Path, hash: &str) -> Option<(Vec<u8>, &'static str)> {

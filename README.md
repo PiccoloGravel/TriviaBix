@@ -176,6 +176,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `ADMIN_PASSWORD` | | Turns on the admin panel at `/admin` |
 | `TTS_URL` | | Bix's voice service, e.g. `http://tts:8000` (see [tts/README.md](tts/README.md)); empty means browser text-to-speech |
 | `ASSETS_DIR` | `data/assets` | Everything generated, kept for reuse: voice lines, images, clips (`/data/assets` in Docker; see [docs/assets.md](docs/assets.md)) |
+| `VOICE_NAMES` | | Comma-separated names to voice Bix's name lines for ahead of time, besides the 12 who've played most |
 | `TTS_CACHE_DIR` | `$ASSETS_DIR/voice` | Where his lines are kept |
 
 No GPU at home? [gpu/README.md](gpu/README.md) rents one on vast.ai for a few cents, makes the lines, and gives it back.

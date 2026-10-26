@@ -419,7 +419,7 @@ class Game:
         return self.call("PUT", "/api/admin/voice", {"url": url, "token": token})
 
 
-def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 2,
+def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: float = 0, max_hours: float = 3,
           min_vram: float = 16, max_price: float = 0.5, disk: float = 40, image: str = TTS_IMAGE,
           login: str | None = None, boot_minutes: float = 25, yes: bool = False, dry_run: bool = False,
           another: bool = False, vast: Vast | None = None):
@@ -508,7 +508,7 @@ def main(argv=None) -> int:
     v.add_argument("--server", default=os.environ.get("TRIVIABIX_URL"), help="the game server, e.g. http://192.168.1.20:8080")
     v.add_argument("--voice", default=os.environ.get("BIX_VOICE", "ip:US_James"))
     v.add_argument("--hours", type=float, default=0, help="stay up this long for live lines (default: until done)")
-    v.add_argument("--max-hours", type=float, default=2, help="hard limit (default 2)")
+    v.add_argument("--max-hours", type=float, default=3, help="hard limit (default 3)")
     v.add_argument("--image", default=TTS_IMAGE)
     v.add_argument("--boot-minutes", type=float, default=25)
     renting(v, 16, 0.5)
