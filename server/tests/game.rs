@@ -460,6 +460,7 @@ async fn static_pages_are_served() {
         "/admin-questions.js",
         "/admin/render",
         "/admin-render.js",
+        "/admin-nav.js",
         "/style.css",
         "/player.js",
         "/host.js",
