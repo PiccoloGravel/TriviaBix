@@ -36,11 +36,6 @@ prompt = "Put these blockbusters in order of release."
 lead_in = "Blockbuster time. Put them in order."
 
 [[script]]
-question = "movies-aaa1f028"
-prompt = """Which 1984 movie has the line "I'll be back"?"""
-lead_in = "Movie quote time. Which robot said it first?"
-
-[[script]]
 question = "movies-bec5fc59"
 prompt = "Who played Captain Jack Sparrow?"
 lead_in = "Pirate question. Savvy?"

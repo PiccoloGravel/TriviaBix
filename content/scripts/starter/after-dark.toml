@@ -4,15 +4,6 @@ prompt = 'The word "avocado" comes from the Aztec word for testicle.'
 lead_in = "Let's talk about your favorite green dip."
 
 [[script]]
-question = "after-dark-ad97d668"
-prompt = "Legend says Casanova ate 50 of which food for breakfast to boost his stamina?"
-lead_in = "History's most famous lover had a very specific breakfast routine."
-
-[script.reveal]
-PG-13 = "He also claimed to have bedded over a hundred women. He was a great writer, so take that with a grain of salt."
-MA = "He wrote twelve volumes of memoirs about his conquests. Talk about kiss and tell."
-
-[[script]]
 question = "after-dark-36d4ed62"
 prompt = "Which Greek goddess of love was born from sea foam?"
 lead_in = "A little Greek mythology. It gets steamy, I promise."

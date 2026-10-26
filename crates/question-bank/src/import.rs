@@ -8,7 +8,8 @@ use std::time::Duration;
 use base64::Engine;
 use serde::Deserialize;
 
-use crate::judge::normalize;
+use crate::bank::validate_question;
+use crate::dupes::{DuplicateIndex, Match, Verdict};
 use crate::model::*;
 use crate::pack::generated_id;
 
@@ -377,11 +378,42 @@ fn parse_difficulty(s: &str) -> Difficulty {
     }
 }
 
-/// Drop questions whose prompt is already in `existing_prompts` (normalized) or repeats in `new`.
-pub fn dedupe(new: Vec<Question>, existing_prompts: &mut HashSet<String>) -> Vec<Question> {
-    new.into_iter()
-        .filter(|q| existing_prompts.insert(normalize(&q.prompt)))
-        .collect()
+/// What [`screen`] made of a batch of imported questions.
+#[derive(Debug, Default)]
+pub struct Screened {
+    /// New questions to add, in the order fetched.
+    pub fresh: Vec<Question>,
+    /// Questions dropped because the bank (or an earlier one in the batch) already asks them.
+    pub skipped: Vec<(Question, Match)>,
+    /// Added questions that look a bit like one already there, for a person to check. With
+    /// `strict`, these are skipped instead and listed in `skipped`.
+    pub flagged: Vec<(Question, Match)>,
+    /// Questions dropped because they are broken, such as an answer missing from the choices.
+    pub invalid: usize,
+}
+
+/// Sorts imported questions into new ones and duplicates of what `index` already holds (the
+/// bank and the pack being added to), adding the new ones to `index` as it goes so a batch
+/// can't repeat itself either. With `strict`, possible duplicates are skipped too.
+pub fn screen(new: Vec<Question>, index: &mut DuplicateIndex, strict: bool) -> Screened {
+    let mut out = Screened::default();
+    for q in new {
+        if !validate_question(&q).is_empty() {
+            out.invalid += 1;
+            continue;
+        }
+        match index.check(&q) {
+            Some(m) if m.verdict == Verdict::Duplicate || strict => out.skipped.push((q, m)),
+            found => {
+                index.add(&q);
+                if let Some(m) = found {
+                    out.flagged.push((q.clone(), m));
+                }
+                out.fresh.push(q);
+            }
+        }
+    }
+    out
 }
 
 fn agent() -> ureq::Agent {
@@ -480,6 +512,37 @@ mod tests {
 mod pack_tests {
     use super::*;
     use crate::{PackFile, PackMeta, PackQuestion};
+
+    #[test]
+    fn screening_skips_reworded_questions_already_in_the_bank() {
+        let bank = parse_trivia_api(
+            r#"[{"category":"music","id":"a","correctAnswer":"Bon Jovi","incorrectAnswers":["Poison"],
+              "question":{"text":"Which band sang 'Livin' on a Prayer'?"},"tags":[],"difficulty":"easy"}]"#,
+        )
+        .unwrap();
+        let mut index = DuplicateIndex::of(&bank);
+        let fetched = parse_trivia_api(
+            r#"[{"category":"music","id":"b","correctAnswer":"Bon Jovi","incorrectAnswers":["Poison"],
+                 "question":{"text":"'Livin' on a Prayer' was a hit for which band?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"c","correctAnswer":"Queen","incorrectAnswers":["Poison"],
+                 "question":{"text":"Which band sang 'Bohemian Rhapsody'?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"d","correctAnswer":"Queen","incorrectAnswers":["Poison"],
+                 "question":{"text":"Bohemian Rhapsody was sung by which band?"},"tags":[],"difficulty":"easy"},
+                {"category":"music","id":"e","correctAnswer":"Queen","incorrectAnswers":["Queen"],
+                 "question":{"text":"A broken one"},"tags":[],"difficulty":"easy"}]"#,
+        )
+        .unwrap();
+        let out = screen(fetched, &mut index, false);
+        let ids = |v: &[(Question, Match)]| v.iter().map(|(q, _)| q.id.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            out.fresh.iter().map(|q| q.id.as_str()).collect::<Vec<_>>(),
+            vec!["trivia-api-c"]
+        );
+        // One matches the bank, the other an earlier question in the same batch.
+        assert_eq!(ids(&out.skipped), vec!["trivia-api-b", "trivia-api-d"]);
+        assert_eq!(out.skipped[0].1.id, "trivia-api-a");
+        assert_eq!(out.invalid, 1);
+    }
 
     #[test]
     fn imported_questions_write_and_reload_as_a_pack() {

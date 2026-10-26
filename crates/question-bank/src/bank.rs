@@ -8,6 +8,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::dupes::{DuplicateIndex, DuplicatePair, NotDuplicates, Verdict};
 use crate::judge::normalize;
 use crate::model::*;
 use crate::pack::PackFile;
@@ -38,6 +39,9 @@ impl fmt::Display for Problem {
         write!(f, "{}: {}", self.location, self.message)
     }
 }
+
+/// The file, next to `categories.toml`, listing look-alike questions to keep anyway.
+pub const NOT_DUPLICATES: &str = "not-duplicates.toml";
 
 #[derive(Deserialize)]
 struct CategoriesFile {
@@ -90,6 +94,8 @@ pub struct QuestionBank {
     /// Things worth fixing that don't stop the bank from loading, like a script for a
     /// question that no longer exists.
     warnings: Vec<Problem>,
+    /// Look-alike pairs a person checked and kept, from `not-duplicates.toml`.
+    kept: NotDuplicates,
 }
 
 impl QuestionBank {
@@ -120,6 +126,25 @@ impl QuestionBank {
         let mut bank = Self::new(cats.categories, questions).map_err(LoadError::Invalid)?;
         bank.packs = packs;
         bank.load_scripts(&dir.join("scripts"))?;
+        let kept_path = dir.join(NOT_DUPLICATES);
+        bank.kept = NotDuplicates::read(&kept_path).map_err(|message| LoadError::Parse {
+            path: kept_path,
+            message,
+        })?;
+        for pair in bank.duplicates() {
+            let what = match pair.verdict {
+                Verdict::Duplicate => "looks like the same question as",
+                Verdict::Possible => "might be the same question as",
+            };
+            let other = bank.get(&pair.b).map_or("", |q| q.prompt.as_str());
+            bank.warnings.push(problem(
+                &format!("question {}", pair.a),
+                &format!(
+                    "{what} {} ({other:?}); remove one, or list the pair in {NOT_DUPLICATES} to keep both",
+                    pair.b
+                ),
+            ));
+        }
         Ok(bank)
     }
 
@@ -181,6 +206,25 @@ impl QuestionBank {
         &self.warnings
     }
 
+    /// The look-alike pairs a person checked and kept.
+    pub fn not_duplicates(&self) -> &NotDuplicates {
+        &self.kept
+    }
+
+    /// An index of every question, for checking new ones against the bank. Kept pairs stay kept.
+    pub fn duplicate_index(&self) -> DuplicateIndex {
+        let mut index = DuplicateIndex::of(&self.questions);
+        for (a, b) in self.kept.ids() {
+            index.keep_pair(a, b);
+        }
+        index
+    }
+
+    /// Questions that look like each other, surest first.
+    pub fn duplicates(&self) -> Vec<DuplicatePair> {
+        self.duplicate_index().pairs()
+    }
+
     /// Build a bank from parts, validating everything.
     pub fn new(
         categories: Vec<Category>,
@@ -228,6 +272,7 @@ impl QuestionBank {
                 by_id,
                 packs: HashMap::new(),
                 warnings: Vec::new(),
+                kept: NotDuplicates::default(),
             })
         } else {
             Err(problems)
@@ -583,5 +628,51 @@ mod tests {
                 c.slug
             );
         }
+        assert!(bank.warnings().is_empty(), "{:?}", bank.warnings());
+        let pairs = bank.duplicates();
+        assert!(pairs.is_empty(), "asked twice: {pairs:?}");
+    }
+
+    #[test]
+    fn look_alikes_are_warnings_unless_kept() {
+        let dir = std::env::temp_dir().join(format!("tbx-dupes-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("packs")).unwrap();
+        std::fs::write(
+            dir.join("categories.toml"),
+            "[[category]]\nslug = \"science\"\nname = \"Science\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("packs/a.toml"),
+            r#"[pack]
+category = "science"
+[[question]]
+id = "one"
+type = "multiple_choice"
+prompt = "What is the hardest natural substance?"
+choices = ["Diamond", "Quartz"]
+answer = "Diamond"
+[[question]]
+id = "two"
+type = "multiple_choice"
+prompt = "Which natural substance is the hardest on Earth?"
+choices = ["Diamond", "Granite"]
+answer = "Diamond"
+"#,
+        )
+        .unwrap();
+        let bank = QuestionBank::load_dir(&dir).unwrap();
+        assert_eq!(bank.duplicates().len(), 1);
+        assert!(bank.warnings()[0].message.contains("same question as two"));
+
+        std::fs::write(
+            dir.join(NOT_DUPLICATES),
+            "[[pair]]\nids = [\"two\", \"one\"]\n",
+        )
+        .unwrap();
+        let bank = QuestionBank::load_dir(&dir).unwrap();
+        assert!(bank.duplicates().is_empty());
+        assert!(bank.warnings().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -5,12 +5,6 @@ category = "2000s"
 tags = ["2000s"]
 
 [[question]]
-type = "closest_number"
-prompt = "In what year did the first iPhone go on sale?"
-answer = 2007
-tags = ["tech"]
-
-[[question]]
 type = "true_false"
 prompt = "The first video on YouTube, \"Me at the zoo\", was uploaded in 2005."
 answer = true

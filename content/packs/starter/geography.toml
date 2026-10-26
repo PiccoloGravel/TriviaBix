@@ -70,8 +70,3 @@ prompt = "Which country is shaped like a boot?"
 answers = ["Italy"]
 difficulty = "easy"
 
-[[question]]
-type = "multiple_choice"
-prompt = "What is the smallest country in the world?"
-choices = ["Vatican City", "Monaco", "San Marino", "Liechtenstein"]
-answer = "Vatican City"

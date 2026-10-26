@@ -1,13 +1,4 @@
 [[script]]
-question = "2000s-22f2976c"
-prompt = "In what year did the first iPhone go on sale?"
-lead_in = "Let's talk about the gadget that ate your attention span."
-
-[script.reveal]
-PG = "Steve Jobs called it three devices in one: an iPod, a phone, and an internet communicator. The crowd only heard 'phone'."
-MA = "The first iPhone had no App Store, no copy and paste, and still made grown adults camp on sidewalks. Peak humanity."
-
-[[script]]
 question = "2000s-d42739c9"
 prompt = 'The first video on YouTube, "Me at the zoo", was uploaded in 2005.'
 lead_in = "Grab your popcorn. The very first internet video is about to get fact-checked."

@@ -41,18 +41,6 @@ prompt = "Lightning never strikes the same place twice."
 lead_in = "True or false. Lightning edition."
 
 [[script]]
-question = "science-50e53b93"
-prompt = "What is the hardest natural substance on Earth?"
-lead_in = "Hard question. The hardest, actually."
-reveal = "Diamonds form deep underground under enormous pressure. Very relatable at this point in the game."
-
-[[script]]
-question = "science-ebc88057"
-prompt = "Roughly how fast does light travel, in kilometers per second?"
-lead_in = "Physics question. Exactly how fast is light?"
-reveal = "That's fast enough to go around the Earth about seven and a half times in one second."
-
-[[script]]
 question = "science-38395113"
 prompt = "What is the largest animal that has ever lived?"
 lead_in = "Biggest animal ever. Dinosaurs included."
