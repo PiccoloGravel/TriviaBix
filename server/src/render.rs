@@ -187,6 +187,13 @@ pub struct Options {
     /// Lines: which lines count as missing (either, lead-in or reveal).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
+    /// Lines: only the questions one import brought in (its job id). Without it, every question
+    /// that's missing lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch: Option<i64>,
+    /// Lines: the question ids `batch` stands for, filled in by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ids: Option<Vec<String>>,
     /// Import: opentdb or trivia-api.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
@@ -295,6 +302,7 @@ impl Options {
                 Options {
                     limit: Some(limit),
                     missing: Some(missing),
+                    batch: self.batch,
                     ..Default::default()
                 }
             }
@@ -840,6 +848,37 @@ impl Render {
     }
 
     /// Runs the job's dry run, which rents nothing, and returns the price with a token to start it.
+    /// Lines for one import: looks up which questions it brought in.
+    async fn with_batch(&self, kind: Kind, mut options: Options) -> Result<Options, String> {
+        let Some(batch) = options.batch.filter(|_| kind == Kind::Lines) else {
+            return Ok(options);
+        };
+        let details: Option<String> = sqlx::query_scalar(
+            "SELECT details FROM render_jobs WHERE id = ? AND kind = 'import' AND state = 'done'",
+        )
+        .bind(batch)
+        .fetch_optional(&self.0.db.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .flatten();
+        let ids: Vec<String> = details
+            .and_then(|d| serde_json::from_str::<Value>(&d).ok())
+            .and_then(|d| {
+                d["imported"]["ids"].as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .filter(|id| !id.contains(','))
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        if ids.is_empty() {
+            return Err("That import has no questions to write lines for.".into());
+        }
+        options.ids = Some(ids);
+        Ok(options)
+    }
+
     pub async fn preview(&self, kind: Kind, options: Options) -> Result<PreviewView, String> {
         if matches!(kind, Kind::Cleanup | Kind::Import) {
             return Err("That job is free, so it needs no price check.".into());
@@ -848,16 +887,23 @@ impl Render {
         if self.running() {
             return Err("A job is already running. Wait for it, or cancel it.".into());
         }
-        {
+        let options = self.with_batch(kind, options).await?;
+        // Cleared however the check ends, even if the page that asked goes away mid-check.
+        struct Busy<'a>(&'a Mutex<bool>);
+        impl Drop for Busy<'_> {
+            fn drop(&mut self) {
+                *self.0.lock().unwrap() = false;
+            }
+        }
+        let _busy = {
             let mut busy = self.0.previewing.lock().unwrap();
             if *busy {
                 return Err("A price check is already running.".into());
             }
             *busy = true;
-        }
-        let result = self.dry_run(kind, &options).await;
-        *self.0.previewing.lock().unwrap() = false;
-        let out = result?;
+            Busy(&self.0.previewing)
+        };
+        let out = self.dry_run(kind, &options).await?;
 
         let offer = out.events.iter().rev().find(|e| e["event"] == "offer");
         let mut details = json!({});
@@ -1446,6 +1492,9 @@ impl Render {
                     .args(["scripts", "generate", "--into", LINES_FOLDER, "--limit"])
                     .arg(o.limit.unwrap_or(50).to_string())
                     .args(["--missing", o.missing.as_deref().unwrap_or("either")]);
+                if let Some(ids) = &o.ids {
+                    cmd.arg("--ids").arg(ids.join(","));
+                }
                 let settings = &self.0.settings;
                 if let Some(model) = settings.get("CLAUDE_MODEL") {
                     cmd.args(["--model", &model]);

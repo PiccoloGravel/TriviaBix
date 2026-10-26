@@ -178,7 +178,14 @@ function options(kind) {
       select([["all", "Everything missing"], ["backdrop", "Backdrops"], ["sticker", "Stickers"], ["category", "Category cards"], ["clip", "Clips"]],
         o.kinds, set("kinds")));
   }
+  // Every question missing lines, or just the ones an earlier import brought in.
+  const batches = pipeline.batches.filter((b) => b.state === "done" && b.in_game > b.with_lines);
+  if (o.batch && !batches.some((b) => b.id === o.batch)) delete o.batch;
   return [
+    el("label", { class: "inline" }, "For",
+      select([["all", "Every question missing lines"],
+        ...batches.map((b) => [b.id, `The import of ${time(b.started_at)} (${b.in_game - b.with_lines} need lines)`])],
+      o.batch || "all", (v) => { o.batch = v === "all" ? undefined : Number(v); delete quotes[kind]; renderCards(); })),
     el("label", { class: "inline" }, "Up to",
       select([[10, "10"], [25, "25"], [50, "50"], [100, "100"], [200, "200"], [500, "500"]], o.limit, set("limit", Number)), "questions"),
     el("label", { class: "inline" }, "Write",
@@ -186,16 +193,26 @@ function options(kind) {
   ];
 }
 
+/** How long a check is good for: the server forgets it after 15 minutes. */
+const QUOTE_TTL = 14 * 60 * 1000;
+
 function quoteBox(kind) {
-  const q = quotes[kind];
   if (checking === kind) return el("div", { class: "quote" }, "Checking… (this rents nothing)");
+  if (quotes[kind] && Date.now() - quotes[kind].at > QUOTE_TTL) delete quotes[kind];
+  const q = quotes[kind];
   if (!q) return null;
+  const again = el("div", { class: "row" },
+    el("button", { class: "secondary small", onclick: () => check(kind) }, "Check again"));
   if (!q.ok) {
     return el("div", { class: "quote" },
       el("div", { class: "error" }, "Can't start: ", q.error || "the dry run failed"),
-      q.log.length ? el("details", {}, el("summary", {}, "What it said"), el("pre", { class: "log" }, q.log.join("\n"))) : null);
+      q.log.length ? el("details", {}, el("summary", {}, "What it said"), el("pre", { class: "log" }, q.log.join("\n"))) : null,
+      again);
   }
-  if (q.nothing) return el("div", { class: "quote" }, "Nothing to make, so nothing would be rented.");
+  if (q.nothing) {
+    return el("div", { class: "quote" },
+      kind === "lines" ? "Every question here already has lines." : "Nothing to make, so nothing would be rented.", again);
+  }
   const d = q.details || {};
   const lines = [];
   if (kind === "voice") lines.push(`${d.backlog} lines to voice`);
@@ -364,6 +381,15 @@ function nextStep(b) {
   return "✓ Ready to play";
 }
 
+/** Step 2 for just this import: picks it on the lines card and checks what would be written. */
+function linesFor(b) {
+  picked.lines.batch = b.id;
+  delete quotes.lines;
+  renderCards();
+  $("#cards").scrollIntoView({ behavior: "smooth" });
+  check("lines");
+}
+
 function renderBatches() {
   const rows = pipeline.batches.map((b) => {
     const i = b.imported || {};
@@ -377,7 +403,9 @@ function renderBatches() {
       el("td", {}, got),
       el("td", {}, stage(b.with_lines, b.in_game)),
       el("td", {}, stage(b.voiced, b.in_game)),
-      el("td", {}, nextStep(b)));
+      el("td", {}, nextStep(b) === "Next: write lines (2)" && canRun("lines")
+        ? el("button", { class: "small", onclick: (e) => { e.stopPropagation(); linesFor(b); } }, "Write its lines")
+        : nextStep(b)));
   });
   $("#batches").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: 6, class: "muted" }, "No imports yet. Start with step 1."))]));
 }
@@ -386,7 +414,7 @@ async function check(kind) {
   checking = kind;
   renderCards();
   try {
-    quotes[kind] = await api("render/preview", { kind, options: picked[kind] });
+    quotes[kind] = { ...await api("render/preview", { kind, options: picked[kind] }), at: Date.now() };
   } catch (e) {
     toast(e.message);
   }
@@ -401,12 +429,14 @@ async function start(kind) {
     : `Have Claude write lines for ${q.details.todo.count} questions? It's billed to your Anthropic account.`;
   if (!confirm(sure)) return;
   delete quotes[kind];
+  renderCards();
   try {
     const job = await api("render/start", { token: q.token, confirm: true });
     shown = null;
     follow(job);
     await load();
   } catch (e) {
+    // Most often the check expired; show the button to check again.
     toast(e.message);
     renderCards();
   }
