@@ -144,3 +144,6 @@ function render() {
     toast(e.message);
   }
 })();
+
+// The cast app's download, as a QR code a phone can scan from a laptop.
+$("#cast-qr").src = `/api/qr?text=${encodeURIComponent(`${location.origin}/downloads/triviabix-cast.apk`)}`;

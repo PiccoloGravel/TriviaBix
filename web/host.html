@@ -12,7 +12,7 @@
   <style>
     /* Sized in viewport units so it reads from the couch on any TV. */
     body { overflow: hidden; height: 100vh; font-size: 2.2vh; }
-    .screen { position: absolute; inset: 0; padding: 4vh 5vw 15vh; display: flex; flex-direction: column; }
+    .screen { position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: 4vh 5vw 15vh; display: flex; flex-direction: column; }
 
     #setup { align-items: center; justify-content: center; gap: 3vh; text-align: center; }
     #setup h1 { font-size: 13vh; margin: 0; color: var(--accent); text-shadow: 0 1vh 0 rgba(0,0,0,.35); }
@@ -189,7 +189,7 @@
     .row.down { opacity: .85; }
     .crown { position: absolute; top: -6vh; left: 50%; transform: translateX(-50%); font-size: 7vh; animation: logo-slam .8s 1s both; }
     .step { position: relative; }
-    #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 9; }
+    #confetti { position: fixed; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; z-index: 9; }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
@@ -212,7 +212,7 @@
     #round_intro.enter .ri-tags { animation: rise .5s 1.1s both; }
     /* The category's generated title card (art/generate.py), faded behind the round's title. */
     #round_intro.has-art { isolation: isolate; overflow: hidden; }
-    #round_intro.has-art::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(rgba(13,6,32,.55), rgba(13,6,32,.85)), var(--cat-art) center / cover; animation: ri-art 12s ease-out both; }
+    #round_intro.has-art::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background: linear-gradient(rgba(13,6,32,.55), rgba(13,6,32,.85)), var(--cat-art) center / cover; animation: ri-art 12s ease-out both; }
     @keyframes ri-art { from { transform: scale(1.12); opacity: 0; } 15% { opacity: 1; } to { transform: scale(1); } }
     .ladder { display: flex; justify-content: center; align-items: flex-end; gap: 1.2vw; width: 100%; }
     .rung { flex: 0 1 18vw; background: var(--panel); border-radius: 2vh 2vh 1vh 1vh; padding: 1.2vh 1vw; text-align: center; border-top: .8vh solid var(--diff); min-height: calc(12vh + var(--i) * 3vh); display: flex; flex-direction: column; justify-content: flex-end; gap: .3vh; transition: transform .3s; }
@@ -222,7 +222,7 @@
     .rung.next { opacity: .5; }
     .rung.done { opacity: .75; }
     .rung.done .rung-title::after { content: " ✓"; color: var(--good); }
-    .rung.current { background: rgba(255,255,255,.18); transform: translateY(-1.5vh) scale(1.06); box-shadow: 0 0 4vh color-mix(in srgb, var(--diff) 60%, transparent); }
+    .rung.current { background: rgba(255,255,255,.18); transform: translateY(-1.5vh) scale(1.06); box-shadow: 0 0 4vh var(--diff); box-shadow: 0 0 4vh color-mix(in srgb, var(--diff) 60%, transparent); }
     .ladder.small { align-items: stretch; margin-bottom: 2.5vh; }
     .ladder.small .rung { min-height: 0; padding: .6vh .8vw; border-radius: 1.5vh; }
     .ladder.small .rung.current { transform: scale(1.04); }

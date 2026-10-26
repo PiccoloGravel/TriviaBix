@@ -931,8 +931,9 @@ $("#sound-btn").addEventListener("click", () => tune.unlock());
 document.addEventListener("pointerdown", () => { Sfx.unlock(); Bgm.unlock(); tune.unlock(); soundHint(); });
 
 // Browsers keep a page silent until someone clicks it once, so say so until that happens.
+const IN_APP = / TriviaBixCast\//.test(navigator.userAgent);
 function soundHint() {
-  const active = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  const active = IN_APP || !navigator.userActivation || navigator.userActivation.hasBeenActive;
   $("#sound-hint").classList.toggle("hidden", active);
 }
 
@@ -975,7 +976,7 @@ async function keepAwake() {
       wakeLock = await navigator.wakeLock.request("screen");
       wakeLock.addEventListener("release", () => { wakeLock = null; });
     }
-  } catch { /* not supported, or needs a press first; tried again on the next one */ }
+  } catch (_) { /* not supported, or needs a press first; tried again on the next one */ }
 }
 document.addEventListener("visibilitychange", keepAwake);
 document.addEventListener("pointerdown", keepAwake);
@@ -1005,6 +1006,8 @@ document.addEventListener("keydown", (e) => {
 // ---------- Boot ----------
 
 (async function boot() {
+  // The cast app lets the TV page play sound with nobody pressing anything.
+  if (IN_APP) { Sfx.unlock(); Bgm.unlock(); }
   soundHint();
   Cutscenes.sound = voice.on;
   await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
@@ -1013,7 +1016,7 @@ document.addEventListener("keydown", (e) => {
     if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
     voice.ming = !!cfg.voice;
     voice.speed = cfg.voice_speed || 1;
-  } catch { /* fall back to this page's address */ }
+  } catch (_) { /* fall back to this page's address */ }
 
   // Opened from the admin panel with a room's link: take over that room.
   const params = new URLSearchParams(location.search);

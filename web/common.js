@@ -1,5 +1,32 @@
 // Shared helpers for the TV and phone pages.
 
+// Older TV browsers (Samsung's on 2019-2020 sets is Chromium 63-69) lack a few newer calls.
+if (!Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function (...nodes) {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    this.append(...nodes);
+  };
+}
+if (!Object.fromEntries) {
+  Object.fromEntries = (entries) => {
+    const o = {};
+    for (const [k, v] of entries) o[k] = v;
+    return o;
+  };
+}
+if (!Array.prototype.flat) {
+  Object.defineProperty(Array.prototype, "flat", {
+    configurable: true, writable: true,
+    value(depth = 1) {
+      return this.reduce((out, v) => out.concat(Array.isArray(v) && depth > 0 ? v.flat(depth - 1) : v), []);
+    },
+  });
+  Object.defineProperty(Array.prototype, "flatMap", {
+    configurable: true, writable: true,
+    value(fn, self) { return this.map(fn, self).flat(); },
+  });
+}
+
 const TBX = {
   SHAPES: ["▲", "◆", "●", "■"],
 
@@ -32,7 +59,7 @@ const TBX = {
     try {
       TBX.characterList = await (await fetch("/api/characters")).json();
       TBX.characters = Object.fromEntries(TBX.characterList.map((c) => [c.id, c]));
-    } catch { /* avatars fall back to initials */ }
+    } catch (_) { /* avatars fall back to initials */ }
   },
 
   avatar(player, size) {
@@ -61,13 +88,13 @@ const TBX = {
   },
 
   load(key) {
-    try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(key)); } catch (_) { return null; }
   },
   save(key, value) {
     try {
       if (value == null) localStorage.removeItem(key);
       else localStorage.setItem(key, JSON.stringify(value));
-    } catch { /* private mode; we just won't remember */ }
+    } catch (_) { /* private mode; we just won't remember */ }
   },
 
   /**

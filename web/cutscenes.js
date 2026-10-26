@@ -3,6 +3,9 @@
 // cue can play and which face Bix pulls, and each scene is a JSON file of timed layers. See
 // web/cutscenes/README.md for the format, and /cutscenes.html to preview every scene.
 
+// The nullish default (a, else b), spelled out for older TV browsers (Samsung's on 2019-2020 sets is Chromium 63-69).
+const nz = (v, d) => (v === undefined || v === null ? d : v);
+
 const Cutscenes = {
   base: "/cutscenes/",
   manifest: { cues: {} },
@@ -19,7 +22,7 @@ const Cutscenes = {
   async load() {
     try {
       this.manifest = await (await fetch(this.base + "index.json")).json();
-    } catch {
+    } catch (_) {
       return;
     }
     await this.loadArt();
@@ -27,7 +30,7 @@ const Cutscenes = {
     await Promise.all([...names].map(async (name) => {
       try {
         this.scenes[name] = await (await fetch(`${this.base}${name}.json`)).json();
-      } catch {
+      } catch (_) {
         console.warn(`cutscene ${name} failed to load`);
       }
     }));
@@ -40,7 +43,7 @@ const Cutscenes = {
       if (!res.ok) return;
       const m = await res.json();
       this.art = { files: m.files || {}, categories: m.categories || {} };
-    } catch {
+    } catch (_) {
       return;
     }
     this.preload();
@@ -53,7 +56,7 @@ const Cutscenes = {
       try {
         const blob = await (await fetch(this.base + "assets/gen/" + path)).blob();
         this.preloaded[path] = URL.createObjectURL(blob);
-      } catch { /* it'll load when it plays */ }
+      } catch (_) { /* it'll load when it plays */ }
     }
   },
 
@@ -100,7 +103,7 @@ const Cutscenes = {
   cue(cue, ctx) {
     const c = cue && this.manifest.cues[cue];
     const names = c && (c.scenes || []).filter((n) => this.scenes[n]);
-    if (!names || !names.length || Math.random() >= (c.chance ?? 1)) return false;
+    if (!names || !names.length || Math.random() >= (nz(c.chance, 1))) return false;
     this.play(names[Math.floor(Math.random() * names.length)], ctx);
     return true;
   },
@@ -122,7 +125,7 @@ const Cutscenes = {
     if (!scene) return Promise.resolve();
     this.stop();
     const vars = ctx.vars || {};
-    const fill = (text) => String(text ?? "").replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+    const fill = (text) => String(nz(text, "")).replace(/\{(\w+)\}/g, (_, k) => nz(vars[k], ""));
     const root = div("cutscene");
     const timers = [];
     const later = (ms, fn) => timers.push(setTimeout(fn, ms));
@@ -176,8 +179,8 @@ function div(cls, style) {
 /** Wraps a layer in its position, entrance, idle loop and exit. Positions are % of the screen, sizes vh. */
 function place(node, layer, later) {
   const at = layer.at || 0;
-  const inMs = layer.inMs ?? 600;
-  const outer = div("cs-layer", `left:${layer.x ?? 50}%;top:${layer.y ?? 50}%;z-index:${layer.z || 1};` +
+  const inMs = nz(layer.inMs, 600);
+  const outer = div("cs-layer", `left:${nz(layer.x, 50)}%;top:${nz(layer.y, 50)}%;z-index:${layer.z || 1};` +
     `--rot:${layer.rotate || 0}deg`);
   const enter = div(`cs-in cs-in-${layer.in || "pop"}`, `animation-duration:${inMs}ms;animation-delay:${at}ms`);
   const loop = div(layer.loop ? `cs-loop cs-loop-${layer.loop}` : "cs-loop", `animation-delay:${at + inMs}ms`);
@@ -209,14 +212,14 @@ function backdrop(b, ctx) {
   const [c0 = "#e63973", c1 = "#2f80ed"] = b.colors || [];
   const d = div(`cs-backdrop cs-bg-${b.kind || "flash"} cs-enter-${b.enter || "wipe"}`, `--c0:${c0};--c1:${c1}`);
   if (b.kind === "curtains") {
-    d.style.setProperty("--open", `${b.open ?? 600}ms`);
+    d.style.setProperty("--open", `${nz(b.open, 600)}ms`);
     d.append(div("cs-curtain l"), div("cs-curtain r"), div("cs-valance"));
   }
   if (b.kind === "sunburst" || b.kind === "spotlight") d.append(div("cs-rays"));
   const src = b.art && Cutscenes.pickArt(b.art, ctx);
   if (src) {
     const art = media(src, `cs-art${b.pan ? " cs-art-pan" : ""}`);
-    const shade = div("cs-art-shade", `opacity:${b.shade ?? 0.25}`);
+    const shade = div("cs-art-shade", `opacity:${nz(b.shade, 0.25)}`);
     if (b.kind === "curtains") d.querySelector(".cs-curtain").before(art, shade);
     else d.append(art, shade);
   }
@@ -273,7 +276,7 @@ Cutscenes.layers = {
       box.append(n);
     }
     if (l.hat) {
-      const hat = div("cs-hat", `font-size:${(l.size || 24) * 0.6}vh;animation-delay:${(l.at || 0) + (l.hatAt ?? 700)}ms`);
+      const hat = div("cs-hat", `font-size:${(l.size || 24) * 0.6}vh;animation-delay:${(l.at || 0) + (nz(l.hatAt, 700))}ms`);
       hat.textContent = l.hat;
       box.append(hat);
     }
@@ -287,7 +290,7 @@ Cutscenes.layers = {
     const size = l.size || Math.min(12, 80 / list.length);
     const row = div("cs-lineup", `gap:${size * 0.25}vh`);
     list.forEach((p, i) => {
-      const cell = div("cs-cell", `animation-delay:${(l.at || 0) + i * (l.stagger ?? 120)}ms`);
+      const cell = div("cs-cell", `animation-delay:${(l.at || 0) + i * (nz(l.stagger, 120))}ms`);
       cell.append(TBX.avatar(p, `${size}vh`));
       if (l.name !== false) {
         const n = div("cs-name", `font-size:${Math.max(2.2, size / 4)}vh`);
@@ -307,7 +310,7 @@ Cutscenes.layers = {
     const life = l.life || 1800;
     for (let i = 0; i < n; i++) {
       const p = div("cs-particle", `font-size:${(l.size || 6) * (0.6 + Math.random() * 0.8)}vh;` +
-        `animation-duration:${life * (0.7 + Math.random() * 0.6)}ms;animation-delay:${(l.at || 0) + Math.random() * (l.spread ?? 900)}ms;` +
+        `animation-duration:${life * (0.7 + Math.random() * 0.6)}ms;animation-delay:${(l.at || 0) + Math.random() * (nz(l.spread, 900))}ms;` +
         `--x:${Math.random() * 100}vw;--dx:${(Math.random() - 0.5) * 80}vw;--dy:${(Math.random() - 0.5) * 80}vh;--r:${(Math.random() - 0.5) * 720}deg`);
       p.textContent = chars[i % chars.length];
       box.append(p);
@@ -365,7 +368,7 @@ Cutscenes.sfx = {
   play(s) {
     if (s.src) {
       const a = new Audio(s.src.startsWith("/") || s.src.includes("://") ? s.src : Cutscenes.base + s.src);
-      a.volume = s.volume ?? 0.8;
+      a.volume = nz(s.volume, 0.8);
       a.play().catch(() => {});
       return;
     }
@@ -375,10 +378,10 @@ Cutscenes.sfx = {
       this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
       if (this.ctx.state === "suspended") this.ctx.resume();
       const out = this.ctx.createGain();
-      out.gain.value = this.volume * (s.volume ?? 1);
+      out.gain.value = this.volume * (nz(s.volume, 1));
       out.connect(this.ctx.destination);
       fn(this.ctx, out, this.ctx.currentTime);
-    } catch { /* no Web Audio on this TV */ }
+    } catch (_) { /* no Web Audio on this TV */ }
   },
 
   /** A note: `type` wave from `f0` Hz (sliding to `f1`), with a quick attack and a fade. */
