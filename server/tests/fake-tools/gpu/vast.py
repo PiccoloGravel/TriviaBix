@@ -5,7 +5,7 @@ design writes --count candidate voices into the asset store (--library), skippin
 voice --max-hours picks a scenario: 0.25 runs until stopped (for cancelling), 0.5 rents and then
 crashes without destroying (for the server's backstop), anything else finishes at once.
 """
-import json, os, signal, sys, time
+import hashlib, json, os, signal, sys, time
 from pathlib import Path
 
 LOG = Path(__file__).resolve().parent.parent / "calls.log"
@@ -33,7 +33,8 @@ def stop(*_):
 cmd = args[0]
 if cmd == "design":
     folder = Path(opt("--library"), "voice-sample", "0123456789ab")
-    keys = [f"{n:032x}" for n in range(1, int(opt("--count", "4")) + 1)]
+    texts = [args[i + 1] for i, a in enumerate(args) if a == "--text"]
+    keys = [hashlib.sha256(f"{n}|{t}".encode()).hexdigest()[:32] for n, t in enumerate(texts, 1)]
     todo = [k for k in keys if not (folder / f"{k}.wav").exists()]
     event("todo", count=len(todo), total=len(keys), minutes=40)
     if not todo:
@@ -47,8 +48,8 @@ if cmd == "design":
         (folder / f"{key}.wav").write_bytes(b"RIFF" + key.encode())
         (folder / f"{key}.json").write_text(json.dumps({
             "kind": "voice-sample", "key": key, "file": f"{key}.wav", "created": 1793000000 + n, "seed": n,
-            "description": opt("--description"), "transcript": opt("--text"),
-            "inputs": {"description": opt("--description"), "text": opt("--text"), "seed": n}}))
+            "description": opt("--description"), "transcript": texts[n - 1],
+            "inputs": {"description": opt("--description"), "text": texts[n - 1], "seed": n}}))
         event("made", key=key, seed=n)
     event("destroyed", instance=43, seconds=600, cost=0.033)
     sys.exit(0)
