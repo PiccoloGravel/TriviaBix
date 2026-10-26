@@ -286,6 +286,31 @@ class VastTest(Base):
         with unittest.mock.patch.dict(os.environ, {"GHCR_TOKEN": ""}):
             self.assertIsNone(login("ghcr.io/piccologravel/triviabix-tts:latest"))
 
+    def test_a_host_too_slow_to_download_is_swapped_for_another(self):
+        cheap = dict(self.fake.offers[0])
+        self.fake.offers = [{**cheap, "id": 5, "machine_id": 50}, {**cheap, "id": 6, "machine_id": 60}]
+        err = io.StringIO()
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to, \
+                    unittest.mock.patch("sys.stderr", err):
+                mark = Path(box, "tried")
+                code = self.vast.run_job("img", f"if [ -f {mark} ]; then exit 0; fi; touch {mark}; exit 75", to,
+                                         out=box, yes=True, max_minutes=2, another=True)
+        finally:
+            self.fake.offers = [cheap]
+        self.assertEqual(code, 0)
+        self.assertIn("download was too slow; gave it back, trying the next GPU", err.getvalue())
+
+    def test_a_fast_connection_wins_when_the_job_downloads_a_lot(self):
+        slow = {"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.30, "inet_down": 300}
+        fast = {**slow, "id": 2, "dph_total": 0.34, "inet_down": 3000}
+        self.assertGreater(self.vast.estimate(slow, 10, 5, download_gb=45)[1],
+                           self.vast.estimate(fast, 10, 5, download_gb=45)[1])
+        self.assertLess(self.vast.estimate(slow, 10, 5)[1], self.vast.estimate(fast, 10, 5)[1])
+        with unittest.mock.patch.dict(os.environ, {"VAST_MIN_INET": "500"}):
+            self.vast.Vast().offers(16, 0.5, 40)
+        self.assertEqual(self.fake.query["inet_down"]["gte"], 500)
+
     def test_the_art_image_needs_a_cuda_12_8_host_and_may_rent_blackwell(self):
         self.vast.Vast().offers(16, 0.5, 40)
         self.assertEqual(self.fake.query["cuda_max_good"]["gte"], 12.4)

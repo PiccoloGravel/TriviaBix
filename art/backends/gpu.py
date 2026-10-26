@@ -1,7 +1,8 @@
 """The real generators. Needs an NVIDIA GPU with 24 GB or more and the packages in requirements.txt.
 
 - Pictures: FLUX.1-schnell (Apache-2.0), 4 steps, so a picture takes a few seconds. Drawn several at a
-  time (ART_BATCH, default 8, or 4 on a 24 GB card).
+  time (ART_BATCH, default 8, or 2 on a 24 GB card). Its 12B transformer alone fills a 24 GB card in bf16,
+  so on such a card its weights are kept in fp8 and widened to bf16 layer by layer as it runs.
 - Cut-outs: BiRefNet (MIT) takes the background off stickers.
 - Clips: Wan2.2-TI2V-5B (Apache-2.0) animates a backdrop still.
 
@@ -14,6 +15,8 @@ from __future__ import annotations
 
 import gc
 import os
+import threading
+import time
 
 import numpy as np
 import torch
@@ -57,6 +60,30 @@ def gpu_unsupported() -> str | None:
                 f"(sm_{major}{minor}; built for {', '.join(arches)}): {str(e).splitlines()[0] if str(e) else e}")
 
 
+# A host whose model download is still under MIN_MBS (MB/s) after SLOW_AFTER_S seconds is given back.
+MIN_MBS = float(os.environ.get("ART_MIN_MBS") or 20)
+SLOW_AFTER_S = 120
+# The exit code that tells gpu/vast.py the host was too slow, so it rents another (vast.py's SLOW_HOST).
+SLOW_HOST = 75
+
+
+def give_up():
+    """Ends the run at once (the download thread can't be stopped) with SLOW_HOST."""
+    os._exit(SLOW_HOST)
+
+
+def folder_bytes(root: str) -> int:
+    """Bytes in files under `root`, half-downloaded ones included."""
+    total = 0
+    for folder, _, files in os.walk(root):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(folder, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
 class GpuBackend(GpuModels):
 
     def __init__(self):
@@ -72,18 +99,79 @@ class GpuBackend(GpuModels):
         self.offload = os.environ.get("ART_OFFLOAD", "auto") == "on" or (os.environ.get("ART_OFFLOAD", "auto") == "auto" and not big)
         # Pictures drawn per call to FLUX. More at once keeps the GPU busy; a batch that runs out of memory
         # is split in half and tried again.
-        self.batch = int(os.environ.get("ART_BATCH") or (4 if self.offload else 8))
+        self.batch = int(os.environ.get("ART_BATCH") or (2 if self.offload else 8))
 
     def _use(self, name: str, load):
         """Keeps one model in memory at a time."""
         if self.loaded and self.loaded[0] == name:
             return self.loaded[1]
-        self.loaded = None
-        gc.collect()
-        torch.cuda.empty_cache()
+        self._drop()
         model = load()
         self.loaded = (name, model)
         return model
+
+    def _drop(self):
+        """Lets go of the loaded model. Also how a pipeline is reset after running out of memory: the
+        offload hooks are left half-moved (the next call fails with "Expected all tensors to be on the same
+        device"), so it's loaded afresh instead of reused."""
+        self.loaded = None
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def _load_image(self):
+        from diffusers import FluxPipeline
+
+        pipe = FluxPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)
+        if self.offload:
+            # 12B parameters are 24 GB in bf16, more than a 24 GB card has once anything else is loaded.
+            pipe.transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            pipe.vae.enable_slicing()
+            pipe.vae.enable_tiling()
+        return self._pipe(pipe)
+
+    def fetch(self, needs: set[str]):
+        """Downloads the models for `needs` (image, cutout, video) before any work, logging the speed each
+        minute. A host that's still under MIN_MBS after SLOW_AFTER_S seconds isn't worth paying for: the run
+        stops with SLOW_HOST, and gpu/vast.py rents another."""
+        from huggingface_hub import constants, snapshot_download
+
+        def pipeline(repo):
+            from diffusers import DiffusionPipeline
+            return DiffusionPipeline.download(repo)
+
+        steps = [(get, repo) for need, get, repo in (("image", pipeline, IMAGE_MODEL),
+                                                     ("cutout", snapshot_download, CUTOUT_MODEL),
+                                                     ("video", pipeline, VIDEO_MODEL)) if need in needs]
+        failed: list[BaseException] = []
+        done = threading.Event()
+
+        def run():
+            try:
+                for get, repo in steps:
+                    get(repo)
+            except BaseException as e:  # noqa: BLE001
+                failed.append(e)
+            finally:
+                done.set()
+
+        root = constants.HF_HOME
+        start, base, noted = time.time(), folder_bytes(root), 0.0
+        threading.Thread(target=run, daemon=True).start()
+        while not done.wait(5):
+            secs = time.time() - start
+            got = folder_bytes(root) - base
+            mbs = got / secs / 1e6
+            if time.time() - noted >= 60:
+                noted = time.time()
+                print(f"downloading models: {got / 1e9:.1f} GB in {secs / 60:.0f} min ({mbs:.0f} MB/s)", flush=True)
+            if secs > SLOW_AFTER_S and mbs < MIN_MBS:
+                print(f"This host downloads at {mbs:.0f} MB/s (under {MIN_MBS:g}); giving it back for a faster one.",
+                      flush=True)
+                give_up()
+        if failed:
+            raise failed[0]
+        got = folder_bytes(root) - base
+        print(f"models ready: {got / 1e9:.1f} GB in {(time.time() - start) / 60:.1f} min", flush=True)
 
     def _pipe(self, pipe):
         if self.offload:
@@ -93,9 +181,14 @@ class GpuBackend(GpuModels):
         return pipe
 
     def image(self, prompt: str, seed: int, width: int, height: int) -> Image.Image:
-        from diffusers import FluxPipeline
+        try:
+            return self._image(prompt, seed, width, height)
+        except torch.cuda.OutOfMemoryError:
+            self._drop()  # a fresh pipeline, once
+            return self._image(prompt, seed, width, height)
 
-        pipe = self._use("image", lambda: self._pipe(FluxPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)))
+    def _image(self, prompt: str, seed: int, width: int, height: int) -> Image.Image:
+        pipe = self._use("image", self._load_image)
         return pipe(
             prompt,
             width=width,
@@ -109,9 +202,7 @@ class GpuBackend(GpuModels):
     def images(self, prompts: list[str], seeds: list[int], width: int, height: int) -> list[Image.Image]:
         """Several pictures in one call, each from its own seed, so each comes out as `image` would make it
         alone (the asset store's keys stay the same)."""
-        from diffusers import FluxPipeline
-
-        pipe = self._use("image", lambda: self._pipe(FluxPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)))
+        pipe = self._use("image", self._load_image)
         try:
             return pipe(
                 list(prompts),
@@ -123,10 +214,9 @@ class GpuBackend(GpuModels):
                 generator=[torch.Generator("cpu").manual_seed(s) for s in seeds],
             ).images
         except torch.cuda.OutOfMemoryError:
+            self._drop()  # its offload hooks are broken now; the next call loads it afresh
             if len(prompts) == 1:
                 raise
-            gc.collect()
-            torch.cuda.empty_cache()
             half = len(prompts) // 2
             self.batch = max(1, half)
             return (self.images(prompts[:half], seeds[:half], width, height)

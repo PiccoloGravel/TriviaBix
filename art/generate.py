@@ -400,6 +400,15 @@ def broken_gpu(e: Exception) -> bool:
 def run(jobs: list[Job], todo: list[Job], backend, out: Path, library: Library, art_version: str = "v1") -> int:
     by_key = {j.key: j for j in jobs}
     maker = Maker(backend, library, art_version, by_key)
+    if hasattr(backend, "fetch"):
+        # Every model the work needs comes down first, with its speed watched (a slow host is given back).
+        kinds = {j.kind for j in todo}
+        needs = {"image"} if kinds - {"clip"} else set()
+        if "sticker" in kinds:
+            needs.add("cutout")
+        if "clip" in kinds:
+            needs.add("video")
+        backend.fetch(needs)
     maker.prefetch(todo)
     manifest = read_manifest(out)
     manifest.setdefault("files", {})

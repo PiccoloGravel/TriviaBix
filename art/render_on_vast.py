@@ -36,7 +36,12 @@ IMAGE = os.environ.get("ART_IMAGE", "ghcr.io/piccologravel/triviabix-art:latest"
 # Rough timings on an RTX 4090, for the time limit and the estimate: model downloads at boot, then
 # FLUX.1-schnell pictures a few seconds each (drawn in batches), and Wan2.2 clips in minutes. A card with
 # less than OFFLOAD_GB has to move the models in and out, which gpu/vast.py counts in when picking one.
-BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.15, 7
+BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 5, 0.15, 7
+# What a run downloads, in GB, before it starts drawing: the image (unless the host has it) and each model
+# the work needs. Counted at each host's speed when picking one, so a fast connection wins.
+IMAGE_GB, PICTURE_MODEL_GB, CUTOUT_MODEL_GB, CLIP_MODEL_GB = 10, 34, 1, 24
+# The slowest host connection art rents, in Mbit/s; the estimate prefers faster ones.
+MIN_INET = 500
 OFFLOAD_GB = 40
 
 
@@ -131,10 +136,15 @@ def main(argv: list[str] | None = None) -> int:
         return code
     todo = needs.read_text().split()
     clips = sum(k.startswith("clip:") for k in todo)
+    stickers = sum(k.startswith("sticker:") for k in todo)
     work = (len(todo) - clips) * PER_PICTURE_MIN + clips * PER_CLIP_MIN
-    minutes = BOOT_MIN + work
-    # Room for a card half as fast as a 4090; slower ones are only rented if nothing else is free.
-    limit = max(30, int(BOOT_MIN + work * 2))
+    download = (IMAGE_GB + PICTURE_MODEL_GB * (len(todo) > clips) + CUTOUT_MODEL_GB * (stickers > 0)
+                + CLIP_MODEL_GB * (clips > 0))
+    # The download at the slowest connection rented, as gpu/vast.py counts it.
+    fetch = download * 8000 / (MIN_INET * 0.5) / 60
+    minutes = BOOT_MIN + fetch / 2 + work
+    # Room for a card half as fast as a 4090 on the slowest connection allowed.
+    limit = max(30, int(BOOT_MIN + fetch + work * 2))
     event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit)
     print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
     if problem := model_access([IMAGE_MODEL, CUTOUT_MODEL, VIDEO_MODEL], os.environ.get("HF_TOKEN")):
@@ -144,7 +154,11 @@ def main(argv: list[str] | None = None) -> int:
     # 2. The rest on a rented GPU. The container writes TV files to /out/gen and originals to /out/assets.
     # It runs this server's copy of the generator (uploaded to /in/code), so a fix takes effect without
     # rebuilding the image; the image supplies PyTorch and the models' libraries.
-    cmd = (f"cp -r /in/code/. /app/ && cd /app && python3 art/generate.py --backend gpu --out /out/gen "
+    # Faster model downloads where the image allows: hf_xet's high-performance mode, and hf_transfer for
+    # repos not on xet (installed if missing; skipped if that fails).
+    fast = ("export HF_XET_HIGH_PERFORMANCE=1; if python3 -c 'import hf_transfer' 2>/dev/null || "
+            "pip install -q hf_transfer >/dev/null 2>&1; then export HF_HUB_ENABLE_HF_TRANSFER=1; fi; ")
+    cmd = (f"{fast}cp -r /in/code/. /app/ && cd /app && python3 art/generate.py --backend gpu --out /out/gen "
            f"--library /out/assets --only {','.join(todo)} --force")
     with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp, \
             tempfile.TemporaryDirectory(prefix="triviabix-art-code-") as code:
@@ -153,14 +167,14 @@ def main(argv: list[str] | None = None) -> int:
                "--input", code, "--keep-partial",
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
                "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
-               "--offload-below", str(OFFLOAD_GB), "--kind", "art"]
+               "--offload-below", str(OFFLOAD_GB), "--kind", "art", "--download-gb", str(download)]
         # The token and the models picked on the admin panel's Settings page go to the GPU too.
         for key in ("HF_TOKEN", "ART_IMAGE_MODEL", "ART_CUTOUT_MODEL", "ART_VIDEO_MODEL"):
             if os.environ.get(key):
                 run += ["--env", f"{key}={os.environ[key]}"]
         run += ["--yes"] * args.yes + ["--dry-run"] * args.dry_run
         # The art image's PyTorch (2.7, CUDA 12.8) runs Blackwell cards too, but needs a host driver for 12.8.
-        env = {"VAST_MAX_COMPUTE_CAP": "1200", "VAST_MIN_CUDA": "12.8", **os.environ}
+        env = {"VAST_MAX_COMPUTE_CAP": "1200", "VAST_MIN_CUDA": "12.8", "VAST_MIN_INET": str(MIN_INET), **os.environ}
         # Cancelling (SIGTERM to the whole process group) stops gpu/vast.py, which gives the GPU back and
         # returns; what came home by then is still saved below.
         signal.signal(signal.SIGTERM, lambda *_: None)
