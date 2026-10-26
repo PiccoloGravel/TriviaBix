@@ -278,11 +278,78 @@ class Maker:
     def meta(self, job: Job) -> dict:
         return {"rating": job.rating, "tags": [job.kind, *job.tags], "catalog": job.key}
 
+    def picture_inputs(self, job: Job, size: tuple[int, int]) -> dict:
+        return {"prompt": job.prompt, "seed": job.seed, "width": size[0], "height": size[1],
+                "steps": self.backend.image_steps}
+
     def picture(self, job: Job, size: tuple[int, int]) -> tuple[Image.Image, Path]:
-        inputs = {"prompt": job.prompt, "seed": job.seed, "width": size[0], "height": size[1],
-                  "steps": self.backend.image_steps}
-        return self.lib.image(self.style("image"), inputs, lambda: self.backend.image(job.prompt, job.seed, *size),
+        return self.lib.image(self.style("image"), self.picture_inputs(job, size),
+                              lambda: self.backend.image(job.prompt, job.seed, *size),
                               model=self.backend.models("image")[0], **self.meta(job))
+
+    def prefetch(self, todo: list[Job], batch: int = 0) -> None:
+        """Makes everything `todo` needs from each model in one go, before the jobs run: every picture the
+        store doesn't have (in batches of `batch`, same-sized ones together), then every sticker's cut-out.
+        Each model is then loaded once, instead of swapping the picture and cut-out models for every
+        sticker, and the GPU draws several pictures at a time. Clips come last, in `run`. A batch that
+        fails is left for `make`, which tries those one at a time."""
+        batch = batch or getattr(self.backend, "batch", 1)
+        wanted: dict[tuple, dict] = {}
+        for job in todo:
+            if job.kind in ("backdrop", "category", "sticker"):
+                pic = (job, SPEC[job.kind]["gen"])
+            elif job.kind == "clip":
+                pic = (self.by_key[f"backdrop:{job.source}"], SPEC["backdrop"]["gen"])
+            else:
+                continue
+            inputs = self.picture_inputs(*pic)
+            if not self.lib.find("image", self.style("image"), inputs):
+                wanted.setdefault((pic[1], json.dumps(inputs, sort_keys=True)), pic)
+        style, model = self.style("image"), self.backend.models("image")[0]
+        pics = sorted(wanted.values(), key=lambda p: p[1])
+        if pics:
+            print(f"Drawing {len(pics)} pictures, {batch} at a time", flush=True)
+        done = 0
+        for size in sorted({p[1] for p in pics}):
+            group = [p[0] for p in pics if p[1] == size]
+            for i in range(0, len(group), batch):
+                chunk = group[i:i + batch]
+                t = time.time()
+                try:
+                    images = self.draw(chunk, size)
+                except NeedsGpu:
+                    return
+                except Exception as e:  # noqa: BLE001 (make() retries these one at a time)
+                    print(f"  a batch of {len(chunk)} failed ({e!r}); they'll be tried one at a time", file=sys.stderr)
+                    continue
+                for job, img in zip(chunk, images):
+                    self.lib.put_image(style, self.picture_inputs(job, size), img, model=model, **self.meta(job))
+                done += len(chunk)
+                print(f"  [{done}/{len(pics)}] {len(chunk)} pictures in {time.time() - t:.1f}s", flush=True)
+        stickers = [j for j in todo if j.kind == "sticker"]
+        cut_style, cut_model = self.style("cutout"), self.backend.models("cutout")[0]
+        for job in stickers:
+            inputs = self.picture_inputs(job, SPEC["sticker"]["gen"])
+            raw_path = self.lib.find("image", style, inputs)
+            if not raw_path or self.lib.find("image", cut_style, {"source": raw_path.stem, "op": "cutout"}):
+                continue
+            try:
+                raw = Image.open(raw_path)
+                raw.load()
+                cut = self.backend.cutout(raw)
+            except NeedsGpu:
+                return
+            except Exception as e:  # noqa: BLE001
+                print(f"  cut-out for {job.key} failed ({e!r}); it'll be tried again", file=sys.stderr)
+                continue
+            self.lib.put_image(cut_style, {"source": raw_path.stem, "op": "cutout"}, cut, model=cut_model,
+                               **self.meta(job))
+
+    def draw(self, jobs: list[Job], size: tuple[int, int]) -> list[Image.Image]:
+        """Pictures for `jobs`, in one call to the model if the backend can batch."""
+        if hasattr(self.backend, "images"):
+            return self.backend.images([j.prompt for j in jobs], [j.seed for j in jobs], *size)
+        return [self.backend.image(j.prompt, j.seed, *size) for j in jobs]
 
     def make(self, job: Job) -> tuple[bytes, Path]:
         """The small file the TV gets, and the stored original it came from."""
@@ -322,6 +389,7 @@ class Maker:
 def run(jobs: list[Job], todo: list[Job], backend, out: Path, library: Library, art_version: str = "v1") -> int:
     by_key = {j.key: j for j in jobs}
     maker = Maker(backend, library, art_version, by_key)
+    maker.prefetch(todo)
     manifest = read_manifest(out)
     manifest.setdefault("files", {})
     failed = 0

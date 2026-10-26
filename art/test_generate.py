@@ -107,6 +107,36 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(m["files"]["bg/spicy.webp"]["rating"], "MA")
         self.assertTrue((self.out / "clips/stage.mp4").read_bytes()[4:8] == b"ftyp")
 
+    def test_each_model_runs_once_in_batches(self):
+        """Pictures are drawn in batches before any cut-out, and clips last, so a GPU loads each model once."""
+        calls = []
+
+        class Batching(FakeGpu):
+            batch = 2
+
+            def images(self, prompts, seeds, w, h):
+                calls.append(("images", len(prompts)))
+                return [self.image(p, s, w, h) for p, s in zip(prompts, seeds)]
+
+            def cutout(self, img):
+                calls.append(("cutout", 1))
+                return super().cutout(img)
+
+            def video(self, *a, **k):
+                calls.append(("video", 1))
+                return super().video(*a, **k)
+
+        jobs = generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml")
+        todo = generate.plan(jobs, self.out, "gpu")
+        self.assertEqual(generate.run(jobs, todo, Batching(), self.out, Library(self.lib), "test-v1"), 0)
+        kinds = [c[0] for c in calls]
+        self.assertEqual(kinds, sorted(kinds, key=["images", "cutout", "video"].index), calls)
+        # 5 pictures (2 backdrops, 2 cards, 1 sticker) in two sizes, 2 at a time.
+        self.assertEqual(sum(n for k, n in calls if k == "images"), 5)
+        self.assertLessEqual(max(n for k, n in calls if k == "images"), 2)
+        self.assertEqual(kinds.count("cutout"), 1)
+        self.assertEqual(kinds.count("video"), 2)
+
     def test_nothing_is_made_twice(self):
         self.gen()
         self.assertEqual(generate.plan(generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml"),

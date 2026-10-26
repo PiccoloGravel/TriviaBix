@@ -28,8 +28,10 @@ VAST = ROOT / "gpu" / "vast.py"
 IMAGE = os.environ.get("ART_IMAGE", "ghcr.io/piccologravel/triviabix-art:latest")
 
 # Rough timings on an RTX 4090, for the time limit and the estimate: model downloads at boot, then
-# FLUX.1-schnell pictures in seconds and Wan2.2 clips in minutes.
-BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.25, 7
+# FLUX.1-schnell pictures a few seconds each (drawn in batches), and Wan2.2 clips in minutes. A card with
+# less than OFFLOAD_GB has to move the models in and out, which gpu/vast.py counts in when picking one.
+BOOT_MIN, PER_PICTURE_MIN, PER_CLIP_MIN = 15, 0.15, 7
+OFFLOAD_GB = 40
 
 
 def event(name: str, **data):
@@ -75,8 +77,10 @@ def main(argv: list[str] | None = None) -> int:
         return code
     todo = needs.read_text().split()
     clips = sum(k.startswith("clip:") for k in todo)
-    minutes = BOOT_MIN + (len(todo) - clips) * PER_PICTURE_MIN + clips * PER_CLIP_MIN
-    limit = max(30, int(minutes * 1.5))
+    work = (len(todo) - clips) * PER_PICTURE_MIN + clips * PER_CLIP_MIN
+    minutes = BOOT_MIN + work
+    # Room for a card half as fast as a 4090; slower ones are only rented if nothing else is free.
+    limit = max(30, int(BOOT_MIN + work * 2))
     event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit)
     print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
 
@@ -86,7 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp:
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
-               "--max-minutes", str(limit)]
+               "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
+               "--offload-below", str(OFFLOAD_GB)]
         # The token and the models picked on the admin panel's Settings page go to the GPU too.
         for key in ("HF_TOKEN", "ART_IMAGE_MODEL", "ART_CUTOUT_MODEL", "ART_VIDEO_MODEL"):
             if os.environ.get(key):

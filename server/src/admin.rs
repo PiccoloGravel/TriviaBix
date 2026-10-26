@@ -86,6 +86,8 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/duplicates/keep", post(keep_pair))
         .route("/api/admin/questions/{id}/hidden", post(set_hidden))
         .route("/api/admin/voice", get(voice_status).put(set_voice_server))
+        .route("/api/admin/voice/backlog", get(voice_backlog))
+        .route("/api/admin/voice/lines/{hash}", axum::routing::put(import_voice_line))
         .route("/api/admin/music", get(music_status))
         .route("/api/admin/music/sync", post(music_sync))
         .route("/api/admin/render", get(render_status))
@@ -413,6 +415,55 @@ async fn voice_status(State(app): State<AppState>) -> Json<serde_json::Value> {
         "in_flight": app.voice.in_flight(),
         "enabled": app.voice.enabled(),
     }))
+}
+
+#[derive(Deserialize)]
+struct BacklogQuery {
+    /// The voice the lines will be made in (tts/server.py's name for it).
+    voice: String,
+}
+
+/// Every line still waiting for audio in a voice, for `gpu/vast.py voice` to make in one batch.
+async fn voice_backlog(
+    State(app): State<AppState>,
+    Query(q): Query<BacklogQuery>,
+) -> Json<serde_json::Value> {
+    // New regulars since startup get their lines too.
+    crate::web::warm_expanded(&app.voice, &app.db, &app.script, &app.voice_names).await;
+    let lines: Vec<_> = app
+        .voice
+        .backlog_lines(&q.voice)
+        .into_iter()
+        .map(|(key, text)| json!({ "key": key, "text": text }))
+        .collect();
+    Json(json!({ "voice": q.voice, "lines": lines }))
+}
+
+/// One line's audio from a batch run, filed in the asset store like lines made here.
+async fn import_voice_line(
+    State(app): State<AppState>,
+    Path(hash): Path<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let voice = get("x-voice").unwrap_or_default();
+    let content_type = get("content-type").unwrap_or_default();
+    match app
+        .voice
+        .import(&hash, voice, get("x-model"), content_type, &body)
+        .await
+    {
+        Ok(()) => Json(json!({ "ok": true })).into_response(),
+        Err(crate::voice::VoiceError::NotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "That isn't one of Bix's lines." })),
+        )
+            .into_response(),
+        Err(crate::voice::VoiceError::Unavailable(e)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response()
+        }
+    }
 }
 
 #[derive(Deserialize)]

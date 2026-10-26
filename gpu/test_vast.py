@@ -267,6 +267,9 @@ class FakeGame:
 
     def __init__(self):
         self.backlog, self.servers = 3, []
+        # For a batch run: the lines waiting, and what came back for them.
+        self.lines = {f"{n:032x}": f"Line number {n}, coming right up." for n in range(1, 8)}
+        self.filed, self.asked = {}, None
         fake = self
 
         class H(BaseHTTPRequestHandler):
@@ -293,9 +296,19 @@ class FakeGame:
 
             def do_GET(self):
                 assert "tbx_admin=ok" in self.headers.get("Cookie", "")
+                if self.path.startswith("/api/admin/voice/backlog"):
+                    from urllib.parse import parse_qs, urlsplit
+                    fake.asked = parse_qs(urlsplit(self.path).query)["voice"][0]
+                    return self.reply({"lines": [{"key": k, "text": t} for k, t in fake.lines.items()
+                                                 if k not in fake.filed]})
                 self.reply(self.status())
 
             def do_PUT(self):
+                if self.path.startswith("/api/admin/voice/lines/"):
+                    key = self.path.rsplit("/", 1)[1]
+                    fake.filed[key] = (self.headers["X-Voice"], self.headers["Content-Type"],
+                                       self.rfile.read(int(self.headers["Content-Length"])))
+                    return self.reply({"ok": True})
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 if body["url"]:
                     # The rented voice service wants the token it was started with.
@@ -312,14 +325,57 @@ class FakeGame:
 
 
 class VoiceTest(Base):
-    def test_voice_makes_the_backlog_then_hands_back(self):
+    def batch_cmd(self):
+        tts = Path(__file__).resolve().parent.parent / "tts"
+        return (f"TTS_BACKEND=stub TTS_APP={tts} {sys.executable} -c "
+                "\"import base64,os,zlib;exec(zlib.decompress(base64.b64decode(os.environ['TBX_PY'])))\"")
+
+    def test_voice_sends_the_whole_backlog_in_one_batch(self):
+        self.fake.destroyed.clear()
+        before = len(self.fake.created)
+        game = FakeGame()
+        with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as lib:
+            with unittest.mock.patch.multiple(self.vast, BATCH_CMD=self.batch_cmd(), JOB_IN=os.path.join(box, "in"),
+                                              DESIGN_OUT=os.path.join(box, "out")):
+                self.vast.voice(game.url, "pw", yes=True, max_hours=0.1, library=lib)
+        self.assertEqual(len(self.fake.created), before + 1, "one GPU for the whole backlog")
+        self.assertEqual(game.asked, "ip:US_James")
+        self.assertEqual(set(game.filed), set(game.lines), "every line came back")
+        voice, ctype, audio = next(iter(game.filed.values()))
+        self.assertEqual((voice, ctype, audio[:4]), ("ip:US_James", "audio/wav", b"RIFF"))
+        self.assertEqual(self.fake.destroyed, [7])
+        self.assertEqual(game.servers, [], "the game's own voice settings are never touched")
+        # Asked again, there's nothing left, so nothing is rented.
+        self.vast.voice(game.url, "pw", yes=True, max_hours=0.1)
+        self.assertEqual(len(self.fake.created), before + 1)
+
+    def test_the_gpu_is_picked_by_the_whole_jobs_cost(self):
+        slow = {"id": 2, "gpu_name": "RTX A4000", "gpu_ram": 16376, "dph_total": 0.15}
+        fast = {"id": 3, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.30}
+        saved = self.fake.offers
+        self.fake.offers = [slow, fast]
+        try:
+            # 60 minutes of work on a 4090: the A4000 takes 200 minutes ($0.50), the 4090 60 ($0.30).
+            picked = self.vast.pick_offers(self.vast.Vast(), 16, 1, 40, work_minutes=60)
+            self.assertEqual([o["id"] for o in picked], [3, 2])
+            self.assertAlmostEqual(picked[0]["est_cost"], 0.30)
+            # A tiny job: the cheap card wins.
+            picked = self.vast.pick_offers(self.vast.Vast(), 16, 1, 40, work_minutes=1, boot_minutes=10)
+            self.assertEqual(picked[0]["id"], 2)
+            # Too slow to finish in time goes last, whatever it costs.
+            picked = self.vast.pick_offers(self.vast.Vast(), 16, 1, 40, work_minutes=1, boot_minutes=10,
+                                           max_minutes=11)
+            self.assertEqual(picked[0]["id"], 3)
+        finally:
+            self.fake.offers = saved
+
+    def test_voice_with_hours_serves_live_lines_then_hands_back(self):
         tts = Path(__file__).resolve().parent.parent / "tts"
         self.vast.VOICE_CMD = (f"cd {tts} && TTS_BACKEND=stub TTS_TOKEN=$TBX_TOKEN PORT=$TBX_PORT "
                                f"exec {sys.executable} server.py")
         self.fake.destroyed.clear()
         game = FakeGame()
-        self.vast.voice(game.url, "pw", yes=True, max_hours=0.1)
-        self.assertEqual(game.backlog, 0)
+        self.vast.voice(game.url, "pw", hours=0.002, yes=True, max_hours=0.1, another=True)
         self.assertEqual(game.servers[0]["spoke"], 200)
         self.assertIsNone(game.servers[-1]["url"], "the game goes back to its own voice")
         self.assertEqual(self.fake.destroyed, [7])
@@ -347,12 +403,20 @@ class CloneTest(Base):
             self.fake.destroyed.clear()
             game = FakeGame()
             with unittest.mock.patch.dict(os.environ, {"ASSETS_DIR": lib}):
-                self.vast.voice(game.url, "pw", f"clone:{key}", yes=True, max_hours=0.1)
+                self.vast.voice(game.url, "pw", f"clone:{key}", hours=0.002, yes=True, max_hours=0.1)
             self.assertEqual(Path(voices, f"{key}.wav").read_bytes(), b"RIFFfake")
             self.assertEqual(Path(voices, f"{key}.txt").read_text().strip(), "Hello there.")
             self.assertEqual(game.servers[0]["spoke"], 200)
-            self.assertEqual(game.backlog, 0)
             self.assertEqual(self.fake.destroyed, [7])
+            # A batch run asks for the backlog in the same voice the service would speak in.
+            spoken = self.vast.voice_key(f"clone:{key}", self.vast.clone_clip(f"clone:{key}", store))
+            Path(voices, "c").mkdir()
+            Path(voices, "c", "x.wav").write_bytes(b"RIFFfake")
+            Path(voices, "c", "x.txt").write_text("Hello there.\n")
+            sys.path.insert(0, str(tts))
+            with unittest.mock.patch.dict(os.environ, {"TTS_BACKEND": "stub"}):
+                import server
+            self.assertEqual(spoken.split(":")[2], server.Voice(f"clone:{voices}/c/x.wav").key.split(":")[2])
 
 
 class DesignTest(Base):

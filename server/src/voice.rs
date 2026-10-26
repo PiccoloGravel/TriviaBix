@@ -333,6 +333,70 @@ impl Voice {
         self.0.as_ref().map_or(0, |i| i.queue.lock().unwrap().len())
     }
 
+    /// Every line waiting to be pre-generated that has no audio in `voice` yet, as (hash, text), for a
+    /// batch run that makes them all on a rented GPU and sends them back with `import`.
+    pub fn backlog_lines(&self, voice: &str) -> Vec<(String, String)> {
+        let Some(inner) = &self.0 else { return vec![] };
+        let made = made(&inner.dir.join(slug(voice)));
+        let queue: Vec<String> = inner.queue.lock().unwrap().iter().cloned().collect();
+        let known = inner.known.lock().unwrap();
+        let mut seen = HashSet::new();
+        queue
+            .into_iter()
+            .filter(|h| !made.contains(h) && seen.insert(h.clone()))
+            .filter_map(|h| known.get(&h).map(|t| (h, t.clone())))
+            .collect()
+    }
+
+    /// Files a line made elsewhere (a batch run) in `voice`'s folder, the same way lines made here
+    /// are, and takes it off the queue. Lines in a voice other than the current one make that voice
+    /// current, since the batch run voiced them in the voice Bix should have now.
+    pub async fn import(
+        &self,
+        hash: &str,
+        voice: &str,
+        model: Option<&str>,
+        content_type: &str,
+        bytes: &[u8],
+    ) -> Result<(), VoiceError> {
+        let inner = self.0.as_ref().ok_or(VoiceError::NotFound)?;
+        let text = inner
+            .known
+            .lock()
+            .unwrap()
+            .get(hash)
+            .cloned()
+            .ok_or(VoiceError::NotFound)?;
+        let voice = voice.trim();
+        if voice.is_empty() || voice.len() > 300 {
+            return Err(VoiceError::Unavailable("no voice given".into()));
+        }
+        let (ext, content_type) = FORMATS
+            .iter()
+            .find(|(_, t)| content_type.starts_with(t))
+            .copied()
+            .ok_or_else(|| VoiceError::Unavailable(format!("unexpected audio type {content_type:?}")))?;
+        let current = inner.voice.lock().unwrap().as_ref().map(|(k, _)| k.clone());
+        if current.as_deref() != Some(voice) {
+            *inner.voice.lock().unwrap() = Some((voice.to_string(), Instant::now() - VOICE_TTL));
+            let _ = tokio::fs::create_dir_all(&inner.dir).await;
+            if let Err(e) = tokio::fs::write(inner.dir.join(CURRENT), voice).await {
+                tracing::warn!("couldn't note the voice in {}: {e}", inner.dir.display());
+            }
+        }
+        if let Some(model) = model.filter(|m| !m.is_empty()) {
+            *inner.model.lock().unwrap() = Some(model.to_string());
+        }
+        let dir = inner.dir.join(slug(voice));
+        inner
+            .file(&dir, Some(voice), hash, &text, ext, content_type, bytes, "batch")
+            .await
+            .map_err(|e| VoiceError::Unavailable(e.to_string()))?;
+        inner.queue.lock().unwrap().retain(|h| h != hash);
+        inner.queued.lock().unwrap().remove(hash);
+        Ok(())
+    }
+
     /// The audio for the line with this hash, from the cache or freshly made, with its content type.
     pub async fn audio(&self, hash: &str) -> Result<(Vec<u8>, &'static str), VoiceError> {
         let inner = self.0.as_ref().ok_or(VoiceError::NotFound)?;
@@ -422,6 +486,33 @@ impl Inner {
             Some(v) => self.dir.join(slug(v)),
             None => dir.to_path_buf(),
         };
+        if let Err(e) = self
+            .file(&dir, voice.as_deref(), hash, text, ext, content_type, &bytes, &server.base)
+            .await
+        {
+            tracing::warn!("couldn't cache voice line in {}: {e}", dir.display());
+        }
+        tracing::debug!(
+            live,
+            ms = started.elapsed().as_millis() as u64,
+            "voiced {text:?}"
+        );
+        Ok((bytes, content_type))
+    }
+
+    /// Saves a line's audio and metadata in the asset store and notes it as made.
+    #[allow(clippy::too_many_arguments)]
+    async fn file(
+        &self,
+        dir: &Path,
+        voice: Option<&str>,
+        hash: &str,
+        text: &str,
+        ext: &str,
+        content_type: &str,
+        bytes: &[u8],
+        generator: &str,
+    ) -> std::io::Result<()> {
         let meta = serde_json::json!({
             "kind": "voice",
             "style": voice,
@@ -434,24 +525,15 @@ impl Inner {
             "created": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
-            "generator": server.base,
+            "generator": generator,
         });
-        match save(&dir, voice.as_deref(), hash, ext, &bytes, &meta).await {
-            Ok(()) => {
-                if let Some((slug, made)) = self.ready.lock().unwrap().as_mut()
-                    && dir.ends_with(slug.as_str())
-                {
-                    made.insert(hash.to_string());
-                }
-            }
-            Err(e) => tracing::warn!("couldn't cache voice line in {}: {e}", dir.display()),
+        save(dir, voice, hash, ext, bytes, &meta).await?;
+        if let Some((slug, made)) = self.ready.lock().unwrap().as_mut()
+            && dir.ends_with(slug.as_str())
+        {
+            made.insert(hash.to_string());
         }
-        tracing::debug!(
-            live,
-            ms = started.elapsed().as_millis() as u64,
-            "voiced {text:?}"
-        );
-        Ok((bytes, content_type))
+        Ok(())
     }
 
     /// The voice the service is speaking with, which names the cache folder. While the service is
