@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -32,11 +33,12 @@ from pathlib import Path
 from PIL import Image
 
 from backends.models import NeedsGpu
-from library import Library, default_root
+from library import Library, default_root, style_dir
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "art" / "catalog.toml"
 CATEGORIES = ROOT / "content" / "categories.toml"
+THEMES = ROOT / "art" / "themes.toml"
 OUT = ROOT / "web" / "cutscenes" / "assets" / "gen"
 KINDS = ("backdrop", "sticker", "category", "clip")
 RATINGS = ("PG", "PG-13", "MA", "NC-17")
@@ -67,7 +69,9 @@ class Job:
     aliases: list[str] = field(default_factory=list)  # categories: other slugs that should find this card
     tags: list[str] = field(default_factory=list)  # what scenes ask for: a cue, a feeling, a place
     rating: str = "PG"  # PG, PG-13, MA or NC-17; a room only sees art at or below its rating
-    version: str = "v1"  # the catalog's art direction ([style] version)
+    version: str = "v1"  # the catalog's art direction ([style] version), or the theme's
+    body: str = ""  # the entry's own prompt, before the theme's style goes around it
+    custom: bool = False  # added on the admin Art page, not in catalog.toml
 
     @property
     def key(self) -> str:
@@ -79,48 +83,140 @@ class Job:
         return f"{s['dir']}/{self.id}.{s['ext']}"
 
 
-def load_jobs(catalog: Path = CATALOG, categories: Path = CATEGORIES) -> list[Job]:
+DEFAULT_THEME = "bix"
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+
+
+def load_studio(path: Path | None) -> dict:
+    """What the admin Art page saved (in appdata): extra themes, category styles, and new or changed
+    catalog entries. Missing means nothing has been changed there yet."""
+    if not path or not Path(path).exists():
+        return {}
+    try:
+        studio = json.loads(Path(path).read_text())
+    except ValueError as e:
+        raise SystemExit(f"{path} isn't valid JSON: {e}")
+    return studio if isinstance(studio, dict) else {}
+
+
+def load_themes(catalog: Path = CATALOG, studio: dict | None = None, themes: Path = THEMES) -> dict[str, dict]:
+    """Every theme by id: the catalog's own [style] as "bix", the ones in themes.toml, then the admin's."""
+    style = tomllib.loads(catalog.read_text()).get("style", {})
+    out = {DEFAULT_THEME: {"id": DEFAULT_THEME, "name": style.get("name", "Bix cartoon"),
+                           "description": "The house style every show starts with.",
+                           "prompt": style.get("prompt", "").strip(), "palette": "",
+                           "version": style.get("version", "v1"), "builtin": True}}
+    builtin = tomllib.loads(themes.read_text()).get("theme", []) if themes.exists() else []
+    for t in [*builtin, *((studio or {}).get("themes") or [])]:
+        tid = t.get("id", "")
+        if not ID_RE.match(tid):
+            raise SystemExit(f"theme id {tid!r} should be lower-case letters, digits and dashes")
+        if tid in out and out[tid].get("builtin") and t not in builtin:
+            raise SystemExit(f"theme {tid!r} is built in; copy it under another id to change it")
+        out[tid] = {"version": "v1", "palette": "", **t, "builtin": t in builtin}
+    return out
+
+
+def theme_out(root: Path, theme: str) -> Path:
+    """Where a theme's TV files go: the default theme in the art folder itself (as before themes), the
+    others each in their own themes/<id> beside it."""
+    return Path(root) if theme == DEFAULT_THEME else Path(root) / "themes" / theme
+
+
+def load_jobs(catalog: Path = CATALOG, categories: Path = CATEGORIES, studio: dict | None = None,
+              theme: str = DEFAULT_THEME, themes: Path = THEMES) -> list[Job]:
     cat = tomllib.loads(catalog.read_text())
-    style = cat.get("style", {})
+    studio = studio or {}
+    all_themes = load_themes(catalog, studio, themes)
+    if theme not in all_themes:
+        raise SystemExit(f"there is no art theme called {theme!r}")
+    style = dict(cat.get("style", {}))
+    tmpl = dict(cat.get("category", {}))
+    t = all_themes[theme]
+    if theme != DEFAULT_THEME:
+        # A theme swaps the look and keeps what makes cut-outs and title space work.
+        style["prompt"] = ", ".join(p.strip() for p in (t.get("prompt", ""), t.get("palette", "")) if p and p.strip())
+        if t.get("sticker"):
+            style["sticker"] = ", ".join(p for p in (style.get("sticker", ""), t["sticker"]) if p)
+        if t.get("backdrop"):
+            style["backdrop"] = t["backdrop"]
+        if t.get("category"):
+            tmpl["prompt"] = t["category"]
+        style["version"] = f"{theme}-{t.get('version', 'v1')}"
     base = style.get("prompt", "").strip()
+    cat_styles = {**(studio.get("category_styles") or {}), **(t.get("category_styles") or {})}
 
     def full(prompt: str, extra: str = "") -> str:
         return ", ".join(p.strip() for p in (base, prompt, extra) if p and p.strip())
 
+    # The raw entries, by kind:id, with the admin's changes on top: everywhere, then for this theme.
+    raw: dict[str, dict] = {}
+    for kind in ("backdrop", "sticker", "clip"):
+        for e in cat.get(kind, []):
+            if f"{kind}:{e['id']}" in raw:
+                raise SystemExit(f"{kind}:{e['id']} is in the catalog twice")
+            raw[f"{kind}:{e['id']}"] = {"kind": kind, **e}
+    if tmpl and categories.exists():
+        for c in tomllib.loads(categories.read_text()).get("category", []):
+            body = tmpl["prompt"].format(name=c["name"], description=c.get("description", ""), emoji=c.get("emoji", ""))
+            if cat_styles.get(c["slug"]):
+                body = f"{body}, {cat_styles[c['slug']].strip()}"
+            raw[f"category:{c['slug']}"] = {"kind": "category", "id": c["slug"], "prompt": body,
+                                           "seed": tmpl.get("seed", 0), "rating": c.get("rating", "PG"),
+                                           "tags": ["category", f"category:{c['slug']}"],
+                                           "aliases": sorted({slugify(c["name"])} - {c["slug"]})}
+    for scope in (None, theme):
+        for e in studio.get("entries") or []:
+            if e.get("theme") != scope:
+                continue
+            key = f"{e.get('kind')}:{e.get('id')}"
+            if e.get("kind") not in KINDS or not ID_RE.match(str(e.get("id", ""))):
+                raise SystemExit(f"{key}: entries need a kind ({', '.join(KINDS)}) and an id of letters, digits and dashes")
+            if e.get("hidden"):
+                raw.pop(key, None)
+                continue
+            if key not in raw:
+                if e["kind"] == "category":
+                    continue  # the category is gone from the game; its old style is just ignored
+                if not e.get("prompt"):
+                    raise SystemExit(f"{key}: a new piece needs a prompt")
+                raw[key] = {"kind": e["kind"], "id": e["id"], "custom": True}
+            raw[key].update({k: e[k] for k in ("prompt", "seed", "tags", "rating", "from") if e.get(k) is not None})
+            if e["kind"] == "category":
+                # Its own tags are how scenes find it; the admin's are added to them.
+                raw[key]["tags"] = list(dict.fromkeys(["category", f"category:{e['id']}", *raw[key]["tags"]]))
+
     def meta(entry: dict) -> dict:
         rating = entry.get("rating", "PG")
         if rating not in RATINGS:
-            raise SystemExit(f"{entry.get('id', entry.get('slug'))}: rating must be one of {', '.join(RATINGS)}")
-        return {"tags": list(entry.get("tags", [])), "rating": rating, "version": style.get("version", "v1")}
+            raise SystemExit(f"{entry.get('id')}: rating must be one of {', '.join(RATINGS)}")
+        return {"tags": list(entry.get("tags", [])), "rating": rating, "version": style.get("version", "v1"),
+                "body": entry["prompt"], "custom": bool(entry.get("custom"))}
 
     jobs: list[Job] = []
     backdrops = {}
-    for b in cat.get("backdrop", []):
-        job = Job("backdrop", b["id"], full(b["prompt"], style.get("backdrop", "")), b.get("seed", 0), **meta(b))
-        backdrops[b["id"]] = job
-        jobs.append(job)
-    for s in cat.get("sticker", []):
-        jobs.append(Job("sticker", s["id"], full(s["prompt"], style.get("sticker", "")), s.get("seed", 0), **meta(s)))
-    tmpl = cat.get("category", {})
-    if tmpl and categories.exists():
-        for c in tomllib.loads(categories.read_text()).get("category", []):
-            prompt = tmpl["prompt"].format(name=c["name"], description=c.get("description", ""), emoji=c.get("emoji", ""))
-            aliases = sorted({slugify(c["name"])} - {c["slug"]})
-            m = meta({"slug": c["slug"], "rating": c.get("rating", "PG"), "tags": ["category", f"category:{c['slug']}"]})
-            jobs.append(Job("category", c["slug"], full(prompt, style.get("backdrop", "")), tmpl.get("seed", 0), aliases=aliases, **m))
-    for c in cat.get("clip", []):
-        if c["from"] not in backdrops:
-            raise SystemExit(f"clip {c['id']}: there is no backdrop called {c['from']!r}")
+    for key, e in raw.items():
+        if e["kind"] == "backdrop":
+            job = Job("backdrop", e["id"], full(e["prompt"], style.get("backdrop", "")), e.get("seed", 0), **meta(e))
+            backdrops[e["id"]] = job
+            jobs.append(job)
+    for key, e in raw.items():
+        if e["kind"] == "sticker":
+            jobs.append(Job("sticker", e["id"], full(e["prompt"], style.get("sticker", "")), e.get("seed", 0), **meta(e)))
+    for key, e in raw.items():
+        if e["kind"] == "category":
+            jobs.append(Job("category", e["id"], full(e["prompt"], style.get("backdrop", "")), e.get("seed", 0),
+                            aliases=e["aliases"], **meta(e)))
+    for key, e in raw.items():
+        if e["kind"] != "clip":
+            continue
+        if e.get("from") not in backdrops:
+            raise SystemExit(f"clip {e['id']}: there is no backdrop called {e.get('from')!r}")
         # The motion prompt alone; the look comes from the still it animates.
-        m = meta(c)
-        if "rating" not in c:
-            m["rating"] = backdrops[c["from"]].rating
-        jobs.append(Job("clip", c["id"], c["prompt"], c.get("seed", 0), source=c["from"], **m))
-    seen = set()
-    for j in jobs:
-        if j.key in seen:
-            raise SystemExit(f"{j.key} is in the catalog twice")
-        seen.add(j.key)
+        m = meta(e)
+        if "rating" not in e:
+            m["rating"] = backdrops[e["from"]].rating
+        jobs.append(Job("clip", e["id"], e["prompt"], e.get("seed", 0), source=e["from"], **m))
     return jobs
 
 
@@ -277,7 +373,9 @@ class Maker:
         return f"{self.backend.style_name(kind)}:{self.version}"
 
     def meta(self, job: Job) -> dict:
-        return {"rating": job.rating, "tags": [job.kind, *job.tags], "catalog": job.key}
+        # The entry's own prompt and seed too, so the admin Art page can offer an earlier take back.
+        return {"rating": job.rating, "tags": [job.kind, *job.tags], "catalog": job.key, "body": job.body,
+                "seed": job.seed}
 
     def picture_inputs(self, job: Job, size: tuple[int, int]) -> dict:
         return {"prompt": job.prompt, "seed": job.seed, "width": size[0], "height": size[1],
@@ -506,6 +604,82 @@ def merge(src: Path, out: Path) -> int:
     return len(theirs)
 
 
+def status_of(jobs: list[Job], out: Path, backend_id: str = "gpu") -> dict[str, str]:
+    """kind:id -> made (up to date), stale (made from an older prompt or seed) or missing."""
+    by_key = {j.key: j for j in jobs}
+    files = read_manifest(out).get("files", {})
+    out_of = {}
+    for j in jobs:
+        have = files.get(j.path)
+        if not have or not (out / j.path).exists():
+            out_of[j.key] = "missing"
+        else:
+            out_of[j.key] = "made" if have.get("hash") == job_hash(j, backend_id, by_key) else "stale"
+    return out_of
+
+
+def takes(jobs: list[Job], library: Library, backend) -> dict[str, list[dict]]:
+    """kind:id -> the pictures the asset store has for it in this theme, newest first: every earlier
+    prompt and seed it was drawn with, so one can be put back for free."""
+    maker = Maker(backend, library, jobs[0].version if jobs else "v1", {})
+    folder = library.root / "image" / style_dir(maker.style("image"))
+    out: dict[str, list[dict]] = {}
+    for meta_path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (OSError, ValueError):
+            continue
+        key, inputs = meta.get("catalog"), meta.get("inputs") or {}
+        if not key or key.startswith("clip:") or not (folder / meta.get("file", "")).exists():
+            continue
+        out.setdefault(key, []).append({
+            "seed": inputs.get("seed"), "body": meta.get("body"), "prompt": inputs.get("prompt"),
+            "original": f"image/{folder.name}/{meta['file']}", "created": meta.get("created", 0)})
+    for v in out.values():
+        v.sort(key=lambda t: -t["created"])
+    return out
+
+
+def listing(catalog: Path, categories: Path, studio: dict, theme: str, root: Path, library: Library,
+            backend_id: str = "gpu") -> dict:
+    """Everything the admin Art page shows, as JSON: the themes with how much of each is made, and
+    for `theme` every piece with its prompt, tags, state and stored takes."""
+    themes = load_themes(catalog, studio)
+    out = []
+    for t in themes.values():
+        jobs = load_jobs(catalog, categories, studio, t["id"])
+        st = status_of(jobs, theme_out(root, t["id"]), backend_id)
+        out.append({**t, "made": sum(v == "made" for v in st.values()), "total": len(jobs),
+                    "folder": str(theme_out(Path(""), t["id"]))})
+    jobs = load_jobs(catalog, categories, studio, theme)
+    by_key = {j.key: j for j in jobs}
+    st = status_of(jobs, theme_out(root, theme), backend_id)
+    if backend_id == "stub":
+        from backends.stub import StubBackend as Looker
+    else:
+        from backends.models import OfflineBackend as Looker
+    stored = takes(jobs, library, Looker())
+    files = read_manifest(theme_out(root, theme)).get("files", {})
+    items = []
+    for j in jobs:
+        prefix = "" if theme == DEFAULT_THEME else f"themes/{theme}/"
+        pic = by_key[f"backdrop:{j.source}"] if j.source else j
+        items.append({"key": j.key, "kind": j.kind, "id": j.id, "body": j.body, "prompt": j.prompt, "seed": j.seed,
+                      "tags": j.tags, "rating": j.rating, "from": j.source, "custom": j.custom, "status": st[j.key],
+                      "file": prefix + j.path if j.path in files else None,
+                      "takes": [] if j.source else stored.get(pic.key, [])})
+    cats = tomllib.loads(categories.read_text()).get("category", []) if categories.exists() else []
+    t = themes[theme]
+    cat_styles = {**(studio.get("category_styles") or {}), **(t.get("category_styles") or {})}
+    return {"theme": theme, "themes": out, "items": items,
+            "categories": [{"slug": c["slug"], "name": c["name"], "emoji": c.get("emoji", ""),
+                            "style": cat_styles.get(c["slug"], ""), "theme_style": bool((t.get("category_styles") or {}).get(c["slug"]))}
+                           for c in cats],
+            "tags": sorted({tag for j in jobs for tag in j.tags}),
+            "hidden": sorted({f"{e.get('kind')}:{e.get('id')}" for e in studio.get("entries") or []
+                              if e.get("hidden") and e.get("theme") in (None, theme)})}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--backend", default="stub",
@@ -522,12 +696,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--plan", action="store_true", help="list what would be made, then stop")
     ap.add_argument("--prune", action="store_true", help="delete art the catalog no longer lists")
     ap.add_argument("--merge", type=Path, metavar="DIR", help="merge another run's output into --out, then stop")
+    ap.add_argument("--studio", type=Path, default=os.environ.get("ART_STUDIO") or None,
+                    help="the admin Art page's themes, category styles and entries (JSON, default $ART_STUDIO)")
+    ap.add_argument("--theme", help=f"the art theme to make (default: the one in use, else {DEFAULT_THEME}); "
+                                    "--out should be that theme's folder")
+    ap.add_argument("--list", type=Path, metavar="ART_DIR",
+                    help="print the admin Art page's JSON for --theme, with ART_DIR as the art root, then stop")
     args = ap.parse_args(argv)
 
     if args.merge:
         print(f"merged {merge(args.merge, args.out)} files into {args.out}")
         return 0
-    jobs = load_jobs(args.catalog, args.categories)
+    studio = load_studio(args.studio)
+    theme = args.theme or studio.get("active") or DEFAULT_THEME
+    if args.list:
+        print(json.dumps(listing(args.catalog, args.categories, studio, theme, args.list, Library(args.library),
+                                 "stub" if args.backend == "stub" else "gpu")))
+        return 0
+    jobs = load_jobs(args.catalog, args.categories, studio, theme)
     if not args.plan and retag(jobs, args.out):
         print("updated tags and ratings in manifest.json")
     if args.prune:
@@ -553,8 +739,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Everything is up to date.")
         return 0
     backend = get_backend(args.backend)
-    version = tomllib.loads(args.catalog.read_text()).get("style", {}).get("version", "v1")
-    failed = run(jobs, todo, backend, args.out, Library(args.library), version)
+    failed = run(jobs, todo, backend, args.out, Library(args.library), jobs[0].version if jobs else "v1")
     if args.backend == "offline" and (args.out / ".needs-gpu").exists():
         return 3  # not a failure: render_on_vast.py reads .needs-gpu
     print(f"Made {len(todo) - failed} of {len(todo)}." + (f" {failed} failed." if failed else ""))

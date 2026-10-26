@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod art;
 pub mod characters;
 pub mod content;
 pub mod db;
@@ -122,6 +123,15 @@ impl Config {
                 python: var("PYTHON", "python3".to_string()),
                 questions_bin: var("QUESTIONS_BIN", "triviabix-questions".to_string()),
                 art_dir: var("ART_DIR", PathBuf::from("data/art")),
+                studio: var(
+                    "ART_STUDIO",
+                    var("ART_DIR", PathBuf::from("data/art"))
+                        .parent()
+                        .map_or_else(
+                            || PathBuf::from("art-studio.json"),
+                            |p| p.join("art-studio.json"),
+                        ),
+                ),
                 assets_dir: var("ASSETS_DIR", PathBuf::from("data/assets")),
                 server_url: nonempty("RENDER_SERVER_URL")
                     .unwrap_or_else(|| format!("http://127.0.0.1:{}", var("PORT", 8080u16))),

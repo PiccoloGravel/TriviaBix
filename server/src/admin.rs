@@ -118,6 +118,13 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
             axum::routing::put(update_persona),
         )
         .route("/api/admin/personas/{id}/use", post(use_persona))
+        .route("/api/admin/art", get(art_list))
+        .route("/api/admin/art/entries", post(art_entry))
+        .route("/api/admin/art/themes", post(art_theme))
+        .route("/api/admin/art/themes/{id}/use", post(art_use_theme))
+        .route("/api/admin/art/category-styles", post(art_category_style))
+        .route("/api/admin/art/apply", post(art_apply))
+        .route("/api/admin/art/original/{*path}", get(art_original))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route("/api/admin/render/jobs/{id}/log", get(render_log))
@@ -978,4 +985,121 @@ async fn use_persona(State(app): State<AppState>, Path(id): Path<i64>) -> Respon
 async fn lines_changed(app: &AppState) {
     crate::web::load_content(&app.db, &app.content_dir).await;
     crate::web::warm_all(app).await;
+}
+
+// ---------- The Art page (crate::art) ----------
+
+#[derive(Deserialize)]
+struct ArtQuery {
+    #[serde(default)]
+    theme: Option<String>,
+}
+
+fn art_error(e: String) -> Response {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response()
+}
+
+/// The themes, and every piece of art in one theme (the one in use without `theme`).
+async fn art_list(State(app): State<AppState>, Query(q): Query<ArtQuery>) -> Response {
+    match crate::art::listing(&app.render, q.theme.as_deref()).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => art_error(e),
+    }
+}
+
+#[derive(Deserialize)]
+struct ArtEntryBody {
+    #[serde(flatten)]
+    entry: crate::art::EntryChange,
+    /// The theme the page is on, whose TV files are brought up to date afterwards.
+    #[serde(default)]
+    view: Option<String>,
+}
+
+/// After a change: the theme's TV files from what the store has (free), then the page again.
+async fn art_after(app: &AppState, view: Option<String>) -> Response {
+    let theme = view
+        .filter(|t| crate::art::valid_id(t))
+        .unwrap_or_else(|| app.render.art_theme());
+    let needs = match crate::art::apply(&app.render, &theme).await {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!("art: making TV files for {theme}: {e}");
+            0
+        }
+    };
+    match crate::art::listing(&app.render, Some(&theme)).await {
+        Ok(mut v) => {
+            v["needs_gpu"] = json!(needs);
+            Json(v).into_response()
+        }
+        Err(e) => art_error(e),
+    }
+}
+
+async fn art_entry(State(app): State<AppState>, Json(body): Json<ArtEntryBody>) -> Response {
+    if let Err(e) = crate::art::set_entry(&app.render, body.entry).await {
+        return art_error(e);
+    }
+    art_after(&app, body.view).await
+}
+
+async fn art_theme(
+    State(app): State<AppState>,
+    Json(body): Json<crate::art::ThemeChange>,
+) -> Response {
+    let view = (!body.delete).then(|| body.id.clone());
+    if let Err(e) = crate::art::set_theme(&app.render, body).await {
+        return art_error(e);
+    }
+    art_after(&app, view).await
+}
+
+async fn art_use_theme(State(app): State<AppState>, Path(id): Path<String>) -> Response {
+    if let Err(e) = crate::art::use_theme(&app.render, &id).await {
+        return art_error(e);
+    }
+    tracing::info!("admin switched the art theme to {id}");
+    art_after(&app, Some(id)).await
+}
+
+#[derive(Deserialize)]
+struct CategoryStyleBody {
+    slug: String,
+    #[serde(default)]
+    style: String,
+    #[serde(default)]
+    view: Option<String>,
+}
+
+async fn art_category_style(
+    State(app): State<AppState>,
+    Json(body): Json<CategoryStyleBody>,
+) -> Response {
+    if let Err(e) = crate::art::set_category_style(&app.render, &body.slug, &body.style).await {
+        return art_error(e);
+    }
+    art_after(&app, body.view).await
+}
+
+async fn art_apply(State(app): State<AppState>, Json(body): Json<ArtQuery>) -> Response {
+    art_after(&app, body.theme).await
+}
+
+/// A full-size original from the asset store, to look at an earlier take.
+async fn art_original(State(app): State<AppState>, Path(path): Path<String>) -> Response {
+    let Some(file) = crate::art::original(&app.render.config().assets_dir, &path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::fs::read(&file).await {
+        Ok(bytes) => (
+            [
+                (header::CONTENT_TYPE, "image/png"),
+                (header::CACHE_CONTROL, "private, max-age=86400"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }

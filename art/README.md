@@ -104,6 +104,28 @@ only uses what the asset store already has, and lists the rest in `web/cutscenes
 - Change a `prompt` or `seed` and only that item is made again.
 - Bump `version` under `[style]` when the art direction changes, so new art is made instead of reused.
 
+## Themes, category styles and new pieces (admin Art page)
+
+`/admin/art` does all of this from a phone or desktop, and saves it in appdata (`ART_STUDIO`,
+`/data/art-studio.json` next to the art folder), never in the image:
+
+- **Themes** draw the whole catalog in another look. The default, *Bix cartoon*, is `[style]` above;
+  [`themes.toml`](themes.toml) ships Retro arcade, Comic book, Claymation and Synthwave, and new ones
+  (a look and a palette) can be made on the page. Each theme's TV files live in their own folder
+  (`ART_DIR/themes/<id>/`, the default stays in `ART_DIR`) and its originals under their own style in
+  the asset store, so switching the TV to a theme and back never makes anything twice. Until a theme
+  is fully made, the TV shows the default theme's art for the pieces it lacks. Editing a theme's look
+  bumps its version, so new art is made and the old stays in the store.
+- **Category styles** add words to one category's title card in every theme ("stadium floodlights"
+  for sports).
+- **Pieces** can be added (sticker, backdrop or clip), and any piece's prompt, tags and rating
+  changed, or hidden. Tags and ratings are free; a new prompt is drawn on the next run.
+- **New take** gives a piece a new seed in the theme on screen only. Earlier takes stay in the asset
+  store and the page shows them, so putting one back is free.
+- **Check the price** works for a whole theme or one piece, then waits for Start, like the Pipeline.
+
+`generate.py --studio FILE --theme ID` reads the same file; `--list ART_DIR` prints what the page shows.
+
 ## Adding art
 
 1. Add an entry to `catalog.toml`. Tag it with the moments it suits (the cue names, like `winner`,

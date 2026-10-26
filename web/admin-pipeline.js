@@ -197,9 +197,10 @@ function options(kind) {
       select([[0.5, "30 minutes"], [1, "1 hour"], [2, "2 hours"], [3, "3 hours"]], o.max_hours, set("max_hours", Number)));
   }
   if (kind === "art") {
-    return el("label", { class: "inline" }, "Make",
+    return [el("label", { class: "inline" }, "Make",
       select([["all", "Everything missing"], ["backdrop", "Backdrops"], ["sticker", "Stickers"], ["category", "Category cards"], ["clip", "Clips"]],
-        o.kinds, set("kinds")));
+        o.kinds, set("kinds"))),
+    el("span", {}, "In the theme on the TV. Themes, category styles and single pieces are on the ", el("a", { href: "/admin/art" }, "Art page"), ".")];
   }
   // Every question missing lines, or just the ones an earlier import brought in.
   const batches = pipeline.batches.filter((b) => b.state === "done" && b.in_game > b.with_lines);

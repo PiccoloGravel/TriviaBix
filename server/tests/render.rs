@@ -76,6 +76,7 @@ async fn start() -> Server {
             art_dir: tmp.join("art"),
             assets_dir: tmp.join("assets"),
             server_url: "http://127.0.0.1:1".into(),
+            studio: tmp.join("art-studio.json"),
         },
     };
     let app = triviabix::router(config).await.unwrap();
