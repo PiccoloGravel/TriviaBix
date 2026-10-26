@@ -52,10 +52,13 @@ at it, so live lines (new players' names) are in Bix's voice during a game night
 
 ### Picking the GPU
 
-Only GPUs the images' PyTorch (2.6, CUDA 12.4) can run are rented: Ampere to Hopper (compute 8.0 to 9.0).
-RTX 50-series and other Blackwell cards are left out until the images move to a newer PyTorch; then set
-`VAST_MAX_COMPUTE_CAP=1200`. If a GPU still fails with a CUDA error, the run stops at once instead of
-failing every line.
+Only GPUs the images' PyTorch can run are rented. The voice image (PyTorch 2.6, CUDA 12.4) runs Ampere to
+Hopper (compute 8.0 to 9.0); RTX 50-series and other Blackwell cards are left out until it moves to a newer
+PyTorch, then set `VAST_MAX_COMPUTE_CAP=1200`. The art image (PyTorch 2.7, CUDA 12.8) runs Blackwell too, so
+art runs rent up to compute 12.0, on hosts whose driver runs CUDA 12.8 (`VAST_MIN_CUDA`). On the GPU, a card
+counts as supported when the build has kernels for its major version at an equal or lower minor (an sm_86
+build runs an RTX 40-series, sm_89) or PTX for it; anything else gets a small test calculation first. If a
+GPU still fails with a CUDA error, the run stops at once instead of failing every line.
 
 Offers under `--max-price` are ordered by what the whole job is expected to cost, from a table of how
 fast each GPU model is next to an RTX 4090 (`SPEED` in vast.py): a card that costs twice as much an hour
@@ -145,6 +148,10 @@ the way into the container.
   the instance also destroys itself at the time limit, so it stops even if the computer running the
   script goes to sleep or loses its connection. If it can't, it exits, which stops the GPU charge; a
   stopped instance's disk costs pennies a day until `cleanup`.
+- **Unreachable GPUs are given back:** if a job's address doesn't answer for 5 minutes after vast.ai says
+  the instance is running (`VAST_UNREACHABLE_MINUTES`), it's destroyed. If it never answered at all, the
+  next GPU on a different machine is tried (up to 3); if it answered and then went quiet, the job fails.
+  The wait is logged about once a minute.
 - **One of each kind at a time:** it won't rent a second instance for the same kind of job (voice, design,
   or art with `run --kind art`) while one is running (`--another` to override). Different kinds, like
   voice and art, run side by side, each on its own GPU.

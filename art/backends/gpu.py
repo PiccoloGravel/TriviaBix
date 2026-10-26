@@ -26,18 +26,45 @@ VIDEO_NEGATIVE = ("blurry, low quality, jpeg artifacts, distorted, deformed, fli
                   "static frame, overexposed, messy background, extra limbs, fast camera motion")
 
 
+def arch_supported(major: int, minor: int, arches: list[str]) -> bool:
+    """Whether a PyTorch built for `arches` (as torch.cuda.get_arch_list() names them) runs on a GPU of
+    compute capability major.minor: kernels for the same major version and an equal or lower minor (an sm_86
+    build runs on sm_89), or PTX for an equal or older one, which the driver compiles up."""
+    for a in arches:
+        kind, _, num = a.partition("_")
+        if not num.isdigit():
+            continue
+        built = divmod(int(num), 10)
+        if kind == "sm" and built[0] == major and built[1] <= minor:
+            return True
+        if kind == "compute" and built <= (major, minor):
+            return True
+    return False
+
+
+def gpu_unsupported() -> str | None:
+    """Why this PyTorch build can't run on this GPU, if it can't. A card the build's list doesn't cover still
+    gets a real try, since the list can be incomplete."""
+    major, minor = torch.cuda.get_device_capability()
+    arches = torch.cuda.get_arch_list()
+    if arch_supported(major, minor, arches):
+        return None
+    try:
+        (torch.ones(64, device="cuda") * 2).sum().item()
+        return None
+    except Exception as e:  # noqa: BLE001
+        return (f"This PyTorch build ({torch.__version__}) can't run on {torch.cuda.get_device_name()} "
+                f"(sm_{major}{minor}; built for {', '.join(arches)}): {str(e).splitlines()[0] if str(e) else e}")
+
+
 class GpuBackend(GpuModels):
 
     def __init__(self):
         if not torch.cuda.is_available():
             raise SystemExit("No CUDA GPU here. Use --backend stub, or run on a GPU box (see render_on_vast.py).")
-        major, minor = torch.cuda.get_device_capability()
-        arches = torch.cuda.get_arch_list()
-        cap = major * 10 + minor
-        if f"sm_{cap}" not in arches and not any(a.startswith("compute_") and int(a.split("_")[1]) <= cap for a in arches):
+        if why := gpu_unsupported():
             # Every model would fail with "no kernel image is available"; stop before paying for downloads.
-            raise SystemExit(f"This PyTorch build ({torch.__version__}) has no kernels for {torch.cuda.get_device_name()} "
-                             f"(sm_{cap}); it was built for {', '.join(arches)}.")
+            raise SystemExit(why)
         self.device = "cuda"
         self.loaded: tuple[str, object] | None = None
         big = torch.cuda.get_device_properties(0).total_memory >= 40 * 2**30

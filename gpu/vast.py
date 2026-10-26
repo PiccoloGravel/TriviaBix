@@ -50,6 +50,12 @@ LABEL = "triviabix"
 TTS_IMAGE = "ghcr.io/piccologravel/triviabix-tts:latest"
 TTS_MODEL = "inclusionAI/Ming-3.0-tts-0.5b"
 PORT = 8000
+# How long a running instance's job address may stay silent before it's given up on (destroyed, and the
+# next GPU tried if it never answered at all), and how often the wait is logged meanwhile.
+UNREACHABLE_MINUTES = float(os.environ.get("VAST_UNREACHABLE_MINUTES") or 5)
+WAIT_NOTE_SECONDS = 60
+# How many GPUs a job tries when the one it rented can't be reached.
+UNREACHABLE_TRIES = 3
 # How the voice image starts its service, with the rental's token so only the game server can use it.
 VOICE_CMD = "cd /app && TTS_TOKEN=$TBX_TOKEN exec python server.py"
 # Runs the Python source in $TBX_PY, which this script sends along, so a job doesn't depend on the image
@@ -82,6 +88,10 @@ class Abort(Exception):
 
 class Gone(Abort):
     """vast.ai has no such thing (404)."""
+
+
+class Unreachable(Abort):
+    """Nothing answers at a rented instance's address, though vast.ai says it's running."""
 
 
 class Taken(Abort):
@@ -167,7 +177,7 @@ class Vast:
             "verified": {"eq": True}, "external": {"eq": False}, "rentable": {"eq": True},
             "rented": {"eq": False}, "num_gpus": {"eq": 1},
             "gpu_ram": {"gte": min_vram_gb * 1000}, "compute_cap": {"gte": 800, "lte": max_compute_cap()},
-            "cuda_max_good": {"gte": 12.4}, "reliability": {"gte": 0.98},
+            "cuda_max_good": {"gte": min_cuda()}, "reliability": {"gte": 0.98},
             "inet_down": {"gte": 200}, "direct_port_count": {"gte": 1},
             "disk_space": {"gte": disk_gb}, "dph_total": {"lte": max_price},
             "order": [["dph_total", "asc"]], "type": "on-demand", "limit": limit,
@@ -472,6 +482,9 @@ class Rental:
         self.deadline = time.time() + minutes * 60
         self.id = None
         self.rented_at = None
+        # When the job's address was known, when it last answered, and when the wait was last logged.
+        self.up_at = self.heard = None
+        self.noted = 0.0
         self.body = {
             "client_id": "me", "image": image, "disk": disk, "label": f"{LABEL}-{kind}",
             "runtype": "args", "args": boot_args(), "image_login": login,
@@ -538,10 +551,29 @@ class Rental:
                             "set the image registry login on the Settings page (or make the package public)")
             mapping = (info.get("ports") or {}).get(f"{self.port}/tcp") or []
             if info.get("actual_status") == "running" and info.get("public_ipaddr") and mapping:
+                self.up_at = time.time()
                 return f"http://{info['public_ipaddr'].strip()}:{mapping[0]['HostPort']}"
             time.sleep(10)
         raise Abort(f"the instance didn't start within {boot_minutes:g} minutes (pulling the image can be slow; "
                     "try again, or raise --boot-minutes)")
+
+    def reached(self):
+        """The job's address answered."""
+        self.heard = time.time()
+
+    def missed(self, base: str, err):
+        """The job's address didn't answer. Logs the wait about once a minute, and raises Unreachable once
+        nothing has answered for UNREACHABLE_MINUTES."""
+        now = time.time()
+        quiet = now - (self.heard or self.up_at or now)
+        reason = getattr(err, "reason", None) or err
+        if quiet > UNREACHABLE_MINUTES * 60:
+            what = "lost touch with" if self.heard else "can't reach"
+            raise Unreachable(f"{what} the GPU at {base}: nothing answered for {quiet / 60:.0f} minutes ({reason})")
+        if now - self.noted >= WAIT_NOTE_SECONDS:
+            self.noted = now
+            say(f"waiting for the GPU at {base} to answer ({reason}); {quiet / 60:.0f} of "
+                f"{UNREACHABLE_MINUTES:g} minutes")
 
     def http(self, url: str, timeout: float = 30):
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}"})
@@ -671,37 +703,58 @@ def run_rented(vast: Vast, offers: list, image: str, cmd: str, to: str, out: str
     refuse_doubles(vast, another, kind)
     on_signals()
     job_inputs = JOB_IN if inputs else None
-    with Rental(vast, offers, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login,
-                kind=kind, inputs=job_inputs) as r:
-        base = r.address(boot_minutes)
-        say(f"job running at {base}")
-        if inputs:
-            send_inputs(r, base, Path(inputs), time.time() + boot_minutes * 60)
-        since, status, after, pulled = 0, {}, 0.0, time.time()
-        while True:
-            if time.time() > r.deadline:
-                raise Abort(f"the job ran past --max-minutes {max_minutes:g}; stopped it")
-            try:
-                status = json.load(r.http(f"{base}/status?since={since}"))
-            except (urllib.error.URLError, OSError, ValueError):
-                time.sleep(10)  # still starting, or a blip
-                continue
-            for line in status.get("log", []):
-                print(line, flush=True)
-            since = status.get("seq", since)
-            if status.get("state") != "running":
-                break
-            if partial and time.time() - pulled > partial_every:
-                pulled = time.time()
-                after = pull_partial(r, base, after, partial)
-            time.sleep(5)
-        say(f"job {status['state']} (exit code {status.get('code')}); downloading {out}")
-        with r.http(f"{base}/result", timeout=600) as res, tempfile.TemporaryFile() as tmp:
-            shutil.copyfileobj(res, tmp)
-            tmp.seek(0)
-            n = extract(tmp, Path(to))
-        say(f"saved {n} files into {to}")
-        return int(status.get("code") or 0)
+    left = list(offers)
+    for attempt in range(1, UNREACHABLE_TRIES + 1):
+        rental = Rental(vast, left, image, cmd, "job", max_minutes, env=env, disk=disk, out=out, login=login,
+                        kind=kind, inputs=job_inputs)
+        try:
+            with rental as r:
+                return run_on(r, max_minutes, boot_minutes, to, out, inputs, partial, partial_every)
+        except Unreachable as e:
+            # One that never answered did no work, so another GPU can start afresh. The bad host's other
+            # offers go too.
+            machine = rental.offer.get("machine_id")
+            left = [o for o in left if o["id"] != rental.offer["id"]
+                    and (machine is None or o.get("machine_id") != machine)]
+            if rental.heard or not left or attempt == UNREACHABLE_TRIES:
+                raise
+            say(f"{e}; gave it back, trying the next GPU")
+
+
+def run_on(r: "Rental", max_minutes: float, boot_minutes: float, to: str, out: str, inputs, partial,
+           partial_every: float) -> int:
+    """`run_rented`'s work on one rented instance."""
+    base = r.address(boot_minutes)
+    say(f"job running at {base}")
+    if inputs:
+        send_inputs(r, base, Path(inputs), time.time() + boot_minutes * 60)
+    since, status, after, pulled = 0, {}, 0.0, time.time()
+    while True:
+        if time.time() > r.deadline:
+            raise Abort(f"the job ran past --max-minutes {max_minutes:g}; stopped it")
+        try:
+            status = json.load(r.http(f"{base}/status?since={since}"))
+            r.reached()
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            r.missed(base, e)
+            time.sleep(10)  # still starting, or a blip
+            continue
+        for line in status.get("log", []):
+            print(line, flush=True)
+        since = status.get("seq", since)
+        if status.get("state") != "running":
+            break
+        if partial and time.time() - pulled > partial_every:
+            pulled = time.time()
+            after = pull_partial(r, base, after, partial)
+        time.sleep(5)
+    say(f"job {status['state']} (exit code {status.get('code')}); downloading {out}")
+    with r.http(f"{base}/result", timeout=600) as res, tempfile.TemporaryFile() as tmp:
+        shutil.copyfileobj(res, tmp)
+        tmp.seek(0)
+        n = extract(tmp, Path(to))
+    say(f"saved {n} files into {to}")
+    return int(status.get("code") or 0)
 
 
 def send_inputs(r: "Rental", base: str, folder: Path, ready_by: float):
@@ -715,15 +768,17 @@ def send_inputs(r: "Rental", base: str, folder: Path, ready_by: float):
         req = urllib.request.Request(f"{base}/input", buf.read(), method="PUT", headers={
             "Authorization": f"Bearer {r.token}", "Content-Type": "application/gzip"})
         try:
-            with urllib.request.urlopen(req, timeout=300):
+            with urllib.request.urlopen(req, timeout=120):
+                r.reached()
                 say(f"uploaded the job's input ({size // 1024} KB)")
                 return
         except urllib.error.HTTPError as e:
             if e.code == 409:  # already has it (a retry after a lost answer)
+                r.reached()
                 return
             raise Abort(f"the GPU refused the job's input ({e.code})")
-        except (urllib.error.URLError, OSError):  # still starting
-            pass
+        except (urllib.error.URLError, OSError) as e:  # still starting, or unreachable
+            r.missed(base, e)
         if time.time() > ready_by:
             raise Abort("the GPU didn't take the job's input in time")
         time.sleep(5)
@@ -801,11 +856,20 @@ class Game:
             res.read()
 
 
-# The newest GPUs the images' PyTorch can run, as vast.ai's compute_cap (major * 100 + minor * 10): 900 is
-# Hopper. Raise VAST_MAX_COMPUTE_CAP once the images move to a PyTorch built for Blackwell (CUDA 12.8).
+# The newest GPUs the voice image's PyTorch can run, as vast.ai's compute_cap (major * 100 + minor * 10): 900
+# is Hopper. Art runs set VAST_MAX_COMPUTE_CAP=1200, as their image is built for Blackwell (CUDA 12.8).
 MAX_COMPUTE_CAP = 900
 # Blackwell cards by name, in case an offer's compute_cap is missing or wrong.
 BLACKWELL = re.compile(r"RTX 50\d0|RTX PRO \d+|\bB\d{3}\b|\bGB\d{3}\b|Blackwell", re.I)
+
+
+def min_cuda() -> float:
+    """The newest CUDA the host's driver must run: the image's own (VAST_MIN_CUDA; 12.4 for the voice image,
+    12.8 for the art image)."""
+    try:
+        return float(os.environ.get("VAST_MIN_CUDA") or 12.4)
+    except ValueError:
+        return 12.4
 
 
 def max_compute_cap() -> int:

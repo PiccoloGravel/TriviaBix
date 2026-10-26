@@ -97,7 +97,9 @@ def main(argv: list[str] | None = None) -> int:
             if os.environ.get(key):
                 run += ["--env", f"{key}={os.environ[key]}"]
         run += ["--yes"] * args.yes + ["--dry-run"] * args.dry_run
-        code = subprocess.call(run)
+        # The art image's PyTorch (2.7, CUDA 12.8) runs Blackwell cards too, but needs a host driver for 12.8.
+        env = {"VAST_MAX_COMPUTE_CAP": "1200", "VAST_MIN_CUDA": "12.8", **os.environ}
+        code = subprocess.call(run, env=env)
         if args.dry_run:
             return code
 

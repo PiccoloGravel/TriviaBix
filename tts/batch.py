@@ -313,13 +313,31 @@ def gpu_unsupported() -> str | None:
         arches = torch.cuda.get_arch_list()
     except Exception as e:  # noqa: BLE001
         return f"couldn't check the GPU: {type(e).__name__}: {e}"
-    cap = major * 10 + minor
-    built = [int(a.split("_")[1]) for a in arches if a.split("_")[-1].isdigit()]
-    # Kernels for this exact architecture, or PTX for an older one the driver can compile up.
-    if f"sm_{cap}" in arches or any(a.startswith("compute_") and int(a.split("_")[1]) <= cap for a in arches):
+    if arch_supported(major, minor, arches):
         return None
-    return (f"this PyTorch build ({torch.__version__}) has no kernels for {torch.cuda.get_device_name()} "
-            f"(sm_{cap}); it supports up to sm_{max(built) if built else '?'}")
+    # The list can be incomplete, so a card it doesn't cover still gets a real try.
+    try:
+        (torch.ones(64, device="cuda") * 2).sum().item()
+        return None
+    except Exception as e:  # noqa: BLE001
+        return (f"this PyTorch build ({torch.__version__}) can't run on {torch.cuda.get_device_name()} "
+                f"(sm_{major}{minor}; built for {', '.join(arches)}): {first_line(str(e))}")
+
+
+def arch_supported(major: int, minor: int, arches: list[str]) -> bool:
+    """Whether a PyTorch built for `arches` (as torch.cuda.get_arch_list() names them) runs on a GPU of
+    compute capability major.minor: kernels for the same major version and an equal or lower minor (an sm_86
+    build runs on sm_89), or PTX for an equal or older one, which the driver compiles up."""
+    for a in arches:
+        kind, _, num = a.partition("_")
+        if not num.isdigit():
+            continue
+        built = divmod(int(num), 10)
+        if kind == "sm" and built[0] == major and built[1] <= minor:
+            return True
+        if kind == "compute" and built <= (major, minor):
+            return True
+    return False
 
 
 def load_lines(folder: str) -> list[tuple[str, str]]:

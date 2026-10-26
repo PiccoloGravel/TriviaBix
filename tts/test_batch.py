@@ -14,6 +14,20 @@ import server  # noqa: E402
 
 
 class BatchTest(unittest.TestCase):
+    def test_cards_the_build_runs_by_compatibility_are_accepted(self):
+        cu124 = ["sm_50", "sm_60", "sm_70", "sm_75", "sm_80", "sm_86", "sm_90"]
+        cu128 = ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120", "compute_120"]
+        ok = batch.arch_supported
+        self.assertTrue(ok(8, 9, cu124), "an RTX 40-series runs sm_86 kernels")
+        self.assertTrue(ok(8, 9, cu128))
+        self.assertTrue(ok(8, 6, cu124))
+        self.assertTrue(ok(9, 0, cu124))
+        self.assertFalse(ok(12, 0, cu124), "no Blackwell kernels in a CUDA 12.4 build")
+        self.assertTrue(ok(12, 0, cu128))
+        self.assertFalse(ok(10, 0, ["sm_80", "sm_90"]))
+        self.assertTrue(ok(10, 0, ["sm_80", "compute_90"]), "PTX compiles up to newer cards")
+        self.assertFalse(ok(7, 5, ["sm_80", "compute_80"]))
+
     def run_batch(self, n=12):
         tmp = Path(tempfile.mkdtemp())
         (tmp / "in").mkdir()

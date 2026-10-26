@@ -40,6 +40,8 @@ class FakeVast:
         # Offer ids someone else rents first, what instances say while starting, and a status that makes
         # them stop while starting.
         self.taken, self.status_msg, self.stopped = set(), None, None
+        # Offer ids whose instance runs but never answers at its address (instance 9).
+        self.unreachable = set()
         self.logs = tempfile.mkdtemp(prefix="fake-vast-logs-")
         self.offers = [{"id": 1, "gpu_name": "RTX 4090", "gpu_ram": 24564, "dph_total": 0.31,
                         "geolocation": "Testland"}]
@@ -75,6 +77,12 @@ class FakeVast:
                     return self.reply({"success": False, "error": "no_such_ask",
                                        "msg": f"Instance type by id {ask} is not available."}, 400)
                 fake.created.append(b)
+                if ask in fake.unreachable:
+                    # Nothing listens on its port, as if a firewall dropped it.
+                    Path(fake.logs, "7.txt").write_text("[tbx] wrapper up: job mode\n")
+                    fake.procs[9] = (subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]),
+                                     free_port())
+                    return self.reply({"success": True, "new_contract": 9})
                 port = free_port()
                 env = {k: v for k, v in b["env"].items() if not k.startswith("-p ")}
                 env["TBX_PORT"] = str(port)
@@ -94,7 +102,8 @@ class FakeVast:
                     self.send_header("Content-Length", str(len(data)))
                     self.end_headers()
                     return self.wfile.write(data)
-                proc, port = fake.procs[7]
+                iid = 9 if self.path.split("?")[0].rstrip("/").endswith("/9") else 7
+                proc, port = fake.procs[iid]
                 if fake.stopped:
                     return self.reply({"instances": {"actual_status": "exited", "status_msg": fake.stopped}})
                 if fake.status_msg:
@@ -164,6 +173,31 @@ class VastTest(Base):
         self.assertIn("offer 5 (RTX 4090) was just taken", log)
         rented = next(json.loads(l[5:]) for l in log.splitlines() if l.startswith('@tbx {"event": "rented"'))
         self.assertEqual(rented["price_hr"], 0.31)
+
+    def test_a_gpu_that_never_answers_is_given_back_and_the_next_tried(self):
+        cheap = dict(self.fake.offers[0])
+        self.fake.offers = [{**cheap, "id": 5, "dph_total": 0.20, "machine_id": 50},
+                            {**cheap, "id": 6, "dph_total": 0.25, "machine_id": 50}, cheap]
+        self.fake.unreachable = {5, 6}
+        err = io.StringIO()
+        self.vast.UNREACHABLE_MINUTES, self.vast.WAIT_NOTE_SECONDS = 0.02, 0
+        try:
+            with tempfile.TemporaryDirectory() as box, tempfile.TemporaryDirectory() as to, \
+                    unittest.mock.patch("sys.stderr", err):
+                Path(box, "made.txt").write_text("ok")
+                code = self.vast.run_job("img", "true", to, out=box, yes=True, max_minutes=2, another=True)
+                self.assertTrue(Path(to, "made.txt").exists())
+        finally:
+            self.vast.UNREACHABLE_MINUTES, self.vast.WAIT_NOTE_SECONDS = 5, 60
+            self.fake.offers, self.fake.unreachable = [cheap], set()
+        self.assertEqual(code, 0)
+        log = err.getvalue()
+        self.assertRegex(log, r"waiting for the GPU at http://127\.0\.0\.1:\d+ to answer")
+        self.assertRegex(log, r"can't reach the GPU at .*; gave it back, trying the next GPU")
+        self.assertIn(9, self.fake.destroyed)
+        # Offer 6 is on the same machine, so it was skipped too.
+        self.assertEqual([c["image"] for c in self.fake.created[-2:]], ["img", "img"])
+        self.assertNotIn("offer 6", log)
 
     def test_nothing_is_rented_when_every_offer_is_taken(self):
         self.fake.taken = {1}
@@ -240,6 +274,17 @@ class VastTest(Base):
             self.assertEqual(login("ghcr.io/a/b", "-u me -p t ghcr.io"), "-u me -p t ghcr.io")
         with unittest.mock.patch.dict(os.environ, {"GHCR_TOKEN": ""}):
             self.assertIsNone(login("ghcr.io/piccologravel/triviabix-tts:latest"))
+
+    def test_the_art_image_needs_a_cuda_12_8_host_and_may_rent_blackwell(self):
+        self.vast.Vast().offers(16, 0.5, 40)
+        self.assertEqual(self.fake.query["cuda_max_good"]["gte"], 12.4)
+        self.assertEqual(self.fake.query["compute_cap"]["lte"], 900)
+        with unittest.mock.patch.dict(os.environ, {"VAST_MIN_CUDA": "12.8", "VAST_MAX_COMPUTE_CAP": "1200"}):
+            self.vast.Vast().offers(16, 0.5, 40)
+        self.assertEqual(self.fake.query["cuda_max_good"]["gte"], 12.8)
+        self.assertEqual(self.fake.query["compute_cap"]["lte"], 1200)
+        render = (Path(__file__).parent.parent / "art" / "render_on_vast.py").read_text()
+        self.assertIn('"VAST_MIN_CUDA": "12.8"', render)
 
     def test_one_instance_of_each_kind_at_a_time(self):
         class Running:
