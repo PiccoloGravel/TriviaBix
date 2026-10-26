@@ -7,6 +7,7 @@ pub mod hangman;
 pub mod host;
 pub mod library;
 pub mod music;
+pub mod packs;
 pub mod pregen;
 pub mod protocol;
 pub mod render;

@@ -100,6 +100,10 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/voices", get(list_voices))
         .route("/api/admin/voices/{key}/clip", get(voice_clip))
         .route("/api/admin/voices/{key}/use", post(use_voice))
+        .route("/api/admin/packs", get(list_packs).post(create_pack))
+        .route("/api/admin/packs/{id}", axum::routing::put(update_pack))
+        .route("/api/admin/packs/{id}/use", post(use_pack))
+        .route("/api/admin/packs/{id}/sample", get(pack_sample))
         .route("/api/admin/render/jobs/{id}", get(render_job))
         .route("/api/admin/render/jobs/{id}/cancel", post(render_cancel))
         .route_layer(middleware::from_fn_with_state(state, require_login));
@@ -573,6 +577,9 @@ struct SettingBody {
 }
 
 async fn settings_set(State(app): State<AppState>, Json(body): Json<SettingBody>) -> Response {
+    if body.key == "BIX_VOICE" && voice_running(&app) {
+        return (StatusCode::CONFLICT, Json(json!({ "error": SWITCH_LATER }))).into_response();
+    }
     if let Err(e) = app.settings.set(&body.key, body.value.as_deref()).await {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
     }
@@ -581,7 +588,12 @@ async fn settings_set(State(app): State<AppState>, Json(body): Json<SettingBody>
     let s = &app.settings;
     match body.key.as_str() {
         "TTS_URL" => app.voice.set_default(s.get("TTS_URL").as_deref()),
-        "BIX_VOICE" => crate::web::warm_all(&app).await,
+        "BIX_VOICE" => voice_changed(&app).await,
+        "BIX_SPEED" => {
+            if let Err(e) = app.packs.sync().await {
+                tracing::warn!("voice packs: {e}");
+            }
+        }
         "LIDARR_URL" | "LIDARR_API_KEY" => app
             .music
             .library
@@ -632,11 +644,118 @@ async fn use_voice(State(app): State<AppState>, Path(key): Path<String>) -> Resp
         let error = "There's no such voice in the asset store.";
         return (StatusCode::NOT_FOUND, Json(json!({ "error": error }))).into_response();
     }
+    if voice_running(&app) {
+        return (StatusCode::CONFLICT, Json(json!({ "error": SWITCH_LATER }))).into_response();
+    }
     let spec = format!("clone:{key}");
     if let Err(e) = app.settings.set("BIX_VOICE", Some(&spec)).await {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
     }
     tracing::info!("admin picked Bix's voice {spec}");
-    crate::web::warm_all(&app).await;
+    voice_changed(&app).await;
     list_voices(State(app)).await.into_response()
+}
+
+/// After BIX_VOICE changes: that voice's pack takes over (made if it's new), and what it lacks is
+/// queued for the next voice run.
+async fn voice_changed(app: &AppState) {
+    if let Err(e) = app.packs.voice_changed().await {
+        tracing::warn!("voice packs: {e}");
+    }
+    crate::web::warm_all(app).await;
+}
+
+/// Bix's voice packs, the one in use first, and the voices a new pack can have.
+async fn list_packs(State(app): State<AppState>) -> Response {
+    match app.packs.list().await {
+        Ok(packs) => Json(json!({
+            "packs": packs,
+            "built_in": crate::packs::Packs::built_in(),
+            "speeds": crate::packs::speeds(),
+            "voice_running": voice_running(&app),
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        )
+            .into_response(),
+    }
+}
+
+const SWITCH_LATER: &str =
+    "A voice run is making lines for the voice pack in use. Switch voices when it's done.";
+
+/// A voice run in progress speaks in the pack in use, so switching waits until it's done.
+fn voice_running(app: &AppState) -> bool {
+    app.render
+        .current(0)
+        .is_some_and(|j| j.state == "running" && j.kind == crate::render::Kind::Voice)
+}
+
+#[derive(Deserialize)]
+struct NewPack {
+    name: String,
+    voice: String,
+    speed: Option<String>,
+}
+
+async fn create_pack(State(app): State<AppState>, Json(body): Json<NewPack>) -> Response {
+    match app
+        .packs
+        .create(&body.name, &body.voice, body.speed.as_deref())
+        .await
+    {
+        Ok(_) => list_packs(State(app)).await,
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct PackChange {
+    name: Option<String>,
+    speed: Option<String>,
+}
+
+async fn update_pack(
+    State(app): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<PackChange>,
+) -> Response {
+    match app
+        .packs
+        .update(id, body.name.as_deref(), body.speed.as_deref())
+        .await
+    {
+        Ok(()) => list_packs(State(app)).await,
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Switches Bix to a pack. Its lines play at once; the next voice run adds the ones it lacks.
+async fn use_pack(State(app): State<AppState>, Path(id): Path<i64>) -> Response {
+    if voice_running(&app) {
+        return (StatusCode::CONFLICT, Json(json!({ "error": SWITCH_LATER }))).into_response();
+    }
+    if let Err(e) = app.packs.switch(id).await {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response();
+    }
+    tracing::info!("admin switched Bix's voice pack to {id}");
+    crate::web::warm_all(&app).await;
+    list_packs(State(app)).await
+}
+
+/// One of a pack's lines at random, to hear it.
+async fn pack_sample(State(app): State<AppState>, Path(id): Path<i64>) -> Response {
+    match app.packs.sample(id).await {
+        Some((bytes, content_type)) => (
+            [
+                (header::CONTENT_TYPE, content_type),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }

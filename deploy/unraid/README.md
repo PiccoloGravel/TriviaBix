@@ -85,7 +85,8 @@ plugin like any other container.
 | Players, scores, game history, admin edits to Bix's lines, the music library from Lidarr, rendering jobs and their costs | `triviabix.db` | SQLite database |
 | Question packs | `content/packs/` | TOML files you can edit |
 | Host lines Claude wrote (from the Pipeline page or `triviabix-questions scripts generate`) | `content/scripts/generated/` | TOML files |
-| Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)) |
+| Bix's voice lines | `assets/voice/` | audio files plus a `.json` each, in the asset store ([docs/assets.md](../../docs/assets.md)), one folder per voice pack |
+| Voice packs (names and speeds) | `triviabix.db` | SQLite database |
 | Candidate voices for Bix (Pipeline → Design Bix's voice) | `assets/voice-sample/` | `.wav` clips plus a `.json` each with the description and transcript |
 | Generated art originals (pictures, cut-outs, clips) | `assets/image/`, `assets/clip/` | files plus a `.json` each with prompt, seed, model, tags and rating |
 | The TV's copies of the art | `art/` | small WebP/MP4 files and `manifest.json` |
