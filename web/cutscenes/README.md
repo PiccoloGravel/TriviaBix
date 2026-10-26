@@ -28,7 +28,8 @@ To add a brand new moment, set the cue in `server/src/room.rs` (where the host s
 
 1. Copy a scene, say `on-fire.json`, to `my-scene.json` and change it.
 2. In `index.json`, add `"my-scene"` to a cue's `scenes` list. With several, one is picked at random.
-3. Reload `/cutscenes.html` and click the cue to watch it.
+3. Reload `/cutscenes.html` and click the cue (or the scene, under "Every scene") to watch it. The
+   page can switch the room rating and category, and shows all the generated art with its tags.
 
 No rebuild is needed when the server runs from this folder; the Docker image copies `web/` in, so
 rebuild the image to ship it.
@@ -64,6 +65,14 @@ centre), and sizes are percent of the screen height, so scenes look the same on 
 `dim` (darkens the game behind), `flash` (solid `colors[0]`), or `none`.
 `colors`: one or two colours. `enter`: `wipe` (default), `fade`, `iris` or `none`.
 
+`art` puts a generated picture or looping clip over the drawn background (see
+[Generated art](#generated-art)); the drawn `kind` shows whenever there's no art that fits.
+`shade` (0 to 1, default 0.25) darkens it so text stays readable, and `pan: true` drifts it slowly.
+
+```json
+"backdrop": { "kind": "sunburst", "colors": ["#ffb400", "#ff9f1c"], "art": { "kind": ["clip", "backdrop"], "tags": ["winner"] }, "shade": 0.2 }
+```
+
 ### Layers
 
 Every layer takes `x`, `y`, `size`, `at`, `in`, `loop`, and optionally `inMs` (entrance length,
@@ -77,11 +86,12 @@ default 600), `rotate` (degrees), `z` (stacking), and `out` + `leave` to exit ea
 | `players` | Everyone in a row; `stagger` ms between each |
 | `emoji` | `char` |
 | `effect` | `kind`: `rain`, `rise` or `burst`; `chars`, `count`, `size`, `spread` (ms), `life` (ms) |
-| `image` | `src`: a GIF, WebP, PNG or SVG in [`assets/`](assets/) |
+| `image` | `src`: a GIF, WebP, PNG, SVG, MP4 or WebM in `assets/`, or `art` (generated art, below) with a `fallback`; `frame: true` gives it a white card border |
 | `lottie` | `src`: a Lottie `.json` in `assets/`; `loopAnim: true` loops it. The free lottie-web player loads from cdnjs the first time one plays. |
 
 - **`in`** (entrance): `pop`, `slam`, `zoom`, `drop`, `rise`, `left`, `right`, `spin`, `stamp`, `flip`, `fade`, `cut`.
-- **`loop`** (while on screen): `bob`, `wobble`, `pulse`, `spin`, `shake`, `float`, `swing`, `flicker`, `crawl`.
+- **`loop`** (while on screen): `bob`, `wobble`, `pulse`, `spin`, `shake`, `float`, `swing`, `flicker`, `crawl`,
+  `roll` (tumbles across the whole screen, left to right).
 - **`leave`** (at `out`): `fade`, `zoom`, `drop`, `up`, `left`, `right`.
 
 ### Placeholders in text
@@ -95,6 +105,29 @@ Built-in effects are synthesised in the browser, so there are no audio files to 
 `whoosh`, `boing`, `ding`, `pop`, `tada`, `drumroll`, `sad_trombone`, `airhorn`, `crickets`, `slam`.
 Or play a file: `{ "src": "assets/honk.mp3", "at": 0, "volume": 0.8 }`. Muting the host voice (M)
 mutes these too.
+
+## Generated art
+
+[`art/`](../../art/README.md) makes backdrops, stickers, looping clips and a title card per category
+with open AI models, and ships them to `assets/gen/` with a `manifest.json`. Scenes don't name files;
+they ask for a **kind** and **tags**, and get a random piece that fits (and is rated at or below the
+room's rating). So new scenes can mix art that already exists, and new art shows up in old scenes.
+
+```json
+{ "type": "image", "art": { "kind": "sticker", "tags": ["winner"] }, "size": 30, "fallback": { "type": "emoji", "char": "🏆" } }
+```
+
+- `kind`: `backdrop`, `sticker`, `clip` or `category`, or a list in order of preference
+  (`["clip", "backdrop"]` is a moving background if there is one, else a still).
+- `tags`: all must match; add `"any": true` to match any of them. Tags are listed in `art/catalog.toml`
+  and on `/cutscenes.html`. The cue names (`winner`, `nobody`, `roast`...) are tags too.
+- `"art": "sticker:trophy"` asks for one exact piece.
+- `"art": { "kind": "category" }` is the current category's title card.
+- `fallback`: what the layer becomes when nothing fits, such as an emoji or a text layer. Without
+  one, the layer is left out.
+
+The TV fetches the art in the background when the page loads, so scenes don't wait on Wi-Fi. The
+round title card also shows the category's card behind it when there is one.
 
 ## Graphics you can drop in
 

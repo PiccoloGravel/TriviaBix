@@ -1,0 +1,72 @@
+{
+  "duration": 2800,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#7b5cff",
+      "#ffd23f"
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "leader"
+      ]
+    },
+    "pan": true,
+    "shade": 0.25
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "y": 60,
+      "size": 28,
+      "at": 200,
+      "in": "rise"
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "leader"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "👑"
+      },
+      "y": 30,
+      "size": 16,
+      "at": 700,
+      "in": "drop",
+      "loop": "bob"
+    },
+    {
+      "type": "text",
+      "text": "STILL ON TOP",
+      "y": 12,
+      "size": 10,
+      "at": 400,
+      "in": "slam"
+    },
+    {
+      "type": "bix",
+      "mood": "happy",
+      "x": 88,
+      "y": 82,
+      "size": 22,
+      "at": 600,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "ding",
+      "at": 400
+    }
+  ]
+}

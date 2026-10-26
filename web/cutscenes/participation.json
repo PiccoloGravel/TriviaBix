@@ -1,0 +1,80 @@
+{
+  "duration": 3400,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#c9b8ff"
+    ],
+    "enter": "fade",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "last_place"
+      ]
+    },
+    "shade": 0.3
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 40,
+      "y": 60,
+      "size": 24,
+      "at": 100,
+      "in": "fade"
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "last_place"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "🎗️"
+      },
+      "x": 64,
+      "y": 56,
+      "size": 22,
+      "at": 900,
+      "in": "drop",
+      "loop": "swing",
+      "rotate": 10
+    },
+    {
+      "type": "text",
+      "text": "PARTICIPATION\nAWARD",
+      "style": "sub",
+      "y": 20,
+      "size": 7,
+      "at": 500,
+      "in": "rise",
+      "color": "#c9b8ff"
+    },
+    {
+      "type": "bix",
+      "mood": "laugh",
+      "x": 88,
+      "y": 82,
+      "size": 22,
+      "at": 1200,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "ding",
+      "at": 900
+    },
+    {
+      "sound": "sad_trombone",
+      "at": 1300
+    }
+  ]
+}

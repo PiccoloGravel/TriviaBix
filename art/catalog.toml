@@ -1,0 +1,195 @@
+# Everything generate.py makes, and the prompts that make it. See README.md.
+#
+# Each entry has an `id` (its file name) and a `prompt`. `seed` pins the result: change it to get a
+# different take on the same prompt. Change a prompt or seed and only that file is made again.
+#
+#   backdrop  -> web/cutscenes/assets/gen/bg/<id>.webp        full-screen scene backgrounds
+#   sticker   -> web/cutscenes/assets/gen/stickers/<id>.webp  cut-out props with a clear background
+#   clip      -> web/cutscenes/assets/gen/clips/<id>.mp4      a backdrop brought to life, looping
+#   category  -> web/cutscenes/assets/gen/category/<slug>.webp one title card per category in
+#                content/categories.toml, made from the template below
+
+[style]
+# Part of every stored original's style, next to the model. Bump it when the art direction changes,
+# so new art is made instead of old art being reused.
+version = "bix-cartoon-v1"
+# Goes in front of every prompt, so all the art looks like it belongs to one show (and to Bix).
+prompt = """TriviaBix TV game show graphics. Bold flat vector cartoon, thick dark purple outlines, \
+cel shading, saturated neon magenta, electric blue, sunny gold and deep purple palette, playful and \
+cheeky, clean simple shapes, high contrast, readable from across a living room, no text"""
+# Stickers get this after their prompt so the cut-out comes out clean.
+sticker = "single object centered, isolated on a plain flat white background, chunky white sticker border, no shadow"
+# Backdrops and category cards get this, so the middle stays calm enough to put text on.
+backdrop = "wide shot, empty center with room for a big title, strong perspective, no people in front"
+
+[category]
+prompt = "{name} themed title card scene: {description} Iconic objects arranged around the edges, centered composition"
+seed = 7
+
+# ---------- Backdrops ----------
+
+[[backdrop]]
+id = "neon-stage"
+tags = ["stage", "intro", "round", "hype"]
+prompt = "an empty game show stage at night, neon arches, glossy reflective floor, crossing spotlights, a giant glowing question mark in the back"
+seed = 11
+
+[[backdrop]]
+id = "gold-podium"
+tags = ["stage", "winner", "leader", "hype"]
+prompt = "a winner's podium on a stage under golden spotlights, shiny gold and purple, sparkles and falling confetti"
+seed = 23
+
+[[backdrop]]
+id = "desert"
+tags = ["nobody", "empty", "funny"]
+prompt = "a silly empty cartoon desert at noon, cracked ground, one cactus, a lone tumbleweed, heat shimmer, huge pale sky"
+seed = 5
+
+[[backdrop]]
+id = "spotlight-stage"
+tags = ["stage", "only_one", "spotlight", "drama"]
+prompt = "a dark empty theatre stage with one single bright circular spotlight on the floor, velvet curtains at the sides"
+seed = 31
+
+[[backdrop]]
+id = "speed-tunnel"
+tags = ["fastest", "speed", "hype"]
+prompt = "a neon speed tunnel with motion streaks rushing toward the viewer, lightning bolts, arcade racing energy"
+seed = 17
+
+[[backdrop]]
+id = "fire-arena"
+tags = ["streak", "roast", "fire", "hype"]
+prompt = "a game show arena engulfed in cartoon flames, flaming torches, glowing embers, hot orange and magenta"
+seed = 41
+
+[[backdrop]]
+id = "rain-cloud"
+tags = ["sad", "last_place", "streak_broken", "funny"]
+prompt = "a gloomy cartoon rain cloud over a tiny empty stage, puddles, a single wilted balloon, comic sadness"
+seed = 9
+
+[[backdrop]]
+id = "night-bedroom"
+tags = ["asleep", "calm", "funny"]
+prompt = "a cozy dark bedroom at night, moonlight through the window, a bed with a big pillow, stars outside, sleepy blue"
+seed = 3
+
+[[backdrop]]
+id = "studio-crowd"
+tags = ["stage", "everyone", "intro", "hype"]
+prompt = "a packed game show studio audience seen from the stage, rows of cartoon silhouettes cheering with glow sticks, neon signs"
+seed = 13
+
+[[backdrop]]
+id = "versus"
+tags = ["tie", "finale_tie", "drama"]
+prompt = "a split versus screen, two halves clashing in the middle with a jagged lightning seam, magenta on the left and blue on the right"
+seed = 29
+
+# ---------- Stickers ----------
+
+[[sticker]]
+id = "trophy"
+tags = ["winner", "prize"]
+prompt = "a giant shiny gold trophy cup with two handles and a star on the front"
+seed = 2
+
+[[sticker]]
+id = "lightning"
+tags = ["fastest", "speed"]
+prompt = "a chunky yellow lightning bolt with a little speed trail"
+seed = 4
+
+[[sticker]]
+id = "tumbleweed"
+tags = ["nobody", "empty", "funny"]
+prompt = "a round brown tumbleweed made of twisted dry twigs"
+seed = 6
+
+[[sticker]]
+id = "broken-chain"
+tags = ["streak_broken", "funny"]
+prompt = "a broken metal chain link snapping in two with little spark bits"
+seed = 8
+
+[[sticker]]
+id = "flame"
+tags = ["streak", "roast", "fire"]
+prompt = "a big cartoon fireball flame with a cheeky grin"
+seed = 10
+
+[[sticker]]
+id = "crown"
+tags = ["winner", "leader", "new_leader", "prize"]
+prompt = "a jeweled gold king's crown, slightly tilted"
+seed = 12
+
+[[sticker]]
+id = "alarm-clock"
+tags = ["asleep", "funny"]
+prompt = "a ringing red twin-bell alarm clock shaking with motion lines"
+seed = 14
+
+[[sticker]]
+id = "participation-ribbon"
+tags = ["last_place", "sad", "funny"]
+prompt = "a sad droopy blue participation ribbon rosette"
+seed = 16
+
+[[sticker]]
+id = "fire-extinguisher"
+tags = ["roast", "funny"]
+prompt = "a red fire extinguisher spraying a white puff"
+seed = 18
+
+[[sticker]]
+id = "microphone"
+tags = ["intro", "stage"]
+prompt = "a sparkly retro game show microphone"
+seed = 20
+
+[[sticker]]
+id = "tissue-box"
+tags = ["sad", "last_place", "funny"]
+prompt = "a tissue box with one tissue sticking out, a single teardrop beside it"
+seed = 22
+
+[[sticker]]
+id = "scales"
+tags = ["tie", "finale_tie"]
+prompt = "golden balance scales perfectly level"
+seed = 24
+
+# ---------- Clips ----------
+# A clip animates one of the backdrops above (`from`), so it keeps the same look. They play muted
+# and loop back and forth, so the motion should be gentle.
+
+[[clip]]
+id = "neon-stage"
+tags = ["stage", "intro", "round", "hype"]
+from = "neon-stage"
+prompt = "the neon arches pulse with light, spotlights sweep slowly left and right, the floor reflections shimmer, static camera"
+seed = 1
+
+[[clip]]
+id = "gold-podium"
+tags = ["stage", "winner", "leader", "hype"]
+from = "gold-podium"
+prompt = "golden confetti drifts down, sparkles twinkle, the spotlights glow brighter, static camera"
+seed = 1
+
+[[clip]]
+id = "fire-arena"
+tags = ["streak", "roast", "fire", "hype"]
+from = "fire-arena"
+prompt = "the cartoon flames flicker and dance, embers float upward, torches flare, static camera"
+seed = 1
+
+[[clip]]
+id = "studio-crowd"
+tags = ["stage", "everyone", "intro", "hype"]
+from = "studio-crowd"
+prompt = "the audience waves glow sticks and bounces, neon signs flicker, static camera"
+seed = 1

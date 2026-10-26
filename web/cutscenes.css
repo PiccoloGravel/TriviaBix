@@ -125,3 +125,12 @@
 @keyframes cs-out-up { to { transform: translate(-50%, -120vh); } }
 @keyframes cs-out-left { to { transform: translate(-150vw, -50%); } }
 @keyframes cs-out-right { to { transform: translate(150vw, -50%); } }
+
+/* ---------- Generated art (art/generate.py) ---------- */
+.cs-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cs-art-pan { animation: cs-pan 9s ease-in-out infinite alternate; }
+@keyframes cs-pan { from { transform: scale(1.04) translate(-1.5%, 0); } to { transform: scale(1.12) translate(1.5%, -1%); } }
+.cs-art-shade { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, rgba(13,6,32,.2), #0d0620 95%); }
+.cs-image-frame { border: 1vh solid #fff8f0; border-radius: 2.5vh; box-shadow: 0 1.5vh 0 rgba(0,0,0,.35); }
+.cs-loop-roll { animation-name: cs-roll; animation-duration: 3.2s; animation-direction: normal; animation-timing-function: linear; animation-iteration-count: 1; animation-fill-mode: forwards; }
+@keyframes cs-roll { 0% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(28vw, -4vh) rotate(270deg); } 50% { transform: translate(56vw, 0) rotate(540deg); } 75% { transform: translate(84vw, -3vh) rotate(810deg); } 100% { transform: translate(118vw, 0) rotate(1080deg); } }

@@ -3,7 +3,17 @@
   "backdrop": {
     "kind": "curtains",
     "open": 500,
-    "enter": "fade"
+    "enter": "fade",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "intro"
+      ]
+    },
+    "shade": 0.3
   },
   "layers": [
     {

@@ -1,0 +1,77 @@
+{
+  "duration": 4200,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#ff3ea5"
+    ],
+    "enter": "iris",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "intro"
+      ]
+    },
+    "shade": 0.25
+  },
+  "layers": [
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "intro"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "🎤"
+      },
+      "x": 22,
+      "y": 56,
+      "size": 30,
+      "at": 600,
+      "in": "rise",
+      "loop": "swing",
+      "rotate": -10
+    },
+    {
+      "type": "bix",
+      "mood": "excited",
+      "x": 54,
+      "y": 52,
+      "size": 36,
+      "at": 900,
+      "in": "drop"
+    },
+    {
+      "type": "text",
+      "text": "LIVE FROM YOUR COUCH",
+      "y": 16,
+      "size": 9,
+      "at": 1300,
+      "in": "slam",
+      "color": "#ffd23f"
+    },
+    {
+      "type": "players",
+      "y": 88,
+      "size": 8,
+      "at": 1800,
+      "stagger": 90
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "whoosh",
+      "at": 0
+    },
+    {
+      "sound": "airhorn",
+      "at": 1300
+    }
+  ]
+}

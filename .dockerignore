@@ -3,3 +3,6 @@ data
 .git
 voices
 tts/__pycache__
+art/library
+art/.cache
+**/__pycache__

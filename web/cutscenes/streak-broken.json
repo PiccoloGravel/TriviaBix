@@ -1,0 +1,77 @@
+{
+  "duration": 3200,
+  "backdrop": {
+    "kind": "dim",
+    "enter": "fade",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "streak_broken"
+      ]
+    },
+    "shade": 0.3
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 40,
+      "y": 58,
+      "size": 26,
+      "at": 100,
+      "in": "pop",
+      "loop": "shake"
+    },
+    {
+      "type": "image",
+      "art": {
+        "kind": "sticker",
+        "tags": [
+          "streak_broken"
+        ]
+      },
+      "fallback": {
+        "type": "emoji",
+        "char": "⛓️"
+      },
+      "x": 70,
+      "y": 50,
+      "size": 26,
+      "at": 500,
+      "in": "spin",
+      "loop": "wobble"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "STREAK OVER",
+      "y": 18,
+      "size": 11,
+      "at": 600,
+      "in": "stamp",
+      "color": "#ff4f6d"
+    },
+    {
+      "type": "bix",
+      "mood": "laugh",
+      "x": 88,
+      "y": 82,
+      "size": 22,
+      "at": 800,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 600
+    },
+    {
+      "sound": "sad_trombone",
+      "at": 900
+    }
+  ]
+}

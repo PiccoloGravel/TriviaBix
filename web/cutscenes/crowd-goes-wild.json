@@ -1,0 +1,51 @@
+{
+  "duration": 3000,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#1fb57a",
+      "#2ee59d"
+    ],
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "everyone"
+      ]
+    },
+    "shade": 0.35
+  },
+  "layers": [
+    {
+      "type": "text",
+      "text": "EVERYBODY GOT IT!",
+      "y": 22,
+      "size": 11,
+      "at": 200,
+      "in": "slam"
+    },
+    {
+      "type": "players",
+      "y": 64,
+      "at": 500,
+      "stagger": 80
+    },
+    {
+      "type": "bix",
+      "mood": "excited",
+      "x": 90,
+      "y": 84,
+      "size": 20,
+      "at": 300,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "airhorn",
+      "at": 200
+    }
+  ]
+}

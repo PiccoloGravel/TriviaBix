@@ -1,0 +1,15 @@
+# For --backend gpu. The stub and offline backends only need Pillow (and ffmpeg for clips).
+# torch comes from the base image (art/Dockerfile); install a CUDA build yourself elsewhere.
+diffusers>=0.35.1
+transformers>=4.56,<5
+accelerate>=1.10
+sentencepiece
+protobuf
+ftfy
+# BiRefNet's model code
+timm
+kornia
+einops
+torchvision
+pillow>=11
+numpy

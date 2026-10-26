@@ -10,6 +10,11 @@ const Cutscenes = {
   current: null,
   sound: true,
 
+  /** Generated art (assets/gen/manifest.json, made by art/generate.py): path -> {kind, tags, rating}. */
+  art: { files: {}, categories: {} },
+  /** Generated files fetched ahead of time, path -> object URL, so a scene never waits on Wi-Fi. */
+  preloaded: {},
+
   /** Loads the manifest and every scene it names, so nothing waits on the network mid-game. */
   async load() {
     try {
@@ -17,6 +22,7 @@ const Cutscenes = {
     } catch {
       return;
     }
+    await this.loadArt();
     const names = new Set(Object.values(this.manifest.cues).flatMap((c) => c.scenes || []));
     await Promise.all([...names].map(async (name) => {
       try {
@@ -25,6 +31,63 @@ const Cutscenes = {
         console.warn(`cutscene ${name} failed to load`);
       }
     }));
+  },
+
+  /** Reads which generated art exists and starts fetching it in the background. Fine if there's none. */
+  async loadArt() {
+    try {
+      const res = await fetch(this.base + "assets/gen/manifest.json");
+      if (!res.ok) return;
+      const m = await res.json();
+      this.art = { files: m.files || {}, categories: m.categories || {} };
+    } catch {
+      return;
+    }
+    this.preload();
+  },
+
+  /** Fetches the art one file at a time, smallest first, so the stickers are ready long before the clips. */
+  async preload() {
+    const paths = Object.keys(this.art.files).sort((a, b) => (this.art.files[a].bytes || 0) - (this.art.files[b].bytes || 0));
+    for (const path of paths) {
+      try {
+        const blob = await (await fetch(this.base + "assets/gen/" + path)).blob();
+        this.preloaded[path] = URL.createObjectURL(blob);
+      } catch { /* it'll load when it plays */ }
+    }
+  },
+
+  /**
+   * Picks a generated file for a scene. `want` is "kind:id" (one file), or {kind, tags, any} where
+   * kind can be a list in order of preference (["clip", "backdrop"]), tags must all match (or any of
+   * them, with `any: true`), and kind "category" finds the card for the current category. Only art at
+   * or below the room's rating is picked. Returns a URL, or null when nothing fits.
+   */
+  pickArt(want, ctx = {}) {
+    if (!want) return null;
+    const files = this.art.files;
+    const allowed = (f) => RATINGS.indexOf(f.rating || "PG") <= RATINGS.indexOf(ctx.rating || "NC-17");
+    const url = (path) => this.preloaded[path] || this.base + "assets/gen/" + path;
+    if (typeof want === "string") {
+      const [kind, id] = want.split(":");
+      const path = Object.keys(files).find((p) => files[p].kind === kind && files[p].id === id);
+      return path && allowed(files[path]) ? url(path) : null;
+    }
+    for (const kind of [].concat(want.kind || [])) {
+      if (kind === "category") {
+        const path = this.art.categories[slug((ctx.vars || {}).category || "")];
+        if (path && files[path] && allowed(files[path])) return url(path);
+        continue;
+      }
+      const tags = [].concat(want.tags || []);
+      const match = Object.keys(files).filter((p) => {
+        const f = files[p];
+        const has = (t) => (f.tags || []).includes(t);
+        return f.kind === kind && allowed(f) && (!tags.length || (want.any ? tags.some(has) : tags.every(has)));
+      });
+      if (match.length) return url(match[Math.floor(Math.random() * match.length)]);
+    }
+    return null;
   },
 
   /** Bix's face for a cue, or null to leave it as it is. */
@@ -64,9 +127,11 @@ const Cutscenes = {
     const timers = [];
     const later = (ms, fn) => timers.push(setTimeout(fn, ms));
 
-    if (scene.backdrop) root.append(backdrop(scene.backdrop));
-    for (const layer of scene.layers || []) {
-      const node = Cutscenes.layers[layer.type] && Cutscenes.layers[layer.type](layer, ctx, fill);
+    if (scene.backdrop) root.append(backdrop(scene.backdrop, ctx));
+    for (let layer of scene.layers || []) {
+      // Generated art that isn't there (not made yet, or above the room's rating) falls back.
+      if (layer.art && !this.pickArt(layer.art, ctx)) layer = layer.fallback ? { ...layer, ...layer.fallback, art: null } : null;
+      const node = layer && Cutscenes.layers[layer.type] && Cutscenes.layers[layer.type](layer, ctx, fill);
       if (node) root.append(place(node, layer, later));
     }
     if (this.sound) for (const s of scene.sounds || []) later(s.at || 0, () => Cutscenes.sfx.play(s));
@@ -93,6 +158,13 @@ const Cutscenes = {
     });
   },
 };
+
+const RATINGS = ["PG", "PG-13", "MA", "NC-17"];
+
+/** Same as slugify() in art/generate.py: "Science and Nature" -> "science-and-nature". */
+function slug(text) {
+  return String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 function div(cls, style) {
   const d = document.createElement("div");
@@ -128,7 +200,12 @@ function fit(t) {
   if (w > max) t.style.fontSize = `${parseFloat(t.style.fontSize) * max / w}vh`;
 }
 
-function backdrop(b) {
+/**
+ * The scene's background. With `art`, a generated picture or looping clip goes on top of the drawn
+ * kind (which shows instead when the art isn't there), slowly drifting if `pan` is set, under a
+ * `shade` (0 to 1) that keeps text readable.
+ */
+function backdrop(b, ctx) {
   const [c0 = "#e63973", c1 = "#2f80ed"] = b.colors || [];
   const d = div(`cs-backdrop cs-bg-${b.kind || "flash"} cs-enter-${b.enter || "wipe"}`, `--c0:${c0};--c1:${c1}`);
   if (b.kind === "curtains") {
@@ -136,7 +213,29 @@ function backdrop(b) {
     d.append(div("cs-curtain l"), div("cs-curtain r"), div("cs-valance"));
   }
   if (b.kind === "sunburst" || b.kind === "spotlight") d.append(div("cs-rays"));
+  const src = b.art && Cutscenes.pickArt(b.art, ctx);
+  if (src) {
+    const art = media(src, `cs-art${b.pan ? " cs-art-pan" : ""}`);
+    const shade = div("cs-art-shade", `opacity:${b.shade ?? 0.25}`);
+    if (b.kind === "curtains") d.querySelector(".cs-curtain").before(art, shade);
+    else d.append(art, shade);
+  }
   return d;
+}
+
+/** An <img>, or a muted looping <video> for .mp4/.webm (or a blob URL the preloader made from one). */
+function media(src, cls) {
+  const isVideo = /\.(mp4|webm)$/i.test(src) || Object.entries(Cutscenes.preloaded).some(([p, u]) => u === src && /\.(mp4|webm)$/i.test(p));
+  const m = document.createElement(isVideo ? "video" : "img");
+  m.className = cls;
+  m.src = src;
+  if (isVideo) {
+    Object.assign(m, { muted: true, loop: true, autoplay: true, playsInline: true });
+    m.play().catch(() => {});
+  } else {
+    m.alt = "";
+  }
+  return m;
 }
 
 /** The kinds of layer a scene can use. Add one here and document it in web/cutscenes/README.md. */
@@ -217,14 +316,17 @@ Cutscenes.layers = {
     return box;
   },
 
-  /** Any picture the browser can show: GIF, WebP, PNG, SVG. Put files in web/cutscenes/assets/. */
-  image(l) {
-    const img = document.createElement("img");
-    img.className = "cs-image";
-    img.src = l.src.startsWith("/") || l.src.includes("://") ? l.src : Cutscenes.base + l.src;
-    img.style.height = `${l.size || 30}vh`;
-    img.alt = "";
-    return img;
+  /**
+   * Any picture the browser can show (GIF, WebP, PNG, SVG) or a looping clip (MP4, WebM). Either a
+   * file in web/cutscenes/assets/ (`src`) or generated art (`art`, see Cutscenes.pickArt).
+   */
+  image(l, ctx) {
+    const src = l.art ? Cutscenes.pickArt(l.art, ctx)
+      : l.src.startsWith("/") || l.src.includes("://") ? l.src : Cutscenes.base + l.src;
+    if (!src) return null;
+    const m = media(src, `cs-image${l.frame ? " cs-image-frame" : ""}`);
+    m.style.height = `${l.size || 30}vh`;
+    return m;
   },
 
   /** A Lottie animation (After Effects export, or a free one from lottiefiles.com). The player loads on first use. */

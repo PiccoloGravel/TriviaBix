@@ -1,0 +1,88 @@
+{
+  "duration": 4600,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": [
+      "#ffb400",
+      "#ff9f1c"
+    ],
+    "enter": "iris",
+    "art": {
+      "kind": [
+        "clip",
+        "backdrop"
+      ],
+      "tags": [
+        "winner"
+      ]
+    },
+    "shade": 0.2
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 38,
+      "y": 58,
+      "size": 30,
+      "at": 300,
+      "in": "zoom",
+      "hat": "👑",
+      "hatAt": 1000
+    },
+    {
+      "type": "image",
+      "art": "sticker:trophy",
+      "x": 72,
+      "y": 58,
+      "size": 40,
+      "at": 1300,
+      "in": "slam",
+      "loop": "bob",
+      "fallback": {
+        "type": "emoji",
+        "char": "🏆"
+      }
+    },
+    {
+      "type": "text",
+      "text": "CHAMPION",
+      "y": 14,
+      "size": 14,
+      "at": 1300,
+      "in": "slam"
+    },
+    {
+      "type": "effect",
+      "kind": "rain",
+      "chars": [
+        "✨",
+        "⭐",
+        "🎉"
+      ],
+      "count": 30,
+      "size": 5,
+      "at": 1300,
+      "spread": 1500
+    },
+    {
+      "type": "bix",
+      "mood": "cool",
+      "x": 90,
+      "y": 84,
+      "size": 20,
+      "at": 900,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "drumroll",
+      "at": 0
+    },
+    {
+      "sound": "tada",
+      "at": 1300
+    }
+  ]
+}

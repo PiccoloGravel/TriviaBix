@@ -19,6 +19,12 @@
     .cues button { text-align: left; display: flex; flex-direction: column; gap: .3vh; font-size: 2.2vh; }
     .cues small { font-weight: 700; opacity: .8; }
     .opts { display: flex; gap: 1vw; align-items: center; flex-wrap: wrap; }
+    .scenes { display: flex; flex-wrap: wrap; gap: 1vh; }
+    .art { display: grid; grid-template-columns: repeat(auto-fill, minmax(22vh, 1fr)); gap: 1.5vh; }
+    .art figure { margin: 0; background: rgba(255,255,255,.06); border-radius: 1.2vh; padding: 1vh; font-size: 1.6vh; }
+    .art img, .art video { width: 100%; height: 14vh; object-fit: contain; display: block; background: repeating-conic-gradient(#2a1f45 0 25%, #1f1636 0 50%) 0 0 / 2vh 2vh; border-radius: .8vh; }
+    .art figcaption { margin-top: .6vh; }
+    .art .tags { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -31,6 +37,8 @@
     <button class="secondary" data-n="6">6</button>
     <button class="secondary" data-n="12">12</button>
     <label><input type="checkbox" id="sound" checked> Sound effects</label>
+    <label>Room rating <select id="rating"><option>PG</option><option>PG-13</option><option>MA</option><option selected>NC-17</option></select></label>
+    <label>Category <select id="category"></select></label>
   </div>
 
   <h2>Bix's moods</h2>
@@ -38,6 +46,13 @@
 
   <h2>Cues</h2>
   <div class="cues" id="cues"></div>
+
+  <h2>Every scene</h2>
+  <div class="scenes" id="scenes"></div>
+
+  <h2>Generated art</h2>
+  <p class="muted" id="art-note"></p>
+  <div class="art" id="art"></div>
 
   <script src="/common.js"></script>
   <script src="/bix.js"></script>
@@ -60,7 +75,8 @@
       return {
         players: cue === "finale_tie" ? ps.slice(0, 2) : ps,
         subject,
-        vars: { host: "Bix", round: 4, total: 10, kind: "Question", category: "Movie Quotes", name: subject.name,
+        rating: $("#rating").value,
+        vars: { host: "Bix", round: 4, total: 10, kind: "Question", category: $("#category").value || "Movies", name: subject.name,
           score: subject.score.toLocaleString(), label: { streak: "4 IN A ROW", winner: "CHAMPION", new_leader: "NEW LEADER" }[cue] || "" },
       };
     }
@@ -100,9 +116,41 @@
       return box;
     }));
 
+    /** Every scene file on its own, so a cue with several can be checked one by one. */
+    function renderScenes() {
+      const cueOf = {};
+      for (const [cue, c] of Object.entries(Cutscenes.manifest.cues)) for (const n of c.scenes || []) cueOf[n] = cueOf[n] || cue;
+      $("#scenes").replaceChildren(...Object.keys(Cutscenes.scenes).sort().map((name) => {
+        const b = TBX.el("button", { class: "secondary" }, name);
+        b.addEventListener("click", (e) => { e.stopPropagation(); Cutscenes.play(name, context(cueOf[name])); });
+        return b;
+      }));
+    }
+
+    /** What art/generate.py has made, with the tags scenes find it by. */
+    function renderArt() {
+      const files = Cutscenes.art.files;
+      const paths = Object.keys(files).sort();
+      $("#art-note").textContent = paths.length
+        ? `${paths.length} files, ${(paths.reduce((n, p) => n + (files[p].bytes || 0), 0) / 1e6).toFixed(1)} MB. Scenes pick these by kind and tag; see web/cutscenes/README.md.`
+        : "None yet. Scenes use their drawn backdrops and emoji until art/generate.py makes some (see art/README.md).";
+      $("#art").replaceChildren(...paths.map((p) => {
+        const f = files[p];
+        const src = Cutscenes.base + "assets/gen/" + p;
+        const media = p.endsWith(".mp4") ? TBX.el("video", { src, muted: "", loop: "", autoplay: "", playsinline: "" }) : TBX.el("img", { src, alt: "" });
+        return TBX.el("figure", { title: f.prompt || "" }, media,
+          TBX.el("figcaption", {}, TBX.el("b", {}, `${f.kind}: ${f.id}`), ` · ${f.rating || "PG"} · ${Math.round((f.bytes || 0) / 1000)} KB`,
+            TBX.el("div", { class: "tags" }, (f.tags || []).join(", "))));
+      }));
+      const cats = [...new Set(["Movies", ...Object.keys(Cutscenes.art.categories)])];
+      $("#category").replaceChildren(...cats.map((c) => TBX.el("option", {}, c)));
+    }
+
     (async () => {
       await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
       renderCues();
+      renderScenes();
+      renderArt();
     })();
   </script>
 </body>

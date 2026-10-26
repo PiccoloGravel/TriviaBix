@@ -5,7 +5,16 @@
     "colors": [
       "#7b5cff",
       "#e63973"
-    ]
+    ],
+    "art": {
+      "kind": [
+        "backdrop"
+      ],
+      "tags": [
+        "leader"
+      ]
+    },
+    "shade": 0.3
   },
   "layers": [
     {

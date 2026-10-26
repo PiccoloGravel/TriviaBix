@@ -3,3 +3,6 @@
 # Reference clips for Bix's voice (see tts/README.md)
 voices/
 __pycache__/
+# Full-size originals from art/generate.py; big, so they live outside git (see art/README.md).
+/art/library
+/web/cutscenes/assets/gen/.needs-gpu
