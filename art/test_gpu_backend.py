@@ -62,6 +62,25 @@ class RecoveryTest(unittest.TestCase):
         b.loaded[1].broken = False
         self.assertEqual(b.image("a", 1, 64, 64), "picture of a")
 
+    def test_a_clip_that_runs_out_of_memory_gets_one_fresh_try(self):
+        class VideoPipe:
+            loads = 0
+
+            def __init__(self):
+                VideoPipe.loads += 1
+
+            def __call__(self, **kw):
+                if VideoPipe.loads == 1:  # the first pipeline runs out decoding, and is broken after
+                    raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 2.60 GiB")
+                return type("Out", (), {"frames": [[kw["image"]] * kw["num_frames"]]})()
+
+        b = self.backend(fits=1)
+        b._load_video = VideoPipe
+        from PIL import Image
+        got = b.video(Image.new("RGB", (64, 64)), "a stage", 1, 5, 24)
+        self.assertEqual(len(got), 5)
+        self.assertEqual(VideoPipe.loads, 2)
+
     def test_a_slow_download_gives_the_host_back(self):
         def trickle(repo, **kw):
             for n in range(100):

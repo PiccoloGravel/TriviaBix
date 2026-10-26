@@ -14,9 +14,14 @@ at a disk that keeps them between runs.
 from __future__ import annotations
 
 import gc
+import logging
 import os
 import threading
 import time
+
+# Lets freed memory be reused for differently sized blocks: the video decoder's big, changing allocations
+# otherwise run out with gigabytes "reserved but unallocated". Read when CUDA starts, so set before.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import numpy as np
 import torch
@@ -121,6 +126,10 @@ class GpuBackend(GpuModels):
     def _load_image(self):
         from diffusers import FluxPipeline
 
+        # CLIP reads only the first 77 tokens of a prompt and says so for every long one; T5 reads all of it
+        # (max_sequence_length), so nothing is lost.
+        for name in ("transformers.tokenization_utils_base", "diffusers.pipelines.flux.pipeline_flux"):
+            logging.getLogger(name).setLevel(logging.ERROR)
         pipe = FluxPipeline.from_pretrained(IMAGE_MODEL, torch_dtype=torch.bfloat16)
         if self.offload:
             # 12B parameters are 24 GB in bf16, more than a 24 GB card has once anything else is loaded.
@@ -244,14 +253,25 @@ class GpuBackend(GpuModels):
         out.putalpha(mask)
         return out
 
-    def video(self, still: Image.Image, prompt: str, seed: int, frames: int, fps: int) -> list[Image.Image]:
+    def _load_video(self):
         from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 
-        def load():
-            vae = AutoencoderKLWan.from_pretrained(VIDEO_MODEL, subfolder="vae", torch_dtype=torch.float32)
-            return self._pipe(WanImageToVideoPipeline.from_pretrained(VIDEO_MODEL, vae=vae, torch_dtype=torch.bfloat16))
+        vae = AutoencoderKLWan.from_pretrained(VIDEO_MODEL, subfolder="vae", torch_dtype=torch.float32)
+        if self.offload:
+            # Decoding a whole clip at once takes more than 20 GB; in tiles it fits a 24 GB card.
+            vae.enable_tiling()
+            vae.enable_slicing()
+        return self._pipe(WanImageToVideoPipeline.from_pretrained(VIDEO_MODEL, vae=vae, torch_dtype=torch.bfloat16))
 
-        pipe = self._use("video", load)
+    def video(self, still: Image.Image, prompt: str, seed: int, frames: int, fps: int) -> list[Image.Image]:
+        try:
+            return self._video(still, prompt, seed, frames, fps)
+        except torch.cuda.OutOfMemoryError:
+            self._drop()  # a fresh pipeline, once
+            return self._video(still, prompt, seed, frames, fps)
+
+    def _video(self, still: Image.Image, prompt: str, seed: int, frames: int, fps: int) -> list[Image.Image]:
+        pipe = self._use("video", self._load_video)
         result = pipe(
             image=still,
             prompt=prompt,
