@@ -1125,6 +1125,22 @@ async fn admin_sees_and_runs_every_room() {
 
     // Run room A from the panel: start, skip, kick, end.
     let act = |code: &str| format!("rooms/{code}");
+    // Preview one of Bix's characters on room A's TV from the Characters page.
+    let (_, cameos) = admin(&addr, &cookie, "cameos", None).await;
+    assert_eq!(cameos["cameos"].as_array().unwrap().len(), 10);
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "cameo", "id": "noir" })),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let s = wait_state(&mut host_a, |s| {
+        s["host"]["voice"][0]["cameo"]["id"] == "noir"
+    })
+    .await;
+    assert!(!s["host"]["text"].as_str().unwrap().contains("[as:"));
     let (status, _) = admin(
         &addr,
         &cookie,
@@ -1134,6 +1150,14 @@ async fn admin_sees_and_runs_every_room() {
     .await;
     assert_eq!(status, 200);
     wait_state(&mut host_a, |s| s["phase"] == "question").await;
+    let (status, _) = admin(
+        &addr,
+        &cookie,
+        &act(&code_a),
+        Some(json!({ "action": "cameo", "id": "noir" })),
+    )
+    .await;
+    assert_eq!(status, 409, "no previews mid-game");
     let (_, list) = admin(&addr, &cookie, "rooms", None).await;
     let a = list["rooms"]
         .as_array()

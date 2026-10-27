@@ -144,7 +144,10 @@
     .host-costume { position: absolute; top: -5vh; left: 50%; transform: translateX(-50%) rotate(-8deg); font-size: 8vh; line-height: 1; z-index: 2; opacity: 0; transition: opacity .2s; }
     .host-bar.cameo .host-costume { opacity: 1; animation: costume-on .45s cubic-bezier(.2,1.6,.4,1); }
     @keyframes costume-on { from { transform: translateX(-50%) translateY(-4vh) rotate(-30deg) scale(.4); opacity: 0; } to { transform: translateX(-50%) rotate(-8deg) scale(1); opacity: 1; } }
-        .host-bar.cameo .host-bubble::before { content: attr(data-cameo); display: block; font-family: "Bungee", sans-serif; font-size: 1.9vh; color: #ff3d7f; margin-bottom: .3vh; }
+    .host-say { position: relative; min-width: 0; }
+    .host-as { display: none; position: absolute; bottom: calc(100% - .6vh); left: 1.2vw; z-index: 1; font-family: "Bungee", sans-serif; font-size: 1.9vh; background: #ff3d7f; color: #fff; padding: .3vh .9vw; border-radius: 999px; white-space: nowrap; transform: rotate(-2deg); }
+    .host-bar.cameo .host-as { display: block; animation: pop-in .35s cubic-bezier(.2,1.6,.4,1); }
+    .host-bar.no-words .host-as { display: none; }
     .host-bar.cameo .host-bubble { background: #fff2c2; }
     @keyframes pop-in { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
@@ -423,7 +426,7 @@
 
   <div class="host-bar quiet" id="host-bar">
     <div class="host-face" id="host-face" data-name="Bix"><div class="host-costume" id="host-costume"></div></div>
-    <div class="host-bubble" id="host-bubble"></div>
+    <div class="host-say"><div class="host-as" id="host-as"></div><div class="host-bubble" id="host-bubble"></div></div>
   </div>
   <div class="callouts" id="callouts"></div>
   <canvas id="confetti"></canvas>

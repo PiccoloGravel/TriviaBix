@@ -132,7 +132,25 @@ impl Script {
             .flatten()
             .map(|(_, text)| text.replace("{host}", &self.host_name))
             .filter(|text| !text.contains('{'))
+            // The admin panel's character previews, too.
+            .chain(triviabix_questions::CAMEOS.iter().map(cameo_sample))
             .collect()
+    }
+
+    /// The script's lines that play `slug`'s character, as (event, rating, text).
+    pub fn cameo_lines(&self, slug: &str) -> Vec<(&'static str, Rating, &str)> {
+        let mut out: Vec<_> = self
+            .lines
+            .iter()
+            .flat_map(|(event, lines)| {
+                lines.iter().filter_map(move |(rating, text)| {
+                    let (cameo, said) = triviabix_questions::split_cameo(text);
+                    (cameo.map(|c| c.slug) == Some(slug)).then_some((*event, *rating, said))
+                })
+            })
+            .collect();
+        out.sort();
+        out
     }
 
     /// Lines with placeholders filled in from `combos`, to be voiced ahead of time. `combos` gives
@@ -221,6 +239,11 @@ fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
         rest = &rest[start + len + 1..];
     }
     Ok(())
+}
+
+/// A character's preview line, tagged so it plays in character.
+pub fn cameo_sample(c: &triviabix_questions::Cameo) -> String {
+    format!("[as:{}] {}", c.slug, c.sample)
 }
 
 /// Whether a line is one of Bix's character cameos.

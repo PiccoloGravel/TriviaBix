@@ -5,6 +5,7 @@
   const PAGES = [
     ["/admin", "🎮 Rooms"],
     ["/admin/questions", "💬 Bix's lines"],
+    ["/admin/characters", "🎭 Characters"],
     ["/admin/duplicates", "🔁 Duplicates"],
     ["/admin/pipeline", "🏭 Pipeline"],
     ["/admin/art", "🖼️ Art"],

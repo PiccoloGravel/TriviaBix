@@ -209,6 +209,21 @@ pub struct Db {
 }
 
 impl Db {
+    /// How many question lines play each character, by slug.
+    pub async fn cameo_line_counts(&self) -> anyhow::Result<HashMap<String, i64>> {
+        let texts: Vec<String> =
+            sqlx::query_scalar("SELECT text FROM question_lines WHERE text LIKE '[as:%'")
+                .fetch_all(&self.pool)
+                .await?;
+        let mut counts = HashMap::new();
+        for text in texts {
+            if let (Some(c), _) = triviabix_questions::split_cameo(&text) {
+                *counts.entry(c.slug.to_string()).or_insert(0) += 1;
+            }
+        }
+        Ok(counts)
+    }
+
     pub async fn connect(url: &str) -> anyhow::Result<Self> {
         let opts = SqliteConnectOptions::from_str(url)
             .with_context(|| format!("bad DATABASE_URL {url}"))?

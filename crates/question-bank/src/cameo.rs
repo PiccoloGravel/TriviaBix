@@ -20,6 +20,8 @@ pub struct Cameo {
     pub rate: f32,
     /// Whether the speed change shifts the pitch too, so slow sounds deep and fast sounds high.
     pub shift: bool,
+    /// A PG line in character, for previewing the character from the admin panel.
+    pub sample: &'static str,
 }
 
 /// Every character, in the order the writer is told about them.
@@ -33,6 +35,7 @@ with a secret, the wrong answers are suspects, and the rain never stops",
         fits: "history, crime, mysteries, true stories, whodunits",
         rate: 0.9,
         shift: true,
+        sample: "The name's Danger. Dirk Danger. Somebody in this room has been getting answers wrong, and I'm gonna find out who. My money's on all of you.",
     },
     Cameo {
         slug: "nature",
@@ -43,6 +46,7 @@ natural habitat, the couch",
         fits: "animals, nature, science, geography, and watching players think",
         rate: 0.92,
         shift: false,
+        sample: "Here, in the soft glow of the television, the trivia player gathers its courage. Watch closely. It is about to guess Paris again.",
     },
     Cameo {
         slug: "trailer",
@@ -53,6 +57,7 @@ pitched as this summer's blockbuster",
         fits: "movies, TV, celebrities, big dramatic moments",
         rate: 0.85,
         shift: true,
+        sample: "In a world... where one living room holds the fate of eight phones... one host dares to ask the questions. TriviaBix. This fall.",
     },
     Cameo {
         slug: "announcer",
@@ -63,6 +68,7 @@ championship, complete with replays and stats nobody asked for",
         fits: "sports, games, records, fast answers, comebacks",
         rate: 1.15,
         shift: false,
+        sample: "Welcome to the big game, folks! The crowd is on its feet, the thumbs are warmed up, and I have never been this excited about a couch in my life!",
     },
     Cameo {
         slug: "auctioneer",
@@ -72,6 +78,7 @@ championship, complete with replays and stats nobody asked for",
         fits: "numbers, dates, prices, measurements, the Closest Guess mini game",
         rate: 1.3,
         shift: false,
+        sample: "Alright folks, what am I bid, do I hear ten, now twenty, will ya gimme thirty, thirty for the trivia champ, going once, going twice, sold to the lady on the couch!",
     },
     Cameo {
         slug: "coach",
@@ -82,6 +89,7 @@ disappointing rookie with potential",
         fits: "sports, fitness, the human body, the Button Mash mini game",
         rate: 1.1,
         shift: false,
+        sample: "Drop and give me twenty answers, rookies! I have seen better reflexes on a sleeping cat! Now hustle! HUSTLE!",
     },
     Cameo {
         slug: "critic",
@@ -92,6 +100,7 @@ gallery pieces, mostly unfavourably",
         fits: "art, literature, fashion, design, culture",
         rate: 0.95,
         shift: false,
+        sample: "Ah, a game show. How quaint. The lighting is garish, the host is derivative, and the contestants are, frankly, a bold choice. Three stars.",
     },
     Cameo {
         slug: "chef",
@@ -102,6 +111,7 @@ wounded by bad ones",
         fits: "food, drink, cooking, restaurants",
         rate: 1.05,
         shift: false,
+        sample: "Bonsoir! Tonight I am serving you questions, very delicious. Answer them correctly, or I will cry into the soup. Again.",
     },
     Cameo {
         slug: "rocker",
@@ -112,6 +122,7 @@ everyone, and can't hear very well anymore",
         fits: "music, the 70s, 80s and 90s, pop culture",
         rate: 0.95,
         shift: true,
+        sample: "What's up, TriviaBix! I toured with every band you've ever heard of. I can't remember any of it, and I can't hear you either. Rock on!",
     },
     Cameo {
         slug: "psychic",
@@ -122,6 +133,7 @@ is confidently wrong about the future",
         fits: "space, the future, superstitions, mythology, the Quick Draw mini game, the final round",
         rate: 0.9,
         shift: true,
+        sample: "Madame Bixtrova sees all. I see a scoreboard. I see a winner. And I see someone in this room blaming their phone. The spirits are never wrong.",
     },
 ];
 
@@ -180,6 +192,7 @@ mod tests {
         for (i, c) in CAMEOS.iter().enumerate() {
             assert!(CAMEOS[..i].iter().all(|o| o.slug != c.slug), "{}", c.slug);
             assert!((0.5..=1.5).contains(&c.rate));
+            assert!(c.sample.len() <= crate::MAX_LINE_CHARS && !c.sample.contains('{'));
         }
         assert!(roster().contains("[as:auctioneer]"));
     }

@@ -1065,6 +1065,19 @@ impl Room {
                 self.broadcast();
             }
             AdminCmd::Lobby => self.abandon_game()?,
+            AdminCmd::Cameo { id } => {
+                let Some(cameo) = triviabix_questions::cameo(&id) else {
+                    return Err("Bix doesn't know that character.".into());
+                };
+                if !matches!(self.phase, Phase::Lobby | Phase::Final) {
+                    return Err(
+                        "Preview characters from the lobby or the final scores, not mid-game."
+                            .into(),
+                    );
+                }
+                self.speak(vec![host::cameo_sample(cameo)], Vec::new(), None);
+                self.broadcast();
+            }
             AdminCmd::Close => {
                 for conn_id in self.conns.keys() {
                     self.send_to(
@@ -2670,11 +2683,9 @@ impl Room {
                     name: self.host.name(),
                     id: l.id,
                     text: &l.text,
-                    voice: if is_host && self.voice.enabled() {
-                        &l.voice
-                    } else {
-                        &[]
-                    },
+                    // Without a TTS service the pieces have no audio, but they still carry
+                    // the cameos for the TV's costumes.
+                    voice: if is_host { &l.voice } else { &[] },
                     callouts: &l.callouts,
                     cue: l.cue,
                 }),

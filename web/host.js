@@ -109,10 +109,8 @@ const voice = {
     let i = 0;
     const next = () => {
       if (!live()) return;
-      if (i >= parts.length) {
-        dress(null);
-        return done && done();
-      }
+      // The last costume stays on with the words until the next line.
+      if (i >= parts.length) return done && done();
       const text = parts[i].text;
       const cameo = parts[i].cameo || null;
       const clip = clips[i++];
@@ -195,7 +193,7 @@ function dress(cameo) {
   const now = cameo ? cameo.id : "";
   if (was === now) return;
   face.dataset.cameo = now;
-  $("#host-bubble").dataset.cameo = cameo ? `${hostName} as ${cameo.name}` : "";
+  $("#host-as").textContent = cameo ? `${hostName} as ${cameo.name}` : "";
   hostBar.classList.toggle("cameo", !!cameo);
   $("#host-costume").textContent = cameo ? cameo.emoji : "";
   if (cameo) {

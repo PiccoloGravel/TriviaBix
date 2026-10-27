@@ -288,7 +288,8 @@ pub struct HostView<'a> {
     /// Changes with every new line, so the TV speaks each one once.
     pub id: u64,
     pub text: &'a str,
-    /// TV only, with a TTS service: the line in pieces, each with where to fetch its audio.
+    /// TV only: the line in pieces, each with where to fetch its audio (with a TTS service) and
+    /// the character Bix plays for it, if any.
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     pub voice: &'a [VoicePart],
     pub callouts: &'a [Callout],
@@ -438,6 +439,10 @@ pub enum AdminCmd {
     SetTeam {
         player_id: u32,
         team: Option<u8>,
+    },
+    /// Bix says a character's preview line on the TV, in the lobby or on the final scores.
+    Cameo {
+        id: String,
     },
     Settings {
         rounds: Option<usize>,
