@@ -820,6 +820,57 @@
       "NC-17": [
         "Not one of you. Damn, that was a mess."
       ]
+    },
+    "mini_stopclock": {
+      "PG": [
+        "Stop the Clock! Tap when you think ten seconds have gone by. The clock disappears after three, so count in your head.",
+        "Mini game: Stop the Clock. Ten seconds, no peeking. Closest tap wins!",
+        "Let's test your inner clock. Tap at exactly ten seconds. One Mississippi, two Mississippi...",
+        "[as:nature] Observe the contestants. Silently counting. Ten seconds is all they need... if their instincts are sharp. Tap when the time is right."
+      ],
+      "PG-13": [
+        "Stop the Clock. Ten seconds. If you need your fingers to count, no judgment. Some judgment."
+      ],
+      "MA": [
+        "Stop the Clock! Ten seconds. Try not to blow it like you blew that last round."
+      ],
+      "NC-17": [
+        "Stop the Clock. Ten seconds, people. Pace yourselves. Don't finish early."
+      ]
+    },
+    "mini_majority": {
+      "PG": [
+        "Majority Rules! There's no right answer, just the popular one. Pick what most people will pick.",
+        "Time for Majority Rules. Follow the crowd for once!",
+        "Majority Rules: go with the herd and you score.",
+        "[as:psychic] I sense... a crowd. Pick the answer the others will pick, and the spirits will reward you."
+      ],
+      "PG-13": [
+        "Majority Rules. It's not about what you like, it's about what they like. Welcome to high school."
+      ],
+      "MA": [
+        "Majority Rules! Read the room. Yes, this room. These weirdos."
+      ],
+      "NC-17": [
+        "Majority Rules. Peer pressure has never paid this well. Damn."
+      ]
+    },
+    "mini_lowball": {
+      "PG": [
+        "Lowball! Pick a number from one to twenty. Lowest number nobody else picked wins.",
+        "Mini game: Lowball. Go low, but not too low, because if someone matches you, you're both out!",
+        "It's Lowball! Outsmart everybody with the lowest lonely number.",
+        "[as:auctioneer] Who'll go low, who'll go lower? Pick a number one to twenty, lowest lonely number wins, going once, going twice!"
+      ],
+      "PG-13": [
+        "Lowball. Everybody's going to pick one, right? Right? Think about it."
+      ],
+      "MA": [
+        "Lowball! Time to find out who's the sneakiest person on this couch."
+      ],
+      "NC-17": [
+        "Lowball. Go low. Lower. Not that low, you'll collide with somebody."
+      ]
     }
   }
 }

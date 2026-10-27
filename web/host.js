@@ -702,14 +702,30 @@ function renderRecap(s, changed) {
 // ---------- Mini games between rounds ----------
 
 /** Art tags for each mini game (see the art catalog). */
-const MINI_TAGS = { mash: "button_mash", closest: "closest_guess", quick_draw: "quick_draw" };
+const MINI_TAGS = {
+  mash: "button_mash", closest: "closest_guess", quick_draw: "quick_draw",
+  stop_clock: "stop_the_clock", majority: "majority_rules", lowball: "lowball",
+};
+/** Games where everyone locks in an answer, kept secret until the results. */
+const MINI_PICKS = ["closest", "majority", "lowball"];
+let miniClock = null;
 
 /** The value a mini game ranks by, as the TV shows it. */
 function miniValue(m, e) {
   if (e.false_start) return "False start!";
-  if (e.value == null && m.step === "results") return m.kind === "closest" ? "No guess" : "No tap";
-  if (e.value == null) return m.kind === "closest" && e.done ? "Locked in" : "";
+  const picks = MINI_PICKS.indexOf(m.kind) >= 0;
+  if (e.value == null && m.step === "results") return picks ? "No pick" : "No tap";
+  if (e.value == null) return e.done ? (picks ? "Locked in" : "Stopped") : "";
   if (m.kind === "mash") return `${e.value} tap${e.value === 1 ? "" : "s"}`;
+  if (m.kind === "stop_clock") {
+    const off = Math.abs(e.value - m.target_ms) / 1000;
+    return `${(e.value / 1000).toFixed(2)}s${off ? ` (off by ${off.toFixed(2)})` : " · perfect!"}`;
+  }
+  if (m.kind === "majority") return m.options[e.value] || "";
+  if (m.kind === "lowball") {
+    const clash = m.entries.filter((x) => x.value === e.value).length > 1;
+    return `${e.value}${clash ? " · clash!" : ""}`;
+  }
   if (m.kind === "quick_draw") return `${(e.value / 1000).toFixed(3)}s`;
   const off = m.answer != null ? Math.abs(e.value - m.answer) : null;
   return `${e.value.toLocaleString()}${off != null ? (off ? ` (off by ${off.toLocaleString()})` : " · spot on!") : ""}`;
@@ -758,11 +774,45 @@ function renderMinigame(s, changed) {
 
   const big = $("#mg-big");
   big.className = "mg-big";
-  if (m.kind === "closest" && m.step !== "rules") {
+  const clockRunning = m.kind === "stop_clock" && m.step === "play";
+  if (!clockRunning && miniClock) { clearInterval(miniClock); miniClock = null; }
+  if ((m.kind === "closest" || m.kind === "majority") && m.step !== "rules") {
     big.classList.add("prompt");
     big.textContent = m.prompt;
   } else big.textContent = "";
-  if (m.step === "rules") big.textContent = { mash: "Get your thumbs ready…", closest: "Phones out…", quick_draw: "Fingers off the screen…" }[m.kind];
+  if (m.step === "rules") {
+    big.textContent = {
+      mash: "Get your thumbs ready…", closest: "Phones out…", quick_draw: "Fingers off the screen…",
+      stop_clock: "Count in your head…", majority: "Think like the crowd…", lowball: "Go low. Not too low…",
+    }[m.kind];
+  } else if (clockRunning) {
+    // The stopwatch runs for 3 seconds on the TV, then players are on their own.
+    big.classList.add("clock");
+    if (stepChanged || !miniClock) {
+      const started = Date.now();
+      clearInterval(miniClock);
+      const tick = () => {
+        const t = Date.now() - started;
+        big.textContent = t < 3000 ? `${(t / 1000).toFixed(1)}s` : "?.?s";
+        big.classList.toggle("hidden-clock", t >= 3000);
+      };
+      tick();
+      miniClock = setInterval(tick, 50);
+    }
+  } else if (m.kind === "lowball" && m.step === "play") {
+    big.textContent = `Pick 1 to ${m.max_pick}`;
+  } else if (m.step === "results" && m.kind === "stop_clock") {
+    big.classList.add("answer");
+    big.textContent = `Target: ${(m.target_ms / 1000).toFixed(2)}s`;
+  } else if (m.step === "results" && m.kind === "majority") {
+    big.classList.remove("prompt");
+    big.classList.add("answer");
+    big.textContent = m.options.map((o, i) => `${o} ${m.entries.filter((e) => e.value === i).length}`).join(" · ");
+  } else if (m.step === "results" && m.kind === "lowball") {
+    big.classList.add("answer");
+    const win = m.entries[0];
+    big.textContent = win && win.points ? `Lowest lonely number: ${win.value}` : "Everybody clashed!";
+  }
   else if (m.kind === "quick_draw" && m.step === "ready") {
     big.classList.add("wait");
     big.textContent = "WAIT…";
@@ -779,11 +829,12 @@ function renderMinigame(s, changed) {
     big.textContent = "";
   }
   if (stepChanged) {
-    if (m.step === "play" && m.kind === "quick_draw") Sfx.play("reveal");
+    if (m.step === "play" && (m.kind === "quick_draw" || m.kind === "stop_clock")) Sfx.play("reveal");
     else if (m.step === "play") Sfx.play("round");
     else if (m.step === "results") Sfx.play("scores");
     // No countdown before GO; that would give it away.
     TBX.runTimer($("#mg-timer"), m.step === "ready" ? null : s.ms_left, s.phase_ms);
+    // (The server sends no clock in Quick Draw's wait or in Stop the Clock, so there's none to show.)
     if (m.step === "play" && s.ms_left) startSecs($("#mg-secs"), s.ms_left);
     else { clearInterval(secsTimer); $("#mg-secs").textContent = ""; }
     if (m.step === "play" && m.kind === "mash") Sfx.bed.play(s.ms_left);
