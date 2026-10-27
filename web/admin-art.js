@@ -224,16 +224,25 @@ function renderMake() {
     ? `${todo.length} of ${data.items.length} pieces aren't made in this theme yet${todo.some((i) => i.status === "stale") ? " (some were changed)" : ""}.`
     : "Every piece is made in this theme.")];
   if (todo.length) kids.push(el("div", { class: "row" }, quoteBox(null)));
+  // Every theme's missing pieces on one rented GPU, so the models download once.
+  const others = data.themes.filter((t) => t.id !== view && t.made < t.total);
+  if (others.length) {
+    kids.push(el("div", {}, `${others.length} other ${others.length === 1 ? "theme is" : "themes are"} missing pieces too. Making them all in one run downloads the models once.`),
+      el("div", { class: "row" }, quoteBox(ALL)));
+  }
   $("#make").replaceChildren(...kids);
 }
 
-/** The price check for the whole theme (only = null) or one piece. */
+/** Stands for every theme in quoteBox and check. */
+const ALL = "*every-theme*";
+
+/** The price check for the whole theme (only = null), every theme (only = ALL) or one piece. */
 function quoteBox(only) {
   const mine = quote && quote.only === only;
   if (checking === (only || "all")) return el("div", { class: "quote" }, "Checking… (this rents nothing)");
   if (!mine) {
     const b = el("button", { class: only ? "small secondary" : "secondary", onclick: () => check(only) },
-      only ? "Check the price to make it" : "Check the price");
+      only === ALL ? "Check the price for every theme" : only ? "Check the price to make it" : "Check the price");
     b.disabled = !!data.busy || !!checking;
     return b;
   }
@@ -265,7 +274,8 @@ async function check(only) {
   quote = null;
   render();
   try {
-    const q = await api("render/preview", "POST", { kind: "art", options: { theme: view, ...(only ? { only } : {}) } });
+    const options = only === ALL ? { theme: "all" } : { theme: view, ...(only ? { only } : {}) };
+    const q = await api("render/preview", "POST", { kind: "art", options });
     quote = { only, q, at: Date.now() };
     // The check made whatever the asset store had into TV files, so the counts may have moved.
     if (q.nothing || q.ok) got(await api(`art?theme=${encodeURIComponent(view)}`));

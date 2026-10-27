@@ -200,7 +200,9 @@ function options(kind) {
     return [el("label", { class: "inline" }, "Make",
       select([["all", "Everything missing"], ["backdrop", "Backdrops"], ["sticker", "Stickers"], ["category", "Category cards"], ["clip", "Clips"]],
         o.kinds, set("kinds"))),
-    el("span", {}, "In the theme on the TV. Themes, category styles and single pieces are on the ", el("a", { href: "/admin/art" }, "Art page"), ".")];
+    el("label", { class: "inline" }, "In",
+      select([["", "The theme on the TV"], ["all", "Every theme, on one GPU"]], o.theme || "", set("theme"))),
+    el("span", {}, "Themes, category styles and single pieces are on the ", el("a", { href: "/admin/art" }, "Art page"), ".")];
   }
   // Every question missing lines, or just the ones an earlier import brought in.
   const batches = pipeline.batches.filter((b) => b.state === "done" && b.in_game > b.with_lines);
