@@ -1,0 +1,22 @@
+{
+  "duration": 3200,
+  "backdrop": {
+    "kind": "stripes",
+    "colors": ["#ff2e88", "#7b5cff"],
+    "enter": "wipe",
+    "art": { "kind": ["clip", "backdrop"], "tags": ["minigame_intro"] },
+    "shade": 0.3
+  },
+  "layers": [
+    { "type": "text", "text": "MINI GAME!", "y": 22, "size": 15, "at": 300, "in": "slam" },
+    { "type": "text", "text": "Phones out, fingers ready", "style": "sub", "y": 36, "size": 5, "at": 900, "in": "rise" },
+    {
+      "type": "image",
+      "art": { "kind": "sticker", "tags": ["minigame_intro"] },
+      "x": 50, "y": 66, "size": 34, "at": 700, "in": "drop", "loop": "wobble",
+      "fallback": { "type": "emoji", "char": "⏱️" }
+    },
+    { "type": "bix", "mood": "excited", "x": 86, "y": 74, "size": 24, "at": 500, "in": "right" }
+  ],
+  "sounds": [{ "sound": "whoosh", "at": 0 }, { "sound": "slam", "at": 300 }, { "sound": "ding", "at": 700 }]
+}

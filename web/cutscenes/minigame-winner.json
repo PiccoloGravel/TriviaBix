@@ -1,0 +1,23 @@
+{
+  "duration": 3800,
+  "backdrop": {
+    "kind": "sunburst",
+    "colors": ["#ffb400", "#ff2e88"],
+    "enter": "iris",
+    "art": { "kind": ["clip", "backdrop"], "tags": ["minigame"] },
+    "shade": 0.35
+  },
+  "layers": [
+    { "type": "player", "who": "subject", "x": 38, "y": 58, "size": 28, "at": 300, "in": "zoom" },
+    {
+      "type": "image",
+      "art": { "kind": "sticker", "tags": ["minigame_winner"] },
+      "x": 70, "y": 58, "size": 34, "at": 1000, "in": "stamp", "loop": "swing",
+      "fallback": { "type": "emoji", "char": "🥇" }
+    },
+    { "type": "text", "text": "MINI GAME CHAMP", "y": 15, "size": 12, "at": 1000, "in": "slam" },
+    { "type": "effect", "kind": "burst", "chars": ["⭐", "✨", "🎉"], "count": 24, "size": 5, "at": 1000 },
+    { "type": "bix", "mood": "laugh", "x": 90, "y": 84, "size": 20, "at": 700, "in": "right" }
+  ],
+  "sounds": [{ "sound": "drumroll", "at": 0 }, { "sound": "tada", "at": 1000 }]
+}

@@ -8,6 +8,9 @@
 #   clip      -> web/cutscenes/assets/gen/clips/<id>.mp4      a backdrop brought to life, looping
 #   category  -> web/cutscenes/assets/gen/category/<slug>.webp one title card per category in
 #                content/categories.toml, made from the template below
+#
+# A piece can belong to a `pack`, one of the [[pack]]s at the bottom: a set made for one part of the
+# show (like a mini game). The admin Art page shows each pack together and can price and make just it.
 
 [style]
 # Part of every stored original's style, next to the model. Bump it when the art direction changes,
@@ -193,3 +196,183 @@ tags = ["stage", "everyone", "intro", "hype"]
 from = "studio-crowd"
 prompt = "the audience waves glow sticks and bounces, neon signs flicker, static camera"
 seed = 1
+
+# ---------- Packs ----------
+# Sets of pieces made for one part of the show. Pieces join one with `pack = "<id>"`. The prompts
+# only say what's in the picture, never how it's drawn, so every theme redraws a pack in its own look.
+
+[[pack]]
+id = "minigames"
+name = "Mini games"
+emoji = "🎮"
+description = "The bonus round between trivia rounds: its arena, the rules card and the winner's medal."
+
+[[pack]]
+id = "button-mash"
+name = "Button Mash"
+emoji = "🔴"
+description = "Tap as fast as you can: giant arcade buttons, power meters and a blur of fingers."
+
+[[pack]]
+id = "closest-guess"
+name = "Closest Guess"
+emoji = "🎯"
+description = "Nearest number wins: a carnival guessing booth, a jellybean jar and a bullseye."
+
+[[pack]]
+id = "quick-draw"
+name = "Quick Draw"
+emoji = "🤠"
+description = "Fastest to tap on GO: a high-noon showdown with hats, badges and water pistols."
+
+# Mini games (shared by all three)
+
+[[backdrop]]
+id = "minigame-arena"
+pack = "minigames"
+tags = ["minigame", "minigame_intro", "stage", "hype"]
+prompt = "a bonus round arena, a round raised platform ringed with chasing light bulbs, a giant stopwatch on the back wall, confetti cannons on both sides"
+seed = 51
+
+[[clip]]
+id = "minigame-arena"
+pack = "minigames"
+tags = ["minigame", "minigame_intro", "stage", "hype"]
+from = "minigame-arena"
+prompt = "the ring of light bulbs chases around the platform, the stopwatch hand ticks, the confetti cannons puff gently, static camera"
+seed = 1
+
+[[sticker]]
+id = "stopwatch"
+pack = "minigames"
+tags = ["minigame", "minigame_intro", "speed"]
+prompt = "a chunky silver stopwatch with a big start button on top, little ticking motion lines"
+seed = 52
+
+[[sticker]]
+id = "gold-medal"
+pack = "minigames"
+tags = ["minigame_winner", "winner", "prize"]
+prompt = "a shiny gold medal with a star in the middle, hanging from a striped ribbon"
+seed = 54
+
+[[sticker]]
+id = "bonus-ticket"
+pack = "minigames"
+tags = ["minigame", "prize"]
+prompt = "a golden carnival prize ticket with scalloped edges and a big star punched in it"
+seed = 56
+
+# Button Mash
+
+[[backdrop]]
+id = "button-mash-arena"
+pack = "button-mash"
+tags = ["button_mash", "minigame", "hype"]
+prompt = "a row of giant glossy red arcade buttons along the bottom edge of a stage, tall glowing power meter tubes standing at the left and right sides, sparks and speed lines"
+seed = 61
+
+[[clip]]
+id = "button-mash-arena"
+pack = "button-mash"
+tags = ["button_mash", "minigame", "hype"]
+from = "button-mash-arena"
+prompt = "the red buttons bounce up and down as if pressed very fast, the power meters fill up and drain, little sparks fly, static camera"
+seed = 1
+
+[[sticker]]
+id = "big-red-button"
+pack = "button-mash"
+tags = ["button_mash", "minigame"]
+prompt = "a big glossy red arcade push button on a chunky black base, a shine on top"
+seed = 62
+
+[[sticker]]
+id = "mashing-hand"
+pack = "button-mash"
+tags = ["button_mash", "speed", "funny"]
+prompt = "a cartoon white-gloved hand slamming down with blurred speed lines and little impact stars"
+seed = 64
+
+[[sticker]]
+id = "power-meter"
+pack = "button-mash"
+tags = ["button_mash", "hype"]
+prompt = "a round power gauge with its needle slammed all the way into the red, steam puffing out of the sides"
+seed = 66
+
+# Closest Guess
+
+[[backdrop]]
+id = "closest-guess-booth"
+pack = "closest-guess"
+tags = ["closest_guess", "minigame"]
+prompt = "a carnival guessing booth at night, a giant jar of jellybeans on the left, a huge weighing scale on the right, a bullseye target painted on the back wall, strings of fairground lights"
+seed = 71
+
+[[clip]]
+id = "closest-guess-booth"
+pack = "closest-guess"
+tags = ["closest_guess", "minigame"]
+from = "closest-guess-booth"
+prompt = "the fairground lights twinkle, the scale's pointer wobbles back and forth, the jellybeans glint, static camera"
+seed = 1
+
+[[sticker]]
+id = "bullseye-dart"
+pack = "closest-guess"
+tags = ["closest_guess", "minigame_winner", "winner"]
+prompt = "a red and white bullseye target with one dart stuck dead in the center"
+seed = 72
+
+[[sticker]]
+id = "jellybean-jar"
+pack = "closest-guess"
+tags = ["closest_guess", "minigame"]
+prompt = "a big glass jar packed to the lid with colourful jellybeans"
+seed = 74
+
+[[sticker]]
+id = "tape-measure"
+pack = "closest-guess"
+tags = ["closest_guess", "funny"]
+prompt = "a yellow tape measure with its tape pulled out in a loopy curl"
+seed = 76
+
+# Quick Draw
+
+[[backdrop]]
+id = "quick-draw-showdown"
+pack = "quick-draw"
+tags = ["quick_draw", "minigame", "drama"]
+prompt = "a dusty wild west main street at high noon, wooden saloon fronts on both sides, a long empty road down the middle, a blazing sun overhead"
+seed = 81
+
+[[clip]]
+id = "quick-draw-showdown"
+pack = "quick-draw"
+tags = ["quick_draw", "minigame", "drama"]
+from = "quick-draw-showdown"
+prompt = "dust blows slowly across the street, the saloon doors swing, the heat shimmers above the road, static camera"
+seed = 1
+
+[[sticker]]
+id = "cowboy-hat"
+pack = "quick-draw"
+tags = ["quick_draw", "minigame"]
+prompt = "a tan cowboy hat with a bright red band, tilted at a jaunty angle"
+seed = 82
+
+[[sticker]]
+id = "sheriff-badge"
+pack = "quick-draw"
+tags = ["quick_draw", "minigame_winner", "winner", "prize"]
+prompt = "a shiny gold six-pointed sheriff star badge with round tips"
+seed = 84
+
+[[sticker]]
+id = "water-pistol"
+pack = "quick-draw"
+tags = ["quick_draw", "funny"]
+prompt = "a bright orange toy water pistol squirting a splash of water"
+seed = 86

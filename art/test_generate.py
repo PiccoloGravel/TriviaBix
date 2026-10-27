@@ -270,6 +270,33 @@ class Pipeline(unittest.TestCase):
         jobs = generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml")
         self.assertEqual([j.key for j in generate.plan(jobs, self.out, "stub")], ["sticker:trophy"])
 
+    def test_a_pack_is_planned_and_listed_on_its_own(self):
+        cat = CATALOG.replace('id = "trophy"', 'id = "trophy"\npack = "show"').replace(
+            '[[clip]]\nid = "stage"', '[[clip]]\nid = "stage"\npack = "show"', 1)
+        cat += '[[pack]]\nid = "show"\nname = "The show"\n'
+        (self.tmp / "catalog.toml").write_text(cat)
+        jobs = generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml")
+        self.assertEqual({j.key for j in generate.plan(jobs, self.out, "stub", only={"pack:show"})},
+                         {"sticker:trophy", "clip:stage"})
+        self.assertEqual(self.gen("--only", "pack:show"), 0)
+        listing = generate.listing(self.tmp / "catalog.toml", self.tmp / "categories.toml", {}, "bix",
+                                   self.out, Library(self.lib), "stub")
+        self.assertEqual([(p["id"], p["made"], p["total"]) for p in listing["packs"]], [("show", 2, 2)])
+        self.assertEqual(next(i for i in listing["items"] if i["key"] == "sticker:trophy")["pack"], "show")
+        (self.tmp / "catalog.toml").write_text(cat.replace('pack = "show"', 'pack = "nope"', 1))
+        with self.assertRaises(SystemExit):
+            generate.load_jobs(self.tmp / "catalog.toml", self.tmp / "categories.toml")
+
+    def test_the_real_catalogs_packs_hold_pieces_in_every_theme(self):
+        packs = {p["id"] for p in generate.load_packs()}
+        self.assertTrue(packs)
+        for theme in generate.load_themes():
+            jobs = generate.load_jobs(theme=theme)
+            self.assertEqual({j.pack for j in jobs if j.pack}, packs, theme)
+            for j in jobs:
+                if j.pack and j.kind != "clip":
+                    self.assertIn(j.body, j.prompt, f"{theme} keeps what {j.key} shows")
+
     def test_retagging_never_rerenders(self):
         self.gen()
         (self.tmp / "catalog.toml").write_text(CATALOG.replace('tags = ["winner"]', 'tags = ["winner", "prize"]'))

@@ -72,6 +72,7 @@ class Job:
     version: str = "v1"  # the catalog's art direction ([style] version), or the theme's
     body: str = ""  # the entry's own prompt, before the theme's style goes around it
     custom: bool = False  # added on the admin Art page, not in catalog.toml
+    pack: str = ""  # the catalog [[pack]] it was made for, like a mini game's set
 
     @property
     def key(self) -> str:
@@ -121,6 +122,15 @@ def theme_out(root: Path, theme: str) -> Path:
     """Where a theme's TV files go: the default theme in the art folder itself (as before themes), the
     others each in their own themes/<id> beside it."""
     return Path(root) if theme == DEFAULT_THEME else Path(root) / "themes" / theme
+
+
+def load_packs(catalog: Path = CATALOG) -> list[dict]:
+    """The catalog's [[pack]]s, in order: sets of pieces made for one part of the show."""
+    packs = tomllib.loads(catalog.read_text()).get("pack", [])
+    for p in packs:
+        if not ID_RE.match(str(p.get("id", ""))):
+            raise SystemExit(f"pack {p.get('id')!r}: ids are lower-case letters, digits and dashes")
+    return packs
 
 
 def load_jobs(catalog: Path = CATALOG, categories: Path = CATEGORIES, studio: dict | None = None,
@@ -186,12 +196,16 @@ def load_jobs(catalog: Path = CATALOG, categories: Path = CATEGORIES, studio: di
                 # Its own tags are how scenes find it; the admin's are added to them.
                 raw[key]["tags"] = list(dict.fromkeys(["category", f"category:{e['id']}", *raw[key]["tags"]]))
 
+    pack_ids = {p["id"] for p in load_packs(catalog)}
+
     def meta(entry: dict) -> dict:
         rating = entry.get("rating", "PG")
         if rating not in RATINGS:
             raise SystemExit(f"{entry.get('id')}: rating must be one of {', '.join(RATINGS)}")
+        if entry.get("pack") and entry["pack"] not in pack_ids:
+            raise SystemExit(f"{entry.get('id')}: there is no [[pack]] called {entry['pack']!r}")
         return {"tags": list(entry.get("tags", [])), "rating": rating, "version": style.get("version", "v1"),
-                "body": entry["prompt"], "custom": bool(entry.get("custom"))}
+                "body": entry["prompt"], "custom": bool(entry.get("custom")), "pack": entry.get("pack", "")}
 
     jobs: list[Job] = []
     backdrops = {}
@@ -260,7 +274,7 @@ def plan(jobs: list[Job], out: Path, backend_id: str, force: bool = False, only:
     files = read_manifest(out).get("files", {})
     todo = []
     for j in jobs:
-        if only is not None and j.key not in only and j.id not in only:
+        if only is not None and j.key not in only and j.id not in only and f"pack:{j.pack}" not in only:
             continue
         have = files.get(j.path)
         fresh = have and have.get("hash") == job_hash(j, backend_id, by_key) and (out / j.path).exists()
@@ -666,12 +680,15 @@ def listing(catalog: Path, categories: Path, studio: dict, theme: str, root: Pat
         pic = by_key[f"backdrop:{j.source}"] if j.source else j
         items.append({"key": j.key, "kind": j.kind, "id": j.id, "body": j.body, "prompt": j.prompt, "seed": j.seed,
                       "tags": j.tags, "rating": j.rating, "from": j.source, "custom": j.custom, "status": st[j.key],
+                      "pack": j.pack,
                       "file": prefix + j.path if j.path in files else None,
                       "takes": [] if j.source else stored.get(pic.key, [])})
     cats = tomllib.loads(categories.read_text()).get("category", []) if categories.exists() else []
     t = themes[theme]
     cat_styles = {**(studio.get("category_styles") or {}), **(t.get("category_styles") or {})}
-    return {"theme": theme, "themes": out, "items": items,
+    packs = [{**p, "made": sum(st[j.key] == "made" for j in jobs if j.pack == p["id"]),
+              "total": sum(j.pack == p["id"] for j in jobs)} for p in load_packs(catalog)]
+    return {"theme": theme, "themes": out, "items": items, "packs": packs,
             "categories": [{"slug": c["slug"], "name": c["name"], "emoji": c.get("emoji", ""),
                             "style": cat_styles.get(c["slug"], ""), "theme_style": bool((t.get("category_styles") or {}).get(c["slug"]))}
                            for c in cats],
@@ -690,7 +707,7 @@ def main(argv: list[str] | None = None) -> int:
                          "else art/library); nothing in it is shipped to the TV")
     ap.add_argument("--catalog", type=Path, default=CATALOG)
     ap.add_argument("--categories", type=Path, default=CATEGORIES)
-    ap.add_argument("--only", help="comma-separated ids or kind:id (e.g. trophy,clip:neon-stage)")
+    ap.add_argument("--only", help="comma-separated ids, kind:id or pack:id (e.g. trophy,clip:neon-stage,pack:quick-draw)")
     ap.add_argument("--kinds", help=f"comma-separated subset of {','.join(KINDS)}")
     ap.add_argument("--force", action="store_true", help="make them even if nothing changed")
     ap.add_argument("--plan", action="store_true", help="list what would be made, then stop")
