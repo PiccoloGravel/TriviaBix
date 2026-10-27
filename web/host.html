@@ -140,6 +140,12 @@
     .host-bar.react .host-face { animation: pop-in .4s cubic-bezier(.2,1.6,.4,1); }
     .host-bubble { background: #fff8f0; color: #1a0b3d; font-size: 3vh; line-height: 1.3; padding: 1.4vh 1.6vw; border-radius: 2.5vh 2.5vh 2.5vh .5vh; max-height: 12vh; overflow: hidden; box-shadow: 0 .8vh 0 rgba(0,0,0,.35); }
     .host-bubble.fresh { animation: pop-in .35s cubic-bezier(.2,1.6,.4,1); }
+    /* A character cameo: Bix wears the character's emoji as a costume and his name tag says who he's playing. */
+    .host-costume { position: absolute; top: -5vh; left: 50%; transform: translateX(-50%) rotate(-8deg); font-size: 8vh; line-height: 1; z-index: 2; opacity: 0; transition: opacity .2s; }
+    .host-bar.cameo .host-costume { opacity: 1; animation: costume-on .45s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes costume-on { from { transform: translateX(-50%) translateY(-4vh) rotate(-30deg) scale(.4); opacity: 0; } to { transform: translateX(-50%) rotate(-8deg) scale(1); opacity: 1; } }
+        .host-bar.cameo .host-bubble::before { content: attr(data-cameo); display: block; font-family: "Bungee", sans-serif; font-size: 1.9vh; color: #ff3d7f; margin-bottom: .3vh; }
+    .host-bar.cameo .host-bubble { background: #fff2c2; }
     @keyframes pop-in { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     /* Callouts: stamps and banners that pop with the host's reactions. */
@@ -416,7 +422,7 @@
   </section>
 
   <div class="host-bar quiet" id="host-bar">
-    <div class="host-face" id="host-face" data-name="Bix"></div>
+    <div class="host-face" id="host-face" data-name="Bix"><div class="host-costume" id="host-costume"></div></div>
     <div class="host-bubble" id="host-bubble"></div>
   </div>
   <div class="callouts" id="callouts"></div>

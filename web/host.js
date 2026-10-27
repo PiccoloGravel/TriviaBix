@@ -72,14 +72,15 @@ const voice = {
   talking(on) {
     hostBar.classList.toggle("talking", on);
   },
-  say(text) {
+  say(text, cameo) {
     text = text && plain(text);
     if (!this.on || !text || !("speechSynthesis" in window)) return;
     if (!this.chosen) this.choose();
     const u = new SpeechSynthesisUtterance(text);
     if (this.chosen) u.voice = this.chosen;
-    u.rate = 1.05 * this.speed;
-    u.pitch = 1.1;
+    const rate = cameo ? cameo.rate : 1;
+    u.rate = 1.05 * this.speed * rate;
+    u.pitch = 1.1 * (cameo && cameo.shift ? rate : 1);
     u.onstart = () => { this.queue++; this.talking(true); };
     u.onend = u.onerror = () => { if (--this.queue <= 0) { this.queue = 0; this.talking(false); } };
     speechSynthesis.speak(u);
@@ -108,34 +109,40 @@ const voice = {
     let i = 0;
     const next = () => {
       if (!live()) return;
-      if (i >= parts.length) return done && done();
+      if (i >= parts.length) {
+        dress(null);
+        return done && done();
+      }
       const text = parts[i].text;
+      const cameo = parts[i].cameo || null;
       const clip = clips[i++];
-      if (!clip) return this.browser(text, next);
+      dress(cameo);
+      if (!clip) return this.browser(text, next, cameo);
       const late = new Promise((resolve) => setTimeout(() => resolve(false), AUDIO_WAIT_MS));
       Promise.race([clip.ready, late]).then((ok) => {
         if (!live()) return;
         if (!ok) {
           clip.audio.src = "";
-          return this.browser(text, next);
+          return this.browser(text, next, cameo);
         }
         const a = clip.audio;
-        a.preservesPitch = true;
-        a.playbackRate = this.speed;
+        // A character cameo plays at its own speed; some let the pitch move with it.
+        a.preservesPitch = !(cameo && cameo.shift);
+        a.playbackRate = this.speed * (cameo ? cameo.rate : 1);
         this.playing = a;
         let finished = false;
         const end = () => { if (!finished) { finished = true; this.talking(false); next(); } };
         a.onended = end;
         a.onerror = end;
         this.talking(true);
-        a.play().catch(() => { this.talking(false); finished = true; this.browser(text, next); });
+        a.play().catch(() => { this.talking(false); finished = true; this.browser(text, next, cameo); });
       });
     };
     next();
   },
   /** Reads `text` with the browser's voice, then calls `next`, even on TVs that never say it's done. */
-  browser(text, next) {
-    const u = this.say(text);
+  browser(text, next, cameo) {
+    const u = this.say(text, cameo);
     let called = false;
     const go = () => { if (!called) { called = true; next(); } };
     if (!u) return setTimeout(go, 300);
@@ -165,6 +172,7 @@ const voice = {
     }
     this.queue = 0;
     this.talking(false);
+    dress(null);
   },
 };
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", () => voice.choose());
@@ -174,6 +182,28 @@ const bixFace = Bix.create("happy");
 $("#host-face").append(bixFace);
 let spokenId = null;
 let typeTimer = null;
+let hostName = "Bix";
+
+/**
+ * Puts Bix in a character's costume for a character cameo (`{id, name, emoji}` from the server),
+ * or back in his own clothes with `null`.
+ */
+function dress(cameo) {
+  const face = $("#host-face");
+  if (!face) return;
+  const was = face.dataset.cameo || "";
+  const now = cameo ? cameo.id : "";
+  if (was === now) return;
+  face.dataset.cameo = now;
+  $("#host-bubble").dataset.cameo = cameo ? `${hostName} as ${cameo.name}` : "";
+  hostBar.classList.toggle("cameo", !!cameo);
+  $("#host-costume").textContent = cameo ? cameo.emoji : "";
+  if (cameo) {
+    hostBar.classList.remove("react");
+    void hostBar.offsetWidth;
+    hostBar.classList.add("react");
+  }
+}
 
 /** Shows or hides Bix and his speech bubble, as set in the admin panel (Settings → Game show). */
 function hostDisplay(s) {
@@ -193,6 +223,7 @@ function hostSays(s, extra) {
   }
   if (h.id === spokenId) return;
   spokenId = h.id;
+  hostName = h.name;
   $("#host-face").dataset.name = h.name;
   hostBar.classList.remove("quiet");
   const bubble = $("#host-bubble");

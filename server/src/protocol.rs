@@ -302,6 +302,32 @@ pub struct HostView<'a> {
 pub struct VoicePart {
     pub text: String,
     pub audio: Option<String>,
+    /// The character Bix plays for this piece, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cameo: Option<CameoView>,
+}
+
+/// A character Bix breaks into for one piece of a line: the TV dresses him up and plays the
+/// audio at `rate`, shifting the pitch with it if `shift`.
+#[derive(Debug, Serialize, Clone)]
+pub struct CameoView {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub emoji: &'static str,
+    pub rate: f32,
+    pub shift: bool,
+}
+
+impl From<&'static triviabix_questions::Cameo> for CameoView {
+    fn from(c: &'static triviabix_questions::Cameo) -> Self {
+        CameoView {
+            id: c.slug,
+            name: c.name,
+            emoji: c.emoji,
+            rate: c.rate,
+            shift: c.shift,
+        }
+    }
 }
 
 /// A graphic that pops up on the TV with the host's line: a streak flame, a roast stamp, a crown.

@@ -2098,6 +2098,7 @@ impl Room {
     }
 
     fn line(&mut self, event: &'static str, vars: &[(&str, &str)]) -> String {
+        self.host.cameos = host::Cameos::parse(self.app.get("CAMEOS").as_deref());
         let voice = &self.voice;
         self.host
             .say_voiced(event, self.settings.max_rating, vars, |t| voice.is_ready(t))
@@ -2107,16 +2108,26 @@ impl Room {
     /// play a cutscene and pick Bix's face for it.
     fn speak(&mut self, parts: Vec<String>, callouts: Vec<Callout>, cue: Option<&'static str>) {
         self.host_seq += 1;
-        let voice = parts
+        let voice: Vec<VoicePart> = parts
             .iter()
-            .map(|text| VoicePart {
-                audio: self.voice.url(text),
-                text: text.clone(),
+            .map(|text| {
+                // A character cameo's tag becomes the costume; the words are the same as ever.
+                let (cameo, said) = triviabix_questions::split_cameo(text);
+                VoicePart {
+                    audio: self.voice.url(said),
+                    text: said.to_string(),
+                    cameo: cameo.map(CameoView::from),
+                }
             })
             .collect();
+        let text = voice
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         self.host_line = (!parts.is_empty()).then(|| HostLine {
             id: self.host_seq,
-            text: parts.join(" "),
+            text,
             voice,
             callouts,
             cue,

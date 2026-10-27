@@ -227,6 +227,14 @@ pub fn validate_line(line: &ScriptLine) -> Vec<String> {
             line.slot.as_str()
         ));
     }
+    if let Some(slug) = crate::cameo_tag(text) {
+        if crate::cameo(slug).is_none() {
+            out.push(format!(
+                "{} line plays an unknown character [as:{slug}]",
+                line.slot.as_str()
+            ));
+        }
+    }
     let mut rest = text;
     while let Some(start) = rest.find('{') {
         let end = rest[start..].find('}').map(|e| start + e);

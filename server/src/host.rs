@@ -100,11 +100,16 @@ impl Script {
                 };
                 for text in texts {
                     check_placeholders(text, vars).with_context(|| format!("{event}: {text:?}"))?;
+                    if let Some(slug) = triviabix_questions::cameo_tag(text) {
+                        if triviabix_questions::cameo(slug).is_none() {
+                            bail!("{event}: unknown character [as:{slug}] in {text:?}");
+                        }
+                    }
                     out.push((rating, text.clone()));
                 }
             }
-            if !out.iter().any(|(r, _)| *r == Rating::Pg) {
-                bail!("{event}: needs at least one PG line");
+            if !out.iter().any(|(r, t)| *r == Rating::Pg && !is_cameo(t)) {
+                bail!("{event}: needs at least one PG line out of character");
             }
             lines.insert(key, out);
         }
@@ -218,12 +223,47 @@ fn check_placeholders(text: &str, vars: &[&str]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Whether a line is one of Bix's character cameos.
+fn is_cameo(text: &str) -> bool {
+    triviabix_questions::split_cameo(text).0.is_some()
+}
+
+/// How often Bix plays his characters (Settings → Game show → Character cameos).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Cameos {
+    /// Character lines are picked four times as often as they'd otherwise be.
+    Often,
+    #[default]
+    Sometimes,
+    /// Plain lines only, unless there are no others; then the line is said as plain Bix.
+    Off,
+}
+
+impl Cameos {
+    pub fn parse(value: Option<&str>) -> Self {
+        match value {
+            Some("often") => Cameos::Often,
+            Some("off") => Cameos::Off,
+            _ => Cameos::Sometimes,
+        }
+    }
+
+    fn weight(self, text: &str) -> u32 {
+        match (self, is_cameo(text)) {
+            (Cameos::Often, true) => 4,
+            _ => 1,
+        }
+    }
+}
+
 /// A room's host. Remembers which lines it has used for each event and works through all of
 /// them before repeating any, so a long night doesn't get stale.
 pub struct Host {
     script: std::sync::Arc<Script>,
     /// Event -> lines said since the event last ran out of fresh material.
     used: HashMap<&'static str, Vec<usize>>,
+    /// How often he plays a character; the room sets it from Settings before he speaks.
+    pub cameos: Cameos,
 }
 
 impl Host {
@@ -231,6 +271,7 @@ impl Host {
         Host {
             script,
             used: HashMap::new(),
+            cameos: Cameos::default(),
         }
     }
 
@@ -255,15 +296,18 @@ impl Host {
         voiced: impl Fn(&str) -> bool,
     ) -> String {
         let lines = &self.script.lines[event];
+        let cameos = self.cameos;
+        let name = &self.script.host_name;
         let render = |i: usize| {
-            let mut text = lines[i].1.replace("{host}", &self.script.host_name);
+            let mut text = host_text(&lines[i].1, name, cameos);
             for (k, v) in vars {
                 text = text.replace(&format!("{{{k}}}"), v);
             }
             text
         };
+        let allowed = allowed(lines, rating, cameos);
         let ready: Vec<usize> = (0..lines.len())
-            .filter(|&i| lines[i].0 <= rating && voiced(&render(i)))
+            .filter(|&i| allowed(i) && voiced(&render(i)))
             .collect();
         let used = self.used.entry(event).or_default();
         if !ready.is_empty() {
@@ -283,18 +327,18 @@ impl Host {
             } else {
                 ready
             };
-            let pick = weighted(lines, &pool).expect("pool isn't empty");
+            let pick = weighted(lines, &pool, cameos).expect("pool isn't empty");
             used.push(pick);
             return render(pick);
         }
-        let pick = match pick_line(lines, rating, used) {
+        let pick = match pick_line(lines, rating, cameos, used) {
             Some(pick) => pick,
             None => {
                 // Everything's been said: start over, but not with the line just used.
                 let last = used.pop();
                 used.clear();
                 used.extend(last);
-                pick_line(lines, rating, used)
+                pick_line(lines, rating, cameos, used)
                     .or(last)
                     .expect("every event has a PG line")
             }
@@ -308,23 +352,51 @@ impl Host {
     /// One of a question's own lines for a room rated `rating`, or `None` if it has none, in
     /// which case the host sticks to his generic material.
     pub fn say_own(&self, lines: &[(Rating, String)], rating: Rating) -> Option<String> {
-        let pick = pick_line(lines, rating, &[])?;
-        Some(lines[pick].1.replace("{host}", &self.script.host_name))
+        let pick = pick_line(lines, rating, self.cameos, &[])?;
+        Some(host_text(
+            &lines[pick].1,
+            &self.script.host_name,
+            self.cameos,
+        ))
     }
+}
+
+/// A script line with the host's name filled in, and out of character with cameos off.
+fn host_text(line: &str, host: &str, cameos: Cameos) -> String {
+    let line = match cameos {
+        Cameos::Off => triviabix_questions::split_cameo(line).1,
+        _ => line,
+    };
+    line.replace("{host}", host)
+}
+
+/// Which of `lines` a room rated `rating` may hear: with cameos off, only the plain ones, if
+/// there are any.
+fn allowed(lines: &[(Rating, String)], rating: Rating, cameos: Cameos) -> impl Fn(usize) -> bool {
+    let plain_only =
+        cameos == Cameos::Off && lines.iter().any(|(r, t)| *r <= rating && !is_cameo(t));
+    move |i| lines[i].0 <= rating && !(plain_only && is_cameo(&lines[i].1))
 }
 
 /// Picks a line rated at most `rating` that isn't in `skip`, or `None` if there's none left.
 /// Spicier tiers are weighted heavier (1, 3, 9, 27).
-fn pick_line(lines: &[(Rating, String)], rating: Rating, skip: &[usize]) -> Option<usize> {
+fn pick_line(
+    lines: &[(Rating, String)],
+    rating: Rating,
+    cameos: Cameos,
+    skip: &[usize],
+) -> Option<usize> {
+    let allowed = allowed(lines, rating, cameos);
     let pool: Vec<usize> = (0..lines.len())
-        .filter(|&i| lines[i].0 <= rating && !skip.contains(&i))
+        .filter(|&i| allowed(i) && !skip.contains(&i))
         .collect();
-    weighted(lines, &pool)
+    weighted(lines, &pool, cameos)
 }
 
-/// One of `pool`, spicier lines weighted heavier (1, 3, 9, 27).
-fn weighted(lines: &[(Rating, String)], pool: &[usize]) -> Option<usize> {
-    let weight = |i: usize| 3u32.pow(lines[i].0 as u32);
+/// One of `pool`, spicier lines weighted heavier (1, 3, 9, 27), and characters heavier still when
+/// cameos are often.
+fn weighted(lines: &[(Rating, String)], pool: &[usize], cameos: Cameos) -> Option<usize> {
+    let weight = |i: usize| 3u32.pow(lines[i].0 as u32) * cameos.weight(&lines[i].1);
     let total: u32 = pool.iter().map(|&i| weight(i)).sum();
     if total == 0 {
         return None;
@@ -475,6 +547,49 @@ mod tests {
             .filter(|_| host.say_own(&lines, Rating::Ma).as_deref() == Some("Spicy."))
             .count();
         assert!(spicy > 100, "{spicy}/200");
+    }
+
+    #[test]
+    fn cameos_follow_the_setting() {
+        let mut host = Host::new(std::sync::Arc::new(Script::builtin()));
+        let lines = vec![
+            (Rating::Pg, "Plain.".to_string()),
+            (Rating::Pg, "[as:noir] The dame lied.".to_string()),
+        ];
+        let noir = |host: &Host| {
+            (0..400)
+                .filter(|_| {
+                    host.say_own(&lines, Rating::Pg)
+                        .unwrap()
+                        .starts_with("[as:noir]")
+                })
+                .count()
+        };
+        host.cameos = Cameos::Off;
+        assert_eq!(noir(&host), 0);
+        // With nothing else to say, the line is said out of character.
+        assert_eq!(
+            host.say_own(&lines[1..], Rating::Pg).as_deref(),
+            Some("The dame lied.")
+        );
+        host.cameos = Cameos::Sometimes;
+        let some = noir(&host);
+        host.cameos = Cameos::Often;
+        let often = noir(&host);
+        assert!((120..280).contains(&some), "{some}/400");
+        assert!(often > 280, "{often}/400");
+    }
+
+    #[test]
+    fn the_script_has_cameos_and_rejects_unknown_ones() {
+        let script = Script::builtin();
+        assert!(
+            script.lines["mini_closest"]
+                .iter()
+                .any(|(_, t)| t.starts_with("[as:auctioneer]"))
+        );
+        let ok = include_str!("../host-script.json");
+        assert!(Script::parse(&ok.replace("[as:auctioneer]", "[as:pirate]")).is_err());
     }
 
     #[test]

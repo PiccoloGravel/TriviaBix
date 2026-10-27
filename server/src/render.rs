@@ -51,9 +51,9 @@ const DESIGN_MAX: usize = 8;
 /// Where gpu/vast.py keeps candidate voices in the asset store.
 const SAMPLE_KIND: &str = "voice-sample";
 /// What the Pipeline page suggests for a new voice, the same as tts/make_voice.py's defaults.
-pub const VOICE_DESCRIPTION: &str = "A washed-up American game show host in his fifties, clinging to his last gig. \
-His voice is warm and a little gravelly, cheeky and quick but world-weary, with dry, sarcastic timing and a tired \
-sigh in it, and the old showman's bounce still comes back for the big moments. Always clear and easy to follow.";
+pub const VOICE_DESCRIPTION: &str = "An energetic American game show host in his fifties, a big lovable ham giving it everything he's got. \
+His voice is warm, bright and a little gravelly, fast and punchy with big showman energy and great comic timing, \
+and just a hint of a tired crack under the smile. Always clear and easy to follow.";
 /// Lines a candidate voice might say in its clip. Each candidate gets a different one, picked at
 /// random, so every design run sounds fresh. The admin can edit the list.
 pub const VOICE_SAMPLES: &[&str] = &[
