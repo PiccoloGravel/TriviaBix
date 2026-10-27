@@ -17,7 +17,7 @@ let editing = null;
 let themeForm = null;
 let quote = null;
 let checking = false;
-const filters = { kind: "all", tag: "all", status: "all", text: "" };
+const filters = { kind: "all", pack: "all", tag: "all", status: "all", text: "" };
 
 async function api(path, method = "GET", body) {
   const res = await fetch(`/api/admin/${path}`, method === "GET" ? {} : {
@@ -52,6 +52,11 @@ function select(options, value, onchange) {
     options.map(([v, label]) => el("option", { value: v }, label)));
   s.value = value;
   return s;
+}
+
+function packName(id) {
+  const p = data && (data.packs || []).find((x) => x.id === id);
+  return p ? `${p.emoji || ""} ${p.name}`.trim() : id;
 }
 
 function themeName(id) {
@@ -99,6 +104,7 @@ function render() {
     el("a", { href: "/admin/pipeline" }, "Follow it on the Pipeline")));
   renderThemes();
   renderMake();
+  renderPacks();
   renderCats();
   renderFilters();
   renderPieces();
@@ -233,16 +239,20 @@ function renderMake() {
   $("#make").replaceChildren(...kids);
 }
 
-/** Stands for every theme in quoteBox and check. */
+/** Stands for every theme in quoteBox and check; ALL + "pack:<id>" is one pack in every theme. */
 const ALL = "*every-theme*";
 
-/** The price check for the whole theme (only = null), every theme (only = ALL) or one piece. */
+/** The price check for the whole theme (only = null), every theme (only = ALL), one piece (its key),
+ * or one pack ("pack:<id>" in this theme, ALL + "pack:<id>" in every theme). */
 function quoteBox(only) {
   const mine = quote && quote.only === only;
   if (checking === (only || "all")) return el("div", { class: "quote" }, "Checking… (this rents nothing)");
   if (!mine) {
-    const b = el("button", { class: only ? "small secondary" : "secondary", onclick: () => check(only) },
-      only === ALL ? "Check the price for every theme" : only ? "Check the price to make it" : "Check the price");
+    const label = only === ALL ? "Check the price for every theme"
+      : only && only.startsWith(ALL) ? "Price for every theme"
+      : only && only.startsWith("pack:") ? `Price in ${themeName(view)}`
+      : only ? "Check the price to make it" : "Check the price";
+    const b = el("button", { class: only ? "small secondary" : "secondary", onclick: () => check(only) }, label);
     b.disabled = !!data.busy || !!checking;
     return b;
   }
@@ -274,7 +284,9 @@ async function check(only) {
   quote = null;
   render();
   try {
-    const options = only === ALL ? { theme: "all" } : { theme: view, ...(only ? { only } : {}) };
+    const everyTheme = only && only.startsWith(ALL);
+    const pick = everyTheme ? only.slice(ALL.length) : only;
+    const options = { theme: everyTheme ? "all" : view, ...(pick ? { only: pick } : {}) };
     const q = await api("render/preview", "POST", { kind: "art", options });
     quote = { only, q, at: Date.now() };
     // The check made whatever the asset store had into TV files, so the counts may have moved.
@@ -303,6 +315,29 @@ async function start() {
   } catch (e) {
     toast(e.message);
   }
+}
+
+// ---------- Packs ----------
+
+function renderPacks() {
+  const packs = data.packs || [];
+  $("#packs").replaceChildren(...(packs.length ? packs.map((p) => {
+    const items = data.items.filter((i) => i.pack === p.id);
+    const pct = p.total ? Math.round((100 * p.made) / p.total) : 0;
+    const shows = () => { filters.pack = p.id; renderFilters(); renderPieces(); $("#pieces").scrollIntoView({ behavior: "smooth", block: "start" }); };
+    // The pictures, not the clips: a clip's still is its backdrop.
+    const pics = items.filter((i) => i.kind !== "clip").slice(0, 8);
+    return el("div", { class: "card" },
+      el("div", { class: "row" }, el("h3", { style: "flex:1" }, p.emoji || "", " ", p.name),
+        el("span", { class: `badge ${p.made === p.total ? "made" : "missing"}` }, `${p.made} of ${p.total}`)),
+      el("p", {}, p.description || ""),
+      el("div", { class: "strip" }, pics.map((i) => thumb(i.file, i.kind))),
+      el("div", { class: "bar" }, el("i", { style: `width:${pct}%` })),
+      el("div", { class: "row" },
+        el("button", { class: "small secondary", onclick: shows }, "Show its pieces"),
+        p.made < p.total ? quoteBox(`pack:${p.id}`) : null,
+        quoteBox(`${ALL}pack:${p.id}`)));
+  }) : [el("p", { class: "muted" }, "The catalog has no packs.")]));
 }
 
 // ---------- Category styles ----------
@@ -343,6 +378,9 @@ function renderCats() {
 function renderFilters() {
   const kinds = [["all", "Everything"], ...Object.entries(KIND_NAMES)];
   $("#f-kind").replaceWith(Object.assign(select(kinds, filters.kind, (v) => { filters.kind = v; renderPieces(); }), { id: "f-kind" }));
+  const packs = [["all", "Any"], ...(data.packs || []).map((p) => [p.id, p.name]), ["none", "Not in a pack"]];
+  if (!packs.some(([v]) => v === filters.pack)) filters.pack = "all";
+  $("#f-pack").replaceWith(Object.assign(select(packs, filters.pack, (v) => { filters.pack = v; renderPieces(); }), { id: "f-pack" }));
   const tags = [["all", "Any"], ...data.tags.filter((t) => !t.startsWith("category:")).map((t) => [t, t])];
   if (!data.tags.includes(filters.tag)) filters.tag = "all";
   $("#f-tag").replaceWith(Object.assign(select(tags, filters.tag, (v) => { filters.tag = v; renderPieces(); }), { id: "f-tag" }));
@@ -355,6 +393,7 @@ $("#add").addEventListener("click", () => { editing = "new"; renderNewPiece(); }
 
 function shown(i) {
   if (filters.kind !== "all" && i.kind !== filters.kind) return false;
+  if (filters.pack !== "all" && (i.pack || "none") !== filters.pack) return false;
   if (filters.tag !== "all" && !i.tags.includes(filters.tag)) return false;
   if (filters.status === "made" && i.status !== "made") return false;
   if (filters.status === "todo" && i.status === "made") return false;
@@ -384,6 +423,7 @@ function piece(i) {
     el("div", { class: "meta" },
       el("span", { class: "badge" }, KIND_NAMES[i.kind]),
       el("span", { class: "badge" }, i.rating),
+      i.pack ? el("span", { class: "badge custom" }, packName(i.pack)) : null,
       i.custom ? el("span", { class: "badge custom" }, "Added here") : null,
       ...i.tags.filter((t) => !t.startsWith("category")).map((t) => el("span", { class: "badge" }, t))),
     el("div", { class: "prompt", title: i.prompt }, i.body),

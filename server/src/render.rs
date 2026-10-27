@@ -209,7 +209,8 @@ pub struct Options {
     /// made one after another on the same GPU. Without it, the one in use.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// Art: only these pieces, as kind:id separated by commas (a new take of one piece).
+    /// Art: only these pieces, as kind:id separated by commas (a new take of one piece), or
+    /// pack:id for every piece in a catalog pack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub only: Option<String>,
     /// Lines: the most questions to write lines for.
@@ -328,11 +329,13 @@ impl Options {
                     let ok = pieces.len() <= 50
                         && pieces.iter().all(|p| {
                             p.split_once(':').is_some_and(|(k, id)| {
-                                ART_KINDS.contains(&k) && crate::art::valid_id(id)
+                                (k == "pack" || ART_KINDS.contains(&k)) && crate::art::valid_id(id)
                             })
                         });
                     if !ok {
-                        return Err("Pick pieces of art as kind:id, up to 50 of them.".into());
+                        return Err(
+                            "Pick pieces of art as kind:id or pack:id, up to 50 of them.".into(),
+                        );
                     }
                 }
                 Options {

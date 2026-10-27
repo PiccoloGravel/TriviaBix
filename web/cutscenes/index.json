@@ -116,6 +116,18 @@
         "tie",
         "dead-heat"
       ]
+    },
+    "minigame_intro": {
+      "mood": "excited",
+      "scenes": [
+        "minigame-intro"
+      ]
+    },
+    "minigame_winner": {
+      "mood": "laugh",
+      "scenes": [
+        "minigame-winner"
+      ]
     }
   }
 }
