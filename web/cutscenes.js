@@ -99,13 +99,12 @@ const Cutscenes = {
     return (c && c.mood) || null;
   },
 
-  /** Plays one of the cue's scenes (if it has any and wins its `chance` roll). Returns whether one started. */
+  /** Plays one of the cue's scenes (if it has any and wins its `chance` roll). Returns false, or a promise that resolves when the scene is gone. */
   cue(cue, ctx) {
     const c = cue && this.manifest.cues[cue];
     const names = c && (c.scenes || []).filter((n) => this.scenes[n]);
     if (!names || !names.length || Math.random() >= (nz(c.chance, 1))) return false;
-    this.play(names[Math.floor(Math.random() * names.length)], ctx);
-    return true;
+    return this.play(names[Math.floor(Math.random() * names.length)], ctx);
   },
 
   get playing() { return !!this.current; },

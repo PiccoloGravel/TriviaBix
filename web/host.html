@@ -131,6 +131,9 @@
     /* The host: a mic avatar and a speech bubble along the bottom of every screen. */
     .host-bar { position: fixed; left: 2vw; bottom: 2vh; right: 22vw; display: flex; align-items: flex-end; gap: 1.2vw; z-index: 6; pointer-events: none; transition: opacity .4s, transform .4s; }
     .host-bar.quiet { opacity: 0; transform: translateY(4vh); }
+    /* Hidden from the admin panel: no Bix at all, or Bix without his words. */
+    .host-bar.off { display: none; }
+    .host-bar.no-words .host-bubble { display: none; }
     /* Bix himself (bix.js): his face follows the moment, and his mouth moves while the voice talks. */
     .host-face { flex: 0 0 auto; width: 15vh; position: relative; filter: drop-shadow(0 .8vh 0 rgba(0,0,0,.35)); }
     .host-face::after { content: attr(data-name); position: absolute; bottom: -1vh; left: 50%; transform: translateX(-50%); font-family: "Bungee", sans-serif; font-size: 1.8vh; background: var(--c0); color: #fff; padding: .1vh .8vw; border-radius: 999px; white-space: nowrap; }
