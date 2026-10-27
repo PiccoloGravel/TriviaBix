@@ -141,7 +141,11 @@ async fn create_room(addr: &str, questions: usize) -> (String, String) {
     create_room_with(addr, json!({ "trivia_rounds": 3, "per_round": per_round })).await
 }
 
-async fn create_room_with(addr: &str, body: Value) -> (String, String) {
+/// Mini games are off unless `body` turns them on, so other tests go straight from round to round.
+async fn create_room_with(addr: &str, mut body: Value) -> (String, String) {
+    if body.get("minigames").is_none() {
+        body["minigames"] = json!(false);
+    }
     let res: Value = reqwest::Client::new()
         .post(format!("http://{addr}/api/rooms"))
         .json(&body)
@@ -1392,6 +1396,143 @@ async fn trivia_rounds_get_harder_with_recaps_between() {
             .iter()
             .all(|r| r["status"] == "done")
     );
+}
+
+#[tokio::test]
+async fn mini_games_play_between_trivia_rounds() {
+    let addr = start_server().await;
+    let (code, host_token) = create_room_with(
+        &addr,
+        json!({ "trivia_rounds": 3, "per_round": 1, "minigames": true }),
+    )
+    .await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut ann = open(&addr, &format!("/ws/play?code={code}&name=Ann")).await;
+    recv(&mut ann).await;
+    let mut bob = open(&addr, &format!("/ws/play?code={code}&name=Bob")).await;
+    recv(&mut bob).await;
+    let lobby = wait_state(&mut host, |s| s["players"].as_array().unwrap().len() == 2).await;
+    assert_eq!(lobby["settings"]["minigames"], true);
+    let (ann_id, bob_id) = (
+        lobby["players"][0]["id"].clone(),
+        lobby["players"][1]["id"].clone(),
+    );
+
+    // Only the admin turns mini games on or off, not the VIP.
+    send(&mut ann, json!({ "type": "settings", "minigames": false })).await;
+    assert!(
+        next_error(&mut ann).await["message"]
+            .as_str()
+            .unwrap()
+            .contains("admin")
+    );
+    send(&mut host, json!({ "type": "start" })).await;
+
+    let mut kinds = Vec::new();
+    for stage in 1..=3u64 {
+        wait_state(&mut host, |s| {
+            s["phase"] == "question" && s["stage"] == stage
+        })
+        .await;
+        send(&mut ann, json!({ "type": "answer", "choice": 0 })).await;
+        send(&mut bob, json!({ "type": "answer", "choice": 0 })).await;
+        wait_state(&mut host, |s| s["phase"] == "recap").await;
+        if stage == 3 {
+            break;
+        }
+
+        // A mini game follows every round but the last, starting with its rules.
+        let rules = wait_state(&mut host, |s| s["phase"] == "minigame").await;
+        let mini = &rules["minigame"];
+        assert_eq!(mini["step"], "rules", "{mini}");
+        assert!(mini["title"].is_string() && mini["rules"].is_string());
+        assert_eq!(mini["entries"].as_array().unwrap().len(), 2);
+        assert!(!rules["host"]["text"].as_str().unwrap().contains('{'));
+        assert_eq!(rules["host"]["cue"], "minigame_intro");
+        let before: Vec<i64> = rules["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["score"].as_i64().unwrap())
+            .collect();
+        let kind = mini["kind"].as_str().unwrap().to_string();
+        assert!(!kinds.contains(&kind), "no repeats in one game");
+        kinds.push(kind.clone());
+
+        // Tapping on the rules card doesn't count.
+        send(&mut ann, json!({ "type": "mini_tap" })).await;
+        next_error(&mut ann).await;
+        send(&mut host, json!({ "type": "next" })).await;
+
+        let winner = match kind.as_str() {
+            "mash" => {
+                wait_state(&mut host, |s| s["minigame"]["step"] == "play").await;
+                for _ in 0..5 {
+                    send(&mut ann, json!({ "type": "mini_tap" })).await;
+                    tokio::time::sleep(Duration::from_millis(60)).await;
+                }
+                send(&mut bob, json!({ "type": "mini_tap" })).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                send(&mut host, json!({ "type": "next" })).await;
+                ann_id.clone()
+            }
+            "closest" => {
+                let play = wait_state(&mut host, |s| s["minigame"]["step"] == "play").await;
+                assert!(play["minigame"]["prompt"].is_string());
+                assert!(play["minigame"]["answer"].is_null(), "no peeking");
+                send(
+                    &mut ann,
+                    json!({ "type": "mini_guess", "value": 1_000_000 }),
+                )
+                .await;
+                // Bob can see Ann has guessed, but not what.
+                let seen =
+                    wait_state(&mut bob, |s| s["minigame"]["entries"][0]["done"] == true).await;
+                assert!(seen["minigame"]["entries"][0]["value"].is_null());
+                send(&mut bob, json!({ "type": "mini_guess", "value": 50 })).await;
+                // Everyone guessed, so the results come straight away.
+                bob_id.clone()
+            }
+            "quick_draw" => {
+                let ready = wait_state(&mut host, |s| s["minigame"]["step"] == "ready").await;
+                assert!(ready["ms_left"].is_null(), "no countdown to GO");
+                send(&mut bob, json!({ "type": "mini_tap" })).await;
+                wait_state(&mut host, |s| {
+                    s["minigame"]["entries"][1]["false_start"] == true
+                })
+                .await;
+                send(&mut host, json!({ "type": "next" })).await;
+                wait_state(&mut ann, |s| s["minigame"]["step"] == "play").await;
+                send(&mut ann, json!({ "type": "mini_tap" })).await;
+                ann_id.clone()
+            }
+            other => panic!("unknown mini game {other}"),
+        };
+        let results = wait_state(&mut host, |s| s["minigame"]["step"] == "results").await;
+        let entries = results["minigame"]["entries"].as_array().unwrap();
+        assert_eq!(entries[0]["player_id"], winner, "{results}");
+        assert_eq!(entries[0]["points"], 300);
+        if kind == "closest" {
+            assert!(results["minigame"]["answer"].is_number());
+        }
+        let after: Vec<i64> = results["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["score"].as_i64().unwrap())
+            .collect();
+        let i = if winner == ann_id { 0 } else { 1 };
+        assert_eq!(after[i] - before[i], 300, "bonus points count");
+        assert_eq!(results["host"]["callouts"][0]["kind"], "mini_winner");
+        assert_eq!(results["host"]["cue"], "minigame_winner");
+        send(&mut host, json!({ "type": "next" })).await;
+        wait_state(&mut host, |s| {
+            s["phase"] == "round_intro" && s["stage"] == stage + 1
+        })
+        .await;
+    }
+    wait_state(&mut host, |s| s["phase"] == "final").await;
+    assert_eq!(kinds.len(), 2);
 }
 
 #[tokio::test]

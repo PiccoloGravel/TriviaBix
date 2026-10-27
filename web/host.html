@@ -214,8 +214,8 @@
     #round_intro.enter .ri-cat { animation: logo-slam .8s .4s cubic-bezier(.2,1.6,.4,1) both; }
     #round_intro.enter .ri-tags { animation: rise .5s 1.1s both; }
     /* The category's generated title card (art/generate.py), faded behind the round's title. */
-    #round_intro.has-art { isolation: isolate; overflow: hidden; }
-    #round_intro.has-art::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background: linear-gradient(rgba(13,6,32,.55), rgba(13,6,32,.85)), var(--cat-art) center / cover; animation: ri-art 12s ease-out both; }
+    #round_intro.has-art, #minigame.has-art { isolation: isolate; overflow: hidden; }
+    #round_intro.has-art::before, #minigame.has-art::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background: linear-gradient(rgba(13,6,32,.55), rgba(13,6,32,.85)), var(--cat-art) center / cover; animation: ri-art 12s ease-out both; }
     @keyframes ri-art { from { transform: scale(1.12); opacity: 0; } 15% { opacity: 1; } to { transform: scale(1); } }
     .ladder { display: flex; justify-content: center; align-items: flex-end; gap: 1.2vw; width: 100%; }
     .rung { flex: 0 1 18vw; background: var(--panel); border-radius: 2vh 2vh 1vh 1vh; padding: 1.2vh 1vw; text-align: center; border-top: .8vh solid var(--diff); min-height: calc(12vh + var(--i) * 3vh); display: flex; flex-direction: column; justify-content: flex-end; gap: .3vh; transition: transform .3s; }
@@ -242,6 +242,33 @@
     .rq-who { display: flex; gap: .3vw; flex-wrap: wrap; justify-content: flex-end; max-width: 14vw; font-size: 2vh; }
     #recap.enter .rq { animation: rise .5s both; animation-delay: calc(.4s + var(--i) * 150ms); }
     .callout.round_winner { background: linear-gradient(90deg, var(--c0), var(--accent)); color: #1a0b3d; }
+    /* Mini games between trivia rounds. */
+    #minigame { align-items: center; }
+    .mg-head { text-align: center; margin-top: 1vh; }
+    .mg-tag { display: inline-block; font-family: "Bungee", sans-serif; font-size: 2.6vh; background: var(--accent); color: #1a0b3d; border-radius: 999px; padding: .4vh 1.6vw; letter-spacing: .1em; }
+    #mg-title { font-family: "Bungee", sans-serif; font-weight: 400; font-size: 9vh; margin: 1vh 0 0; line-height: 1; text-shadow: 0 1vh 0 rgba(0,0,0,.35); }
+    .mg-rules { font-size: 3.4vh; color: var(--muted); margin-top: 1.5vh; max-width: 70vw; }
+    .mg-big { font-family: "Bungee", sans-serif; font-size: 7vh; text-align: center; margin: 2vh 0 1vh; min-height: 9vh; max-width: 85vw; line-height: 1.15; }
+    .mg-big.prompt { font-family: inherit; font-weight: 900; font-size: 5.4vh; }
+    .mg-big.wait { color: var(--bad); font-size: 14vh; animation: mg-pulse 1s infinite; }
+    .mg-big.go { color: var(--good); font-size: 18vh; animation: logo-slam .5s cubic-bezier(.2,1.6,.4,1) both; }
+    .mg-big.answer { color: var(--good); }
+    @keyframes mg-pulse { 50% { opacity: .55; } }
+    #minigame .timer { width: 80vw; }
+    .mg-rows { width: 80vw; display: grid; grid-template-columns: repeat(var(--cols, 1), 1fr); gap: 1vh 2vw; }
+    .mg-row { display: flex; align-items: center; gap: 1.2vw; background: var(--panel); border-radius: 2vh; padding: .7vh 1.2vw; font-size: 3vh; position: relative; overflow: hidden; }
+    .mg-row .mg-bar { position: absolute; top: 0; bottom: 0; left: 0; background: rgba(255,255,255,.12); transition: width .3s; z-index: 0; }
+    .mg-row > *:not(.mg-bar) { position: relative; z-index: 1; }
+    .mg-row .mg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mg-row .mg-val { font-family: "Bungee", sans-serif; }
+    .mg-row .mg-pts { font-family: "Bungee", sans-serif; color: var(--good); min-width: 6vw; text-align: right; }
+    .mg-row.out { opacity: .5; }
+    .mg-row.out .mg-val { color: var(--bad); }
+    .mg-row.first { outline: .5vh solid var(--accent); }
+    /* Rows are redrawn on every tap, so only a new step animates them in. */
+    .mg-row.fresh { animation: rise .4s both; animation-delay: calc(.2s + var(--i) * 90ms); }
+    #minigame.enter #mg-title { animation: logo-slam .8s .1s cubic-bezier(.2,1.6,.4,1) both; }
+    .callout.mini_winner { background: linear-gradient(90deg, var(--good), var(--accent)); color: #1a0b3d; }
     .toast { position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 1.2vh 2vw; border-radius: 2vh; font-size: 2.6vh; z-index: 10; }
     .toast.info { background: var(--accent); color: #1a0b3d; }
   </style>
@@ -358,6 +385,17 @@
       <div class="board" id="rc-board"></div>
       <div class="recap-qs" id="rc-qs"></div>
     </div>
+  </section>
+  <section id="minigame" class="screen hidden" data-screen>
+    <div class="topbar" style="width:100%"><span id="mg-round"></span><span class="secs" id="mg-secs"></span><span class="code-chip" id="mg-code"></span></div>
+    <div class="mg-head">
+      <div class="mg-tag">Mini game</div>
+      <h2 id="mg-title"></h2>
+      <div class="mg-rules" id="mg-rules"></div>
+    </div>
+    <div class="mg-big" id="mg-big"></div>
+    <div class="timer"><div class="timer-track"><div class="timer-fill" id="mg-timer"></div></div></div>
+    <div class="mg-rows" id="mg-rows"></div>
   </section>
   <section id="final" class="screen hidden" data-screen>
     <h2 id="f-title">Winner!</h2>

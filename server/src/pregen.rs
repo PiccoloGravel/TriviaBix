@@ -66,7 +66,7 @@ impl Values {
         };
         match event {
             "join" | "asleep" | "fastest" | "only_one" | "new_leader" | "last_place"
-            | "finale_last" | "finale_win" => one("name", &self.names),
+            | "finale_last" | "finale_win" | "mini_win" => one("name", &self.names),
             "streak" | "streak_broken" => self
                 .names
                 .iter()
