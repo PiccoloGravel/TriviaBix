@@ -123,6 +123,9 @@ only uses what the asset store already has, and lists the rest in `web/cutscenes
 - **New take** gives a piece a new seed in the theme on screen only. Earlier takes stay in the asset
   store and the page shows them, so putting one back is free.
 - **Check the price** works for a whole theme or one piece, then waits for Start, like the Pipeline.
+  **Every theme** (on the Art page, or "In: Every theme" on the Pipeline) makes every theme's missing
+  pieces in one run on one rented GPU, theme after theme, so the image and models download once
+  (`render_on_vast.py --art-root ART_DIR --theme all`, or ids separated by commas).
 
 `generate.py --studio FILE --theme ID` reads the same file; `--list ART_DIR` prints what the page shows.
 

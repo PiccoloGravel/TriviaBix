@@ -205,7 +205,8 @@ pub struct Options {
     /// Art: only this kind (backdrop, sticker, category or clip).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kinds: Option<String>,
-    /// Art: the theme to draw in (crate::art). Without it, the one in use.
+    /// Art: the theme to draw in (crate::art), several separated by commas, or all; several are
+    /// made one after another on the same GPU. Without it, the one in use.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     /// Art: only these pieces, as kind:id separated by commas (a new take of one piece).
@@ -313,9 +314,11 @@ impl Options {
                         ART_KINDS.join(", ")
                     ));
                 }
+                // One theme, several separated by commas, or all of them, made on one GPU.
                 let theme = self.theme.filter(|t| !t.is_empty());
                 if let Some(t) = &theme
-                    && !crate::art::valid_id(t)
+                    && t != "all"
+                    && !(t.split(',').count() <= 20 && t.split(',').all(crate::art::valid_id))
                 {
                     return Err("That isn't an art theme.".into());
                 }
@@ -1637,8 +1640,9 @@ impl Render {
             Kind::Art => {
                 let theme = o.theme.clone().unwrap_or_else(|| self.art_theme());
                 let mut cmd = tool("art/render_on_vast.py");
-                cmd.arg("--out")
-                    .arg(self.theme_dir(&theme))
+                // Each theme goes into its own folder under the art folder (crate::art::theme_dir).
+                cmd.arg("--art-root")
+                    .arg(&c.art_dir)
                     .arg("--library")
                     .arg(&c.assets_dir)
                     .arg("--studio")

@@ -342,6 +342,45 @@ class ShipCodeTest(unittest.TestCase):
             self.assertFalse(Path(d, "art/test_generate.py").exists())
 
 
+class SeveralThemesTest(unittest.TestCase):
+    """Several themes' missing art goes to one rented GPU, each theme into its own folder."""
+
+    def test_two_themes_share_one_gpu(self):
+        import unittest.mock
+
+        import render_on_vast
+        with tempfile.TemporaryDirectory() as d:
+            calls = Path(d, "calls.json")
+            fake = Path(d, "vast.py")
+            fake.write_text("import json, sys\n"
+                            f"json.dump(sys.argv[1:], open({str(calls)!r}, 'w'))\n")
+            root, lib = Path(d, "art"), Path(d, "lib")
+            with unittest.mock.patch.object(render_on_vast, "VAST", fake), \
+                    unittest.mock.patch.object(render_on_vast, "model_access", lambda *a: None):
+                code = render_on_vast.main(["--art-root", str(root), "--library", str(lib), "--theme", "bix,comic-book",
+                                            "--kinds", "backdrop", "--dry-run", "--yes"])
+            self.assertEqual(code, 0)
+            argv = json.loads(calls.read_text())
+            self.assertEqual(argv.count("run"), 1, "one rental")
+            cmd = argv[argv.index("--cmd") + 1]
+            self.assertIn("--out /out/gen/bix ", cmd)
+            self.assertIn("--out /out/gen/comic-book ", cmd)
+            self.assertIn("--theme comic-book", cmd)
+            self.assertIn("if [ $c -eq 75 ]; then exit 75; fi", cmd)
+            self.assertTrue(cmd.endswith("exit $rc"))
+            # Each theme's offline step ran in its own folder.
+            self.assertTrue((root / ".needs-gpu").exists())
+            self.assertTrue((root / "themes" / "comic-book" / ".needs-gpu").exists())
+
+    def test_all_means_every_theme(self):
+        import render_on_vast
+        themes = render_on_vast.pick_themes("all", None)
+        self.assertEqual(themes[0], "bix")
+        self.assertGreater(len(themes), 1)
+        with self.assertRaises(SystemExit):
+            render_on_vast.pick_themes("bix,no-such-theme", None)
+
+
 class ModelAccessTest(unittest.TestCase):
     """render_on_vast.model_access against a stand-in for the Hugging Face Hub."""
 

@@ -46,6 +46,8 @@ IMAGE_GB, PICTURE_MODEL_GB, CUTOUT_MODEL_GB, CLIP_MODEL_GB = 10, 34, 1, 24
 # The slowest host connection art rents, in Mbit/s; the estimate prefers faster ones.
 MIN_INET = 500
 OFFLOAD_GB = 40
+# Minutes each theme after the first adds for loading the models again (from the GPU's disk).
+RELOAD_MIN = 2
 
 
 def model_access(repos: list[str], token: str | None) -> str | None:
@@ -124,7 +126,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="show what would be made and the price, rent nothing")
     ap.add_argument("--studio", type=Path, default=os.environ.get("ART_STUDIO") or None,
                     help="the admin Art page's themes and entries, as in generate.py")
-    ap.add_argument("--theme", default="bix", help="the art theme to make; --out should be its folder")
+    ap.add_argument("--theme", default="bix",
+                    help="the art theme to make; several separated by commas, or all, make them all on one GPU "
+                         "(each into its folder under --art-root)")
+    ap.add_argument("--art-root", type=Path,
+                    help="the art folder the themes' folders are in (as generate.py's theme_out); needed for "
+                         "several themes, and used instead of --out when given")
     args = ap.parse_args(argv)
 
     if args.studio and args.studio.exists():
@@ -135,21 +142,33 @@ def main(argv: list[str] | None = None) -> int:
         args.studio = snap
     if not VAST.exists():
         raise SystemExit(f"{VAST} is missing: it comes with the vast.ai runner (gpu/README.md).")
+    themes = pick_themes(args.theme, args.studio)
+    if len(themes) > 1 and not args.art_root:
+        raise SystemExit("--art-root is needed to make several themes")
+    outs = {t: theme_out(args.art_root, t) if args.art_root else args.out for t in themes}
 
-    # 1. Everything the store already has, made locally.
+    # 1. Everything the store already has, made locally, theme by theme.
     picked = [a for flag, v in (("--only", args.only), ("--kinds", args.kinds)) if v for a in (flag, v)]
     if args.force:
         picked.append("--force")
-    look = ["--theme", args.theme] + (["--studio", str(args.studio)] if args.studio else [])
-    common = ["--out", str(args.out), "--library", str(args.library), *look, *picked]
-    code = generate("--backend", "offline", *common)
-    needs = args.out / ".needs-gpu"
-    if code == 0 or not needs.exists():
-        if code == 0:
-            print("Nothing needs a GPU.")
-            event("todo", count=0, clips=0)
-        return code
-    todo = needs.read_text().split()
+    studio = ["--studio", str(args.studio)] if args.studio else []
+
+    def common(theme: str) -> list[str]:
+        return ["--out", str(outs[theme]), "--library", str(args.library), "--theme", theme, *studio, *picked]
+
+    todos: dict[str, list[str]] = {}
+    for theme in themes:
+        code = generate("--backend", "offline", *common(theme))
+        needs = outs[theme] / ".needs-gpu"
+        if code != 0 and needs.exists():
+            todos[theme] = needs.read_text().split()
+        elif code != 0:
+            return code
+    if not todos:
+        print("Nothing needs a GPU.")
+        event("todo", count=0, clips=0)
+        return 0
+    todo = [k for keys in todos.values() for k in keys]
     clips = sum(k.startswith("clip:") for k in todo)
     stickers = sum(k.startswith("sticker:") for k in todo)
     work = (len(todo) - clips) * PER_PICTURE_MIN + clips * PER_CLIP_MIN
@@ -157,32 +176,35 @@ def main(argv: list[str] | None = None) -> int:
                 + CLIP_MODEL_GB * (clips > 0))
     # The download at the slowest connection rented, as gpu/vast.py counts it.
     fetch = download * 8000 / (MIN_INET * 0.5) / 60
-    minutes = BOOT_MIN + fetch / 2 + work
+    # Each theme after the first loads the models again, from the GPU's own disk this time.
+    reload = RELOAD_MIN * (len(todos) - 1)
+    minutes = BOOT_MIN + fetch / 2 + work + reload
     # Room for a card half as fast as a 4090 on the slowest connection allowed.
-    limit = max(30, int(BOOT_MIN + fetch + work * 2))
-    event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit)
-    print(f"\n{len(todo)} need a GPU ({clips} clips). About {minutes:.0f} minutes; time limit {limit} minutes.")
+    limit = max(30, int(BOOT_MIN + fetch + (work + reload) * 2))
+    event("todo", count=len(todo), clips=clips, minutes=round(minutes), limit=limit, themes=len(todos))
+    if len(todos) > 1:
+        print("\n" + "\n".join(f"{t}: {len(keys)} to make" for t, keys in todos.items()))
+    print(f"\n{len(todo)} need a GPU ({clips} clips){f' across {len(todos)} themes, on one GPU' if len(todos) > 1 else ''}. "
+          f"About {minutes:.0f} minutes; time limit {limit} minutes.")
     if problem := model_access([IMAGE_MODEL, CUTOUT_MODEL, VIDEO_MODEL], os.environ.get("HF_TOKEN")):
         print(f"Not renting a GPU: {problem}.", file=sys.stderr)
         return 1
 
-    # 2. The rest on a rented GPU. The container writes TV files to /out/gen and originals to /out/assets.
-    # It runs this server's copy of the generator (uploaded to /in/code), so a fix takes effect without
-    # rebuilding the image; the image supplies PyTorch and the models' libraries.
-    # Faster model downloads where the image allows: hf_xet's high-performance mode, and hf_transfer for
-    # repos not on xet (installed if missing; skipped if that fails).
+    # 2. The rest on one rented GPU, theme after theme. The container writes each theme's TV files to
+    # /out/gen/<theme> and the originals to /out/assets. It runs this server's copy of the generator
+    # (uploaded to /in/code), so a fix takes effect without rebuilding the image; the image supplies
+    # PyTorch and the models' libraries. Faster model downloads where the image allows: hf_xet's
+    # high-performance mode, and hf_transfer for repos not on xet (installed if missing; skipped if that fails).
     fast = ("export HF_XET_HIGH_PERFORMANCE=1; if python3 -c 'import hf_transfer' 2>/dev/null || "
             "pip install -q hf_transfer >/dev/null 2>&1; then export HF_HUB_ENABLE_HF_TRANSFER=1; fi; ")
-    cmd = (f"{fast}cp -r /in/code/. /app/ && cd /app && python3 art/generate.py --backend gpu --out /out/gen "
-           f"--library /out/assets --only {','.join(todo)} --force --theme {shlex.quote(args.theme)}"
-           + (" --studio art/studio.json" if args.studio and args.studio.exists() else ""))
+    cmd = f"{fast}cp -r /in/code/. /app/ && cd /app || exit 1; rc=0; " + gpu_steps(todos, bool(args.studio and args.studio.exists())) + "exit $rc"
     with tempfile.TemporaryDirectory(prefix="triviabix-art-") as tmp, \
             tempfile.TemporaryDirectory(prefix="triviabix-art-code-") as code:
         ship_code(Path(code) / "code", args.studio)
         run = [sys.executable, str(VAST), "run", "--image", args.image, "--cmd", cmd, "--out", "/out", "--to", tmp,
                "--input", code, "--keep-partial",
                "--min-vram", args.min_vram, "--max-price", args.max_price, "--disk", args.disk,
-               "--max-minutes", str(limit), "--work-minutes", f"{work:.1f}", "--boot-estimate", str(BOOT_MIN),
+               "--max-minutes", str(limit), "--work-minutes", f"{work + reload:.1f}", "--boot-estimate", str(BOOT_MIN),
                "--offload-below", str(OFFLOAD_GB), "--kind", "art", "--download-gb", str(download),
                "--boot-minutes", str(BOOT_LIMIT_MIN)]
         # The token and the models picked on the admin panel's Settings page go to the GPU too.
@@ -204,11 +226,47 @@ def main(argv: list[str] | None = None) -> int:
         if (got / "assets").is_dir():
             shutil.copytree(got / "assets", args.library, dirs_exist_ok=True)
             print(f"Saved the originals in {args.library}")
-        if (got / "gen" / "manifest.json").exists():
-            generate("--merge", str(got / "gen"), "--out", str(args.out))
-            # Turn the new originals into TV files here too, which also clears .needs-gpu.
-            generate("--backend", "offline", *common)
+        for theme in todos:
+            if (got / "gen" / theme / "manifest.json").exists():
+                generate("--merge", str(got / "gen" / theme), "--out", str(outs[theme]))
+                # Turn the new originals into TV files here too, which also clears .needs-gpu.
+                generate("--backend", "offline", *common(theme))
         return code
+
+
+def pick_themes(spec: str, studio: Path | None) -> list[str]:
+    """The themes `spec` names (ids separated by commas, or all), each checked to exist."""
+    from generate import load_studio, load_themes
+
+    known = load_themes(studio=load_studio(studio))
+    if spec.strip() == "all":
+        return list(known)
+    themes = list(dict.fromkeys(t.strip() for t in spec.split(",") if t.strip()))
+    if not themes:
+        raise SystemExit("no art theme given")
+    for t in themes:
+        if t not in known:
+            raise SystemExit(f"there is no art theme called {t!r}")
+    return themes
+
+
+def theme_out(root: Path, theme: str) -> Path:
+    from generate import theme_out as out
+
+    return out(root, theme)
+
+
+def gpu_steps(todos: dict[str, list[str]], studio: bool) -> str:
+    """The shell steps that make each theme's pieces on the GPU, one theme after another. A theme that fails
+    doesn't stop the next, and the run ends with its exit code; a host found too slow to download (75) stops
+    at once, so gpu/vast.py can rent another."""
+    steps = ""
+    for theme, keys in todos.items():
+        steps += (f"python3 art/generate.py --backend gpu --out /out/gen/{shlex.quote(theme)} --library /out/assets "
+                  f"--only {shlex.quote(','.join(keys))} --force --theme {shlex.quote(theme)}"
+                  + (" --studio art/studio.json" if studio else "")
+                  + "; c=$?; if [ $c -eq 75 ]; then exit 75; fi; if [ $c -ne 0 ]; then rc=$c; fi; ")
+    return steps
 
 
 if __name__ == "__main__":

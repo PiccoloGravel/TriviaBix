@@ -10,7 +10,7 @@ def event(name, **data):
     print("@tbx " + json.dumps({"event": name, **data}), file=sys.stderr, flush=True)
 
 
-out = Path(args[args.index("--out") + 1])
+out = Path(args[args.index("--art-root") + 1])
 out.mkdir(parents=True, exist_ok=True)
 event("todo", count=3, clips=1, minutes=23, limit=34)
 event("offer", gpu="RTX 4090", vram_gb=24, price_hr=0.4, location="Norway", minutes=34, max_cost=0.23)
