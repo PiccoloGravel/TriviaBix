@@ -1486,8 +1486,11 @@ async fn mini_games_play_between_trivia_rounds() {
                 )
                 .await;
                 // Bob can see Ann has guessed, but not what.
-                let seen =
-                    wait_state(&mut bob, |s| s["minigame"]["entries"][0]["done"] == true).await;
+                let seen = wait_state(&mut bob, |s| {
+                    s["minigame"]["kind"] == "closest"
+                        && s["minigame"]["entries"][0]["done"] == true
+                })
+                .await;
                 assert!(seen["minigame"]["entries"][0]["value"].is_null());
                 send(&mut bob, json!({ "type": "mini_guess", "value": 50 })).await;
                 // Everyone guessed, so the results come straight away.
@@ -1502,7 +1505,10 @@ async fn mini_games_play_between_trivia_rounds() {
                 })
                 .await;
                 send(&mut host, json!({ "type": "next" })).await;
-                wait_state(&mut ann, |s| s["minigame"]["step"] == "play").await;
+                wait_state(&mut ann, |s| {
+                    s["minigame"]["kind"] == "quick_draw" && s["minigame"]["step"] == "play"
+                })
+                .await;
                 send(&mut ann, json!({ "type": "mini_tap" })).await;
                 ann_id.clone()
             }
