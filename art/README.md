@@ -133,8 +133,9 @@ only uses what the asset store already has, and lists the rest in `web/cutscenes
 
 A **pack** is a set of pieces made for one part of the show, listed as a `[[pack]]` at the bottom of
 `catalog.toml`; a piece joins one with `pack = "<id>"`. The mini games each have one (Button Mash,
-Closest Guess, Quick Draw, plus a shared Mini games pack for the bonus round's arena, rules card and
-winner's medal), tagged with the game (`button_mash`, `closest_guess`, `quick_draw`) and the moment
+Closest Guess, Quick Draw, Stop the Clock, Majority Rules, Lowball, plus a shared Mini games pack for the
+bonus round's arena, rules card and winner's medal), tagged with the game (`button_mash`,
+`closest_guess`, `quick_draw`, `stop_the_clock`, `majority_rules`, `lowball`) and the moment
 (`minigame`, `minigame_intro`, `minigame_winner`). A pack's prompts only say what's in the picture, so
 every theme draws it in its own look. The admin Art page shows each pack together and checks the price
 for one pack in the theme on screen or in every theme (`--only pack:<id>`).

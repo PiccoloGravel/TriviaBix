@@ -225,7 +225,25 @@ name = "Quick Draw"
 emoji = "🤠"
 description = "Fastest to tap on GO: a high-noon showdown with hats, badges and water pistols."
 
-# Mini games (shared by all three)
+[[pack]]
+id = "stop-the-clock"
+name = "Stop the Clock"
+emoji = "⏱️"
+description = "Count ten seconds in your head: a clock tower, a vanishing stopwatch and an hourglass."
+
+[[pack]]
+id = "majority-rules"
+name = "Majority Rules"
+emoji = "🗳️"
+description = "Pick what most people pick: a town hall vote with ballot boxes, megaphones and raised hands."
+
+[[pack]]
+id = "lowball"
+name = "Lowball"
+emoji = "🎱"
+description = "Lowest number nobody else picked: a sneaky lounge with lottery balls, dice and a limbo bar."
+
+# Mini games (shared by all of them)
 
 [[backdrop]]
 id = "minigame-arena"
@@ -376,3 +394,117 @@ pack = "quick-draw"
 tags = ["quick_draw", "funny"]
 prompt = "a bright orange toy water pistol squirting a splash of water"
 seed = 86
+
+# Stop the Clock
+
+[[backdrop]]
+id = "stop-the-clock-tower"
+pack = "stop-the-clock"
+tags = ["stop_the_clock", "minigame", "drama"]
+prompt = "a huge old clock tower face filling the background at dusk, giant gears turning on both sides, floating pocket watches and hourglasses drifting in the air"
+seed = 91
+
+[[clip]]
+id = "stop-the-clock-tower"
+pack = "stop-the-clock"
+tags = ["stop_the_clock", "minigame", "drama"]
+from = "stop-the-clock-tower"
+prompt = "the giant gears turn slowly, the clock hands creep forward, the floating watches sway gently, static camera"
+seed = 1
+
+[[sticker]]
+id = "hourglass"
+pack = "stop-the-clock"
+tags = ["stop_the_clock", "minigame"]
+prompt = "a wooden hourglass with glowing sand trickling through the middle"
+seed = 92
+
+[[sticker]]
+id = "vanishing-stopwatch"
+pack = "stop-the-clock"
+tags = ["stop_the_clock", "funny"]
+prompt = "a stopwatch fading away into a puff of sparkly smoke, half of it already gone"
+seed = 94
+
+[[sticker]]
+id = "brain-ticking"
+pack = "stop-the-clock"
+tags = ["stop_the_clock", "funny"]
+prompt = "a cartoon pink brain wearing a tiny clock face, sweating and counting with little tick marks around it"
+seed = 96
+
+# Majority Rules
+
+[[backdrop]]
+id = "majority-rules-hall"
+pack = "majority-rules"
+tags = ["majority_rules", "minigame"]
+prompt = "a town hall vote seen from the stage, a sea of raised cartoon hands along the bottom, bunting and balloons, two big empty voting signs on poles at the left and right"
+seed = 101
+
+[[clip]]
+id = "majority-rules-hall"
+pack = "majority-rules"
+tags = ["majority_rules", "minigame"]
+from = "majority-rules-hall"
+prompt = "the raised hands wave back and forth, the bunting flutters, the balloons bob, static camera"
+seed = 1
+
+[[sticker]]
+id = "ballot-box"
+pack = "majority-rules"
+tags = ["majority_rules", "minigame"]
+prompt = "a chunky ballot box with a folded paper vote dropping into its slot"
+seed = 102
+
+[[sticker]]
+id = "megaphone"
+pack = "majority-rules"
+tags = ["majority_rules", "hype"]
+prompt = "a red and white megaphone blasting out sound waves"
+seed = 104
+
+[[sticker]]
+id = "thumbs-up-crowd"
+pack = "majority-rules"
+tags = ["majority_rules", "minigame_winner", "winner"]
+prompt = "a bunch of cartoon hands all giving a thumbs up together, tightly grouped"
+seed = 106
+
+# Lowball
+
+[[backdrop]]
+id = "lowball-lounge"
+pack = "lowball"
+tags = ["lowball", "minigame", "drama"]
+prompt = "a sneaky smoky lounge, a lottery ball machine spinning on the left, a limbo bar set very low on the right, a green felt table with dice along the bottom"
+seed = 111
+
+[[clip]]
+id = "lowball-lounge"
+pack = "lowball"
+tags = ["lowball", "minigame", "drama"]
+from = "lowball-lounge"
+prompt = "the lottery balls tumble in the machine, the smoke drifts, the lamp light flickers softly, static camera"
+seed = 1
+
+[[sticker]]
+id = "lottery-ball"
+pack = "lowball"
+tags = ["lowball", "minigame"]
+prompt = "a glossy white lottery ball with a colored stripe, bouncing"
+seed = 112
+
+[[sticker]]
+id = "limbo-bar"
+pack = "lowball"
+tags = ["lowball", "funny"]
+prompt = "a striped limbo bar set very low between two posts, a pair of cartoon feet sliding under it"
+seed = 114
+
+[[sticker]]
+id = "sneaky-dice"
+pack = "lowball"
+tags = ["lowball", "minigame_winner", "winner"]
+prompt = "a pair of red dice with sly cartoon eyes, both showing one pip"
+seed = 116
