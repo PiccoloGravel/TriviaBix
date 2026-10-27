@@ -24,6 +24,7 @@ pub struct Rooms {
     music: Music,
     voice: Voice,
     timing: Timing,
+    app: crate::settings::Settings,
     max_players: usize,
     max_rooms: usize,
 }
@@ -35,6 +36,7 @@ impl Rooms {
         music: Music,
         voice: Voice,
         timing: Timing,
+        app: crate::settings::Settings,
         max_players: usize,
         max_rooms: usize,
     ) -> Self {
@@ -45,6 +47,7 @@ impl Rooms {
             music,
             voice,
             timing,
+            app,
             max_players,
             max_rooms,
         }
@@ -78,6 +81,7 @@ impl Rooms {
             host_token.clone(),
             settings,
             self.timing.clone(),
+            self.app.clone(),
             clamp_players(max_players.unwrap_or(self.max_players)),
             self.db.clone(),
             self.script.clone(),

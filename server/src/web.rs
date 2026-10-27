@@ -115,6 +115,7 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         music.clone(),
         voice.clone(),
         config.timing.clone(),
+        settings.clone(),
         config.max_players,
         config.max_rooms,
     );

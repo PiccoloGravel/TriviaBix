@@ -175,9 +175,18 @@ $("#host-face").append(bixFace);
 let spokenId = null;
 let typeTimer = null;
 
+/** Shows or hides Bix and his speech bubble, as set in the admin panel (Settings → Game show). */
+function hostDisplay(s) {
+  const tv = s.tv || { bix: true, captions: true };
+  hostBar.classList.toggle("off", !tv.bix);
+  // With the TV's voice muted, the words are the only way to hear him.
+  hostBar.classList.toggle("no-words", !tv.captions && voice.on);
+}
+
 /** Speaks and shows a new host line, once per line. `extra` ({text, audio}) is read out after it (the question). */
 function hostSays(s, extra) {
   const h = s.host;
+  hostDisplay(s);
   if (!h) {
     hostBar.classList.add("quiet");
     return;
@@ -202,15 +211,19 @@ function hostSays(s, extra) {
   }, voice.on ? 140 : 30);
   const parts = h.voice && h.voice.length ? [...h.voice] : [{ text: h.text }];
   if (extra) parts.push(extra);
-  voice.speak(parts, () => voice.lineDone(h.id));
+  const voiced = voice.on;
+  const finished = new Promise((resolve) => voice.speak(parts, () => { voice.lineDone(h.id); resolve(); }));
   showCallouts(s);
-  react(s);
+  const scene = react(s);
+  // Tell the server once Bix is done and his cutscene is over, so it can move on without waiting
+  // out its own guess at how long he talks. Muted, people read the line, so it keeps its guess.
+  if (voiced) Promise.all([finished, scene]).then(() => { if (voice.on) send({ type: "spoken", id: h.id }); });
 }
 
 // ---------- Cutscenes and Bix's reactions ----------
 // The server tags each line with a cue; web/cutscenes/index.json maps cues to scenes and faces.
 
-/** Pulls Bix's face for the line's cue and plays its cutscene, if it has one. */
+/** Pulls Bix's face for the line's cue and plays its cutscene, if it has one. Resolves when the scene is over. */
 function react(s) {
   const cue = s.host.cue;
   Bix.mood(bixFace, Cutscenes.moodFor(cue) || "happy");
@@ -218,7 +231,7 @@ function react(s) {
   void hostBar.offsetWidth;
   hostBar.classList.add("react");
   // Not on the first state after a refresh: a scene popping up mid-question would just be in the way.
-  if (cue && prev) Cutscenes.cue(cue, cutsceneContext(s));
+  return (cue && prev && Cutscenes.cue(cue, cutsceneContext(s))) || Promise.resolve();
 }
 
 /** What a scene needs to fill in names, faces and numbers. */
@@ -941,6 +954,7 @@ function toggleVoice() {
   voice.on = !voice.on;
   Cutscenes.sound = voice.on;
   if (!voice.on) voice.hush();
+  if (state) hostDisplay(state);
   TBX.save("tbx:voice", voice.on);
   $("#mute-btn").textContent = voice.on ? "🔊 Host voice" : "🔇 Host voice";
 }

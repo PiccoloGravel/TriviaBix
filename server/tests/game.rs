@@ -1849,3 +1849,50 @@ async fn bix_speaking_speed_reaches_the_tv() {
     );
     assert_eq!(speed().await, 1.2);
 }
+
+#[tokio::test]
+async fn admin_can_hide_bix_and_his_words_on_the_tv() {
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let cookie = admin_login(&addr).await;
+    let set = |key: &str, value: &str| {
+        http.put(format!("http://{addr}/api/admin/settings"))
+            .header("cookie", &cookie)
+            .json(&json!({ "key": key, "value": value }))
+            .send()
+    };
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phone = open(&addr, &format!("/ws/play?code={code}&name=Viewer")).await;
+    let tv = wait_state(&mut host, |s| s["phase"] == "lobby").await;
+    assert_eq!(tv["tv"], json!({ "bix": true, "captions": true }));
+    assert!(
+        recv(&mut phone).await["tv"].is_null(),
+        "phones don't get it"
+    );
+
+    assert_eq!(set("BIX_CAPTIONS", "hide").await.unwrap().status(), 200);
+    assert_eq!(set("BIX_ON_TV", "maybe").await.unwrap().status(), 400);
+    assert_eq!(set("GAME_PACE", "quick").await.unwrap().status(), 200);
+    // The next state the TV gets has the new setting; the game runs at the quick pace.
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    assert_eq!(q["tv"], json!({ "bix": true, "captions": false }));
+    let id = q["host"]["id"].as_u64().unwrap();
+    // The TV saying it finished a line is fine at any time, and only the TV may say it.
+    send(&mut host, json!({ "type": "spoken", "id": id })).await;
+    send(&mut phone, json!({ "type": "spoken", "id": id })).await;
+    send(&mut phone, json!({ "type": "answer", "choice": 0 })).await;
+    let reveal = wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert!(
+        reveal["phase_ms"].as_u64().unwrap() < 1500,
+        "{}",
+        reveal["phase_ms"]
+    );
+    send(
+        &mut host,
+        json!({ "type": "spoken", "id": reveal["host"]["id"] }),
+    )
+    .await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+}

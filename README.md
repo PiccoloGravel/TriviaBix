@@ -194,6 +194,7 @@ cargo test                    # unit tests plus full games over WebSockets
 | `QUESTION_SECS` / `REVEAL_SECS` / `SCOREBOARD_SECS` | `20` / `7` / `6` | Minimums; the host's lines can stretch them |
 | `INTRO_SECS` | `6` | The host's opening, before question 1 |
 | `ROUND_INTRO_SECS` / `RECAP_SECS` | `5` / `14` | Trivia round title card, and the scores and recap after each round |
+| | | Admin → Settings → Game show → *Pace between questions* scales the reveal, scoreboard, intro, round card and recap times: quick 35%, normal 60%, relaxed all of it. The TV tells the server when Bix has finished a line, so those phases end soon after he stops talking |
 | `HOST_TALK_CPS` | `13` | Voice speed estimate in characters per second, for pacing; `0` stops waiting for the host |
 | `HOST_SCRIPT` | | Path to a host script to use instead of the built-in one |
 | `CONTENT_DIR` | `content` | Question packs and host scripts, loaded into the database at startup |

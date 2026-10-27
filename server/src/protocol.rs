@@ -44,6 +44,8 @@ pub enum ClientMsg {
     },
     /// Host, or the VIP while in the lobby: remove a player from the room.
     Kick { player_id: u32 },
+    /// TV: the host has finished saying line `id` (and its cutscene is over).
+    Spoken { id: u64 },
     /// Keep-alive from the browser; ignored.
     Ping,
 }
@@ -120,6 +122,8 @@ pub struct StateView<'a> {
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
+    /// TV only: whether to show Bix and the words he says.
+    pub tv: Option<TvView>,
     /// TV only: background music from the library for the lobby and scoreboards, within the
     /// room's rating. Empty without a music library.
     pub playlist: Vec<PlaylistView<'a>>,
@@ -129,6 +133,12 @@ pub struct StateView<'a> {
     pub host: Option<HostView<'a>>,
     /// Only on player connections.
     pub you: Option<YouView>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+pub struct TvView {
+    pub bix: bool,
+    pub captions: bool,
 }
 
 #[derive(Debug, Serialize)]

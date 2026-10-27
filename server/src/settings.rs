@@ -49,6 +49,7 @@ pub const PRICE_CEILING: f64 = 2.0;
 pub const VOICE_PRICE: f64 = 0.50;
 pub const ART_PRICE: f64 = 0.60;
 
+const SHOW: &str = "Game show";
 const VAST: &str = "GPU rental (vast.ai)";
 const CLAUDE: &str = "Claude (Bix's lines)";
 const VOICE: &str = "Bix's voice";
@@ -61,6 +62,36 @@ const GHCR_OWNER: &str = "piccologravel";
 const GHCR_IMAGES: &[&str] = &["triviabix", "triviabix-tts", "triviabix-art"];
 
 pub const FIELDS: &[Field] = &[
+    Field {
+        key: "GAME_PACE",
+        group: SHOW,
+        label: "Pace between questions",
+        kind: Kind::Choice {
+            options: &["quick", "normal", "relaxed"],
+        },
+        default: Some("normal"),
+        help: "How long the TV stays on the answer, the scores and the round cards before moving on. Bix always finishes his line first, and the game moves on as soon as he has. Quick keeps the gaps to a couple of seconds; relaxed is the old, longer pace. Answer time doesn't change. Running games pick it up at their next question.",
+    },
+    Field {
+        key: "BIX_ON_TV",
+        group: SHOW,
+        label: "Bix on the TV",
+        kind: Kind::Choice {
+            options: &["show", "hide"],
+        },
+        default: Some("show"),
+        help: "Show Bix along the bottom of the TV, or hide him and his speech bubble. His voice, cutscenes and the callout graphics still play. Changes on the TV at once.",
+    },
+    Field {
+        key: "BIX_CAPTIONS",
+        group: SHOW,
+        label: "Bix's words on the TV",
+        kind: Kind::Choice {
+            options: &["show", "hide"],
+        },
+        default: Some("show"),
+        help: "Show what Bix is saying in his speech bubble, like subtitles, or hide the bubble and just hear him. With his voice muted on the TV the words always show, so nobody misses a line.",
+    },
     Field {
         key: "VAST_API_KEY",
         group: VAST,

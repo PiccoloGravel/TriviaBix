@@ -75,6 +75,51 @@ pub struct Timing {
     pub idle_timeout: Duration,
 }
 
+/// How long the game lingers between questions: GAME_PACE on the admin Settings page.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Pace {
+    Quick,
+    Normal,
+    Relaxed,
+}
+
+impl Pace {
+    pub fn parse(s: Option<&str>) -> Self {
+        match s.map(str::trim) {
+            Some("quick") => Self::Quick,
+            Some("relaxed") => Self::Relaxed,
+            _ => Self::Normal,
+        }
+    }
+
+    /// The share of the room's reveal, scoreboard, round card, recap and intro times to use.
+    fn scale(self) -> f64 {
+        match self {
+            Self::Quick => 0.35,
+            Self::Normal => 0.6,
+            Self::Relaxed => 1.0,
+        }
+    }
+
+    /// The beat after the host finishes a line before the game moves on.
+    fn pause(self) -> Duration {
+        Duration::from_millis(match self {
+            Self::Quick => 300,
+            Self::Normal => 700,
+            Self::Relaxed => 1500,
+        })
+    }
+}
+
+/// What the TV shows of the host: BIX_ON_TV and BIX_CAPTIONS on the admin Settings page.
+pub fn tv_view(app: &crate::settings::Settings) -> TvView {
+    let shown = |key| app.get(key).is_none_or(|v| v.trim() != "hide");
+    TvView {
+        bix: shown("BIX_ON_TV"),
+        captions: shown("BIX_CAPTIONS"),
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
     pub rounds: usize,
@@ -345,6 +390,8 @@ pub struct Room {
     host_token: String,
     settings: Settings,
     timing: Timing,
+    /// The admin Settings page, read live for the pace and what the TV shows of the host.
+    app: crate::settings::Settings,
     max_players: usize,
     db: Db,
     music: Music,
@@ -398,6 +445,7 @@ impl Room {
         host_token: String,
         settings: Settings,
         timing: Timing,
+        app: crate::settings::Settings,
         max_players: usize,
         db: Db,
         script: Arc<Script>,
@@ -411,6 +459,7 @@ impl Room {
             host_token,
             settings,
             timing,
+            app,
             max_players,
             db,
             music,
@@ -818,6 +867,11 @@ impl Room {
                     }
                 }
             }
+            ClientMsg::Spoken { id } => {
+                if is_host {
+                    self.spoken(id);
+                }
+            }
             ClientMsg::Next => {
                 if !is_leader {
                     return Err("Only the host or the VIP can skip ahead.".into());
@@ -1201,7 +1255,7 @@ impl Room {
             &[("count", &count), ("rounds", &rounds), ("names", &names)],
         );
         self.speak(vec![line], Vec::new(), Some("intro"));
-        self.set_phase(Phase::Intro, Some(self.timing.intro.max(self.talk())));
+        self.set_phase(Phase::Intro, Some(self.hold(self.timing.intro)));
         self.broadcast();
         Ok(())
     }
@@ -1491,7 +1545,6 @@ impl Room {
 
     /// Moves to the next phase, either because a timer ran out or someone skipped.
     async fn advance(&mut self) {
-        let pause = Duration::from_millis(1500);
         match self.phase {
             Phase::Intro if !self.stages.is_empty() => {
                 self.begin_stage();
@@ -1509,17 +1562,11 @@ impl Room {
                         self.react_to_puzzle();
                     }
                 }
-                self.set_phase(
-                    Phase::Reveal,
-                    Some(self.timing.reveal.max(self.talk() + pause)),
-                );
+                self.set_phase(Phase::Reveal, Some(self.hold(self.timing.reveal)));
             }
             Phase::Reveal if self.stage_ends_here() => {
                 self.recap();
-                self.set_phase(
-                    Phase::Recap,
-                    Some(self.timing.recap.max(self.talk() + pause)),
-                );
+                self.set_phase(Phase::Recap, Some(self.hold(self.timing.recap)));
             }
             Phase::Reveal | Phase::Recap if self.round + 1 >= self.game_len() => {
                 self.finale();
@@ -1536,10 +1583,7 @@ impl Room {
                 let (parts, callouts) = self.score_update();
                 let cue = headline(&callouts);
                 self.speak(parts, callouts, cue);
-                self.set_phase(
-                    Phase::Scoreboard,
-                    Some(self.timing.scoreboard.max(self.talk() + pause)),
-                );
+                self.set_phase(Phase::Scoreboard, Some(self.hold(self.timing.scoreboard)));
             }
             Phase::Scoreboard => {
                 self.round += 1;
@@ -1787,11 +1831,7 @@ impl Room {
         // The TV has its own title card for a round; only the final round gets a cutscene too.
         let cue = final_round.then_some("final_round");
         self.speak(vec![line], Vec::new(), cue);
-        let pause = Duration::from_millis(1000);
-        self.set_phase(
-            Phase::RoundIntro,
-            Some(self.timing.round_intro.max(self.talk() + pause)),
-        );
+        self.set_phase(Phase::RoundIntro, Some(self.hold(self.timing.round_intro)));
         self.broadcast();
     }
 
@@ -1921,11 +1961,53 @@ impl Room {
         });
     }
 
-    /// How long the host's current line takes to say.
+    /// How long the host's current line takes to say, at the speed the TV plays it.
     fn talk(&self) -> Duration {
+        let cps = self.timing.talk_cps * crate::web::voice_speed(&self.app);
         self.host_line.as_ref().map_or(Duration::ZERO, |l| {
-            host::talk_time(&crate::voice::without_tags(&l.text), self.timing.talk_cps)
+            host::talk_time(&crate::voice::without_tags(&l.text), cps)
         })
+    }
+
+    fn pace(&self) -> Pace {
+        Pace::parse(self.app.get("GAME_PACE").as_deref())
+    }
+
+    /// The shortest a between-questions phase lasts at the room's pace.
+    fn linger(&self, base: Duration) -> Duration {
+        base.mul_f64(self.pace().scale())
+    }
+
+    /// How long a between-questions phase lasts: its time at the room's pace, or long enough for
+    /// the host to finish talking. The TV can end it sooner once he has (see `spoken`).
+    fn hold(&self, base: Duration) -> Duration {
+        self.linger(base).max(self.talk() + self.pace().pause())
+    }
+
+    /// The TV finished saying line `id`, and its cutscene is over: a phase between questions
+    /// that was waiting on the host's guess of how long that takes moves on after a short beat.
+    fn spoken(&mut self, id: u64) {
+        if self.host_line.as_ref().map(|l| l.id) != Some(id) {
+            return;
+        }
+        let base = match self.phase {
+            Phase::Intro => self.timing.intro,
+            Phase::RoundIntro => self.timing.round_intro,
+            Phase::Reveal => self.timing.reveal,
+            Phase::Scoreboard => self.timing.scoreboard,
+            Phase::Recap => self.timing.recap,
+            _ => return,
+        };
+        let (Some(deadline), Some(len)) = (self.deadline, self.phase_len) else {
+            return;
+        };
+        let Some(started) = deadline.checked_sub(len) else {
+            return;
+        };
+        let soonest = (started + self.linger(base)).max(Instant::now() + self.pace().pause());
+        if soonest < deadline {
+            self.deadline = Some(soonest);
+        }
     }
 
     fn name_of(&self, id: u32) -> String {
@@ -2366,6 +2448,7 @@ impl Room {
                         }),
                     }),
                 next_clip: next_clip.filter(|_| is_host),
+                tv: is_host.then(|| tv_view(&self.app)),
                 playlist: if is_host {
                     playlist.clone()
                 } else {
