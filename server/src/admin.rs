@@ -82,6 +82,7 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
             axum::routing::put(set_lines),
         )
         .route("/api/admin/content/reload", post(reload_content))
+        .route("/api/admin/cameos", get(list_cameos))
         .route("/api/admin/duplicates", get(list_duplicates))
         .route("/api/admin/duplicates/keep", post(keep_pair))
         .route("/api/admin/questions/{id}/hidden", post(set_hidden))
@@ -281,6 +282,49 @@ async fn set_lines(
 }
 
 /// Questions that look like the same question asked twice, and the ones hidden as duplicates.
+/// Bix's characters, for the admin panel's Characters page: who they are, how they sound, the
+/// script's lines for them, and how many question lines play them.
+async fn list_cameos(State(app): State<AppState>) -> Response {
+    let counts = match app.db.cameo_line_counts().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("counting character lines: {e:#}");
+            Default::default()
+        }
+    };
+    let cameos: Vec<_> = triviabix_questions::CAMEOS
+        .iter()
+        .map(|c| {
+            let script: Vec<_> = app
+                .script
+                .cameo_lines(c.slug)
+                .into_iter()
+                .map(|(event, rating, text)| {
+                    json!({ "event": event, "rating": rating, "text": text })
+                })
+                .collect();
+            json!({
+                "id": c.slug,
+                "name": c.name,
+                "emoji": c.emoji,
+                "who": c.who,
+                "fits": c.fits,
+                "rate": c.rate,
+                "shift": c.shift,
+                "sample": c.sample,
+                "audio": app.voice.url(&crate::host::cameo_sample(c)),
+                "script": script,
+                "question_lines": counts.get(c.slug).copied().unwrap_or(0),
+            })
+        })
+        .collect();
+    Json(json!({
+        "cameos": cameos,
+        "setting": app.settings.get("CAMEOS").unwrap_or_else(|| "sometimes".into()),
+    }))
+    .into_response()
+}
+
 async fn list_duplicates(State(app): State<AppState>) -> Response {
     match app.db.duplicate_report(&app.content_dir).await {
         Ok(report) => Json(report).into_response(),

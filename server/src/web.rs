@@ -208,6 +208,10 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             ServeFile::new(dir.join("admin-questions.html")),
         )
         .route_service(
+            "/admin/characters",
+            ServeFile::new(dir.join("admin-characters.html")),
+        )
+        .route_service(
             "/admin/duplicates",
             ServeFile::new(dir.join("admin-duplicates.html")),
         )
