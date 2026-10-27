@@ -242,7 +242,9 @@
         "Zero. Nobody. I'm embarrassed for all of us.",
         "Nobody got it! It was {answer}. That one was tough.",
         "Zero for everyone. The answer was {answer}.",
-        "Not a single right answer. It was {answer}. I'm disappointed in all of you."
+        "Not a single right answer. It was {answer}. I'm disappointed in all of you.",
+        "[as:noir] It was {answer}. Nobody saw it. Nobody ever does. That's this town for you.",
+        "[as:nature] Remarkable. Not a single member of the herd knew it was {answer}. Nature can be cruel."
       ],
       "PG-13": [
         "Nobody got it. Your teachers are crying somewhere.",
@@ -266,7 +268,8 @@
         "A clean sweep. Don't get cocky.",
         "Everybody got it! Nice work, team.",
         "A perfect round! Too easy?",
-        "Wow, everyone's a genius tonight."
+        "Wow, everyone's a genius tonight.",
+        "[as:chef] Everybody got it! Magnifique! Every plate licked clean! I could weep!"
       ],
       "PG-13": [
         "Everybody got that? Who's cheating?",
@@ -315,7 +318,9 @@
         "Big points for {name}.",
         "{name} was lightning fast!",
         "Speed points go to {name}.",
-        "{name} buzzed in first. Nice reflexes."
+        "{name} buzzed in first. Nice reflexes.",
+        "[as:announcer] And {name} is off the line like a rocket! Folks, we have never seen speed like this!",
+        "[as:nature] Observe {name}, the swiftest of the herd, striking before the others have even noticed the question."
       ],
       "PG-13": [
         "{name} knew that one a little too well.",
@@ -340,7 +345,8 @@
         "That's {streak} in a row for {name}. On fire!",
         "{name} has {streak} in a row! On fire!",
         "That's {streak} straight for {name}. Somebody stop them!",
-        "{name} is unstoppable. {streak} in a row!"
+        "{name} is unstoppable. {streak} in a row!",
+        "[as:announcer] {name} with {streak} in a row! Somebody stop this player! Nobody can stop this player!"
       ],
       "PG-13": [
         "{streak} straight for {name}. Okay, we get it, you read books.",
@@ -468,7 +474,8 @@
         "Shake-up! {name} is now in first.",
         "We have a new leader: {name}!",
         "{name} takes the top spot!",
-        "Look out, {name} just took the lead!"
+        "Look out, {name} just took the lead!",
+        "[as:trailer] In a world where nobody saw it coming... one player rose to the top. {name}. Now in first place."
       ],
       "PG-13": [
         "{name} just stole first place. Rude.",
@@ -560,7 +567,8 @@
         "{name} takes the crown with {score} points. Speech! Actually, no, please don't.",
         "And the winner is {name}, with {score} points!",
         "{name} wins with {score}! Take a bow!",
-        "Champion of the night: {name}, with {score} points!"
+        "Champion of the night: {name}, with {score} points!",
+        "[as:trailer] One player. One living room. One champion. {name}, with {score} points. Coming soon to bragging rights near you."
       ],
       "PG-13": [
         "{name} wins! Go ahead, rub it in. You've earned it.",
@@ -668,7 +676,9 @@
         "This is it, the final round! The hardest questions from every category, and they're worth {points}. Anyone can still win!",
         "Final round! Everything's worth {points}, so the scoreboard can flip on a single question. Good luck!",
         "The final round! It's {category}, and every answer is worth {points}!",
-        "Last round! {category}. {points} each. Anyone can still win!"
+        "Last round! {category}. {points} each. Anyone can still win!",
+        "[as:psychic] The final round. I see {category}... I see {points} per question... and I see someone in this room about to have their heart broken.",
+        "[as:trailer] This fall... one final round. {category}. {points} a question. No second chances."
       ],
       "PG-13": [
         "Final round. Hardest questions, {points}. Whoever's in last place, this is your redemption arc.",
@@ -726,10 +736,13 @@
       "PG": [
         "Break time! It's Button Mash. Tap your phone as fast as you can, starting now-ish.",
         "Mini game! Button Mash. When I say go, tap like your phone owes you money.",
-        "Let's stretch those thumbs. Button Mash: most taps wins!"
+        "Let's stretch those thumbs. Button Mash: most taps wins!",
+        "[as:coach] Listen up, rookies! It's Button Mash! When I say go, you tap that phone until your thumb files a complaint! Most taps wins!",
+        "[as:announcer] Ladies and gentlemen, the thumbs are warming up! Button Mash: tap as fast as you can, most taps takes it all!"
       ],
       "PG-13": [
-        "Button Mash! Show me the thumb strength you've built up from years of doomscrolling."
+        "Button Mash! Show me the thumb strength you've built up from years of doomscrolling.",
+        "[as:coach] Button Mash, maggots! Tap like you mean it! I've seen more hustle from a phone on airplane mode!"
       ],
       "MA": [
         "Button Mash time. Tap that screen like it just said something about your mother."
@@ -742,13 +755,16 @@
       "PG": [
         "Mini game! Closest Guess. I ask for a number, you get as close as you can.",
         "Time for Closest Guess. No choices this time, just your best number.",
-        "Closest Guess! Nearest number wins, and nailing it exactly pays extra."
+        "Closest Guess! Nearest number wins, and nailing it exactly pays extra.",
+        "[as:auctioneer] Closest Guess, folks! I give you a question, you give me a number, closest bid wins, exact bid wins big! Do I hear a number? Anybody?",
+        "[as:auctioneer] Hey now, it's Closest Guess! Type one number, nearest number takes the lot, dead-on gets a bonus! Going once, going twice!"
       ],
       "PG-13": [
         "Closest Guess. Wild guesses welcome. Confident wrong guesses especially welcome."
       ],
       "MA": [
-        "Closest Guess! Pull a number out of wherever you keep them."
+        "Closest Guess! Pull a number out of wherever you keep them.",
+        "[as:auctioneer] Closest Guess! One number, closest wins! Bidding opens at whatever nonsense you're about to type, sold to the drunk in the corner!"
       ],
       "NC-17": [
         "Closest Guess. Size matters, folks. Get it exactly right."
@@ -758,7 +774,9 @@
       "PG": [
         "Quick Draw! Wait for GO, then tap. Fastest finger wins, and jumping the gun knocks you out.",
         "Mini game: Quick Draw. Patience first, then speed. Don't tap until it says GO!",
-        "It's Quick Draw! Steady... steady... don't you dare tap early."
+        "It's Quick Draw! Steady... steady... don't you dare tap early.",
+        "[as:psychic] Quick Draw. I see... a word appearing. GO. Wait for it before you tap, or the spirits knock you out. The fastest true hand wins.",
+        "[as:noir] Quick Draw. Town ain't big enough for all of you. Wait for GO, then tap. Jump the gun and you're out. Fastest finger walks away."
       ],
       "PG-13": [
         "Quick Draw. Wait for it. I know waiting isn't your strong suit."
@@ -774,7 +792,9 @@
       "PG": [
         "{name} wins the mini game! Bonus points!",
         "And the mini game goes to {name}. Nicely done!",
-        "{name} takes it! Grab those bonus points."
+        "{name} takes it! Grab those bonus points.",
+        "[as:announcer] {name} TAKES IT! Unbelievable! Somebody get me a replay of that!",
+        "[as:critic] {name} wins. Crude technique, but undeniably effective. I'll allow it."
       ],
       "PG-13": [
         "{name} wins the mini game. Peak performance, totally useless skill."

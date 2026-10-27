@@ -20,9 +20,9 @@ import soundfile
 import torch
 
 DESCRIPTION = (
-    "A washed-up American game show host in his fifties, clinging to his last gig. His voice is warm and "
-    "a little gravelly, cheeky and quick but world-weary, with dry, sarcastic timing and a tired sigh in it, "
-    "and the old showman's bounce still comes back for the big moments. Always clear and easy to follow."
+    "An energetic American game show host in his fifties, a big lovable ham giving it everything he's got. "
+    "His voice is warm, bright and a little gravelly, fast and punchy with big showman energy and great comic timing, "
+    "and just a hint of a tired crack under the smile. Always clear and easy to follow."
 )
 SAMPLE = (
     "Welcome back to TriviaBix. I'm Bix, your host. Still. Twenty years in show business, "

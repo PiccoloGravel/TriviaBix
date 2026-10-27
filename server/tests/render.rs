@@ -675,7 +675,7 @@ async fn designing_listening_to_and_picking_a_voice() {
         status["ready"]["voice_description"]
             .as_str()
             .unwrap()
-            .contains("washed-up")
+            .contains("lovable ham")
     );
 
     // Out-of-range options are refused before anything runs.
@@ -925,12 +925,7 @@ async fn the_host_persona_reaches_the_line_writer() {
         .unwrap();
     assert_eq!(res.headers()["cache-control"], "no-cache");
     assert!(res.text().await.unwrap().contains("textarea"));
-    assert!(
-        persona["default"]
-            .as_str()
-            .unwrap()
-            .contains("seen better days")
-    );
+    assert!(persona["default"].as_str().unwrap().contains("lovable ham"));
     let (code, view) = s
         .put(
             "settings",

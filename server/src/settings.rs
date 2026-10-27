@@ -93,6 +93,16 @@ pub const FIELDS: &[Field] = &[
         help: "Show what Bix is saying in his speech bubble, like subtitles, or hide the bubble and just hear him. With his voice muted on the TV the words always show, so nobody misses a line.",
     },
     Field {
+        key: "CAMEOS",
+        group: SHOW,
+        label: "Character cameos",
+        kind: Kind::Choice {
+            options: &["often", "sometimes", "off"],
+        },
+        default: Some("sometimes"),
+        help: "How often Bix breaks into one of his characters for a line, like Detective Dirk Danger for a crime question or Colonel Bid McGavel the auctioneer for Closest Guess. The TV puts him in costume and plays the line in the character's style. Off keeps him as plain Bix (character lines are still said, just without the costume). Running games pick it up at their next line.",
+    },
+    Field {
         key: "VAST_API_KEY",
         group: VAST,
         label: "API key",

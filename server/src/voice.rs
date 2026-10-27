@@ -144,7 +144,7 @@ impl Voice {
 
     /// Whether `text` has audio in the current voice already, so playing it needs no TTS service.
     pub fn is_ready(&self, text: &str) -> bool {
-        self.with_ready(|made| made.contains(&hash(text.trim())))
+        self.with_ready(|made| made.contains(&hash(spoken(text))))
             .unwrap_or(false)
     }
 
@@ -233,7 +233,7 @@ impl Voice {
     /// Remembers `text` as a line the game may ask for, and returns its hash.
     fn register(&self, text: &str) -> Option<String> {
         let inner = self.0.as_ref()?;
-        let text = text.trim();
+        let text = spoken(text);
         if text.is_empty() || text.len() > MAX_TEXT {
             return None;
         }
@@ -726,6 +726,12 @@ async fn write_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     tokio::fs::rename(&tmp, path).await
 }
 
+/// The words of a line that the voice says: trimmed, without a character cameo's `[as:...]` tag.
+/// A cameo plays in Bix's own voice, so its audio is the same as the plain line's.
+fn spoken(text: &str) -> &str {
+    triviabix_questions::split_cameo(text).1.trim()
+}
+
 /// A voice line's key in the asset store: the hash of its inputs as canonical JSON.
 fn hash(text: &str) -> String {
     let inputs = serde_json::json!({ "text": text }).to_string();
@@ -775,6 +781,12 @@ mod tests {
 
     const HELLO_KEY: &str = "ef73ae6a8b47cd3601ab3fad1fb8099e";
     const JAMES_SLUG: &str = "8f7aee184357";
+
+    #[test]
+    fn cameos_share_the_plain_lines_audio() {
+        assert_eq!(spoken(" [as:noir] The dame lied. "), "The dame lied.");
+        assert_eq!(spoken("[Sigh] Fine."), "[Sigh] Fine.");
+    }
 
     #[test]
     fn hashes_are_stable() {

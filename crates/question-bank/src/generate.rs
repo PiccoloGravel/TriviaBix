@@ -48,6 +48,14 @@ not in most lines; they're hidden on screen. Bix can say his own name as {host};
 Don't repeat or paraphrase lines in the question's `existing` list. Return every question you were given, using \
 its `question` id exactly, with an empty list for any slot you were not asked to write.";
 
+/// How Bix breaks into a character for a line; the roster follows it.
+const CAMEO_RULES: &str = "Character cameos: now and then Bix breaks into one of his characters for a single line, \
+like a comedian doing a voice. Only do it when the question's topic or category really fits a character, in \
+roughly one question in four, and at most one cameo line per slot. Start a cameo line with the character's tag, \
+exactly as written below, then write the whole line in that character's voice, still about the question and \
+still easy to follow; the TV puts Bix in costume and hides the tag. Cameos follow every other rule, including \
+ratings. His characters:";
+
 /// Which slots to write: lead-in, reveal, or both.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Wanted {
@@ -129,9 +137,13 @@ impl Generator {
         self
     }
 
-    /// The system prompt: the fixed introduction, the persona, then the rules.
+    /// The system prompt: the fixed introduction, the persona, the rules, then his characters.
     pub fn system(&self) -> String {
-        format!("{INTRO} {}\n\n{RULES}", self.persona)
+        format!(
+            "{INTRO} {}\n\n{RULES}\n\n{CAMEO_RULES}\n{}",
+            self.persona,
+            crate::roster()
+        )
     }
 
     /// Writes lines for one batch. Questions with no slots to write are skipped.
@@ -395,7 +407,11 @@ answer = "Canada"
         assert_eq!(briefs[0]["existing"], json!(["They hold grudges."]));
         assert_eq!(briefs[1]["choices"][3], "Finland");
         let system = req["system"].as_str().unwrap();
-        assert!(system.contains("seen better days") && system.contains("lead_in:"));
+        assert!(
+            system.contains("lovable ham")
+                && system.contains("lead_in:")
+                && system.contains("[as:noir]")
+        );
     }
 
     #[test]
@@ -404,7 +420,7 @@ answer = "Canada"
             .with_persona("  Bix is a pirate who only speaks in sea shanties.  ");
         let system = gen.system();
         assert!(system.contains("Bix is a pirate who only speaks in sea shanties.\n\n"));
-        assert!(!system.contains("seen better days"));
+        assert!(!system.contains("lovable ham"));
         assert!(system.contains("Never give away"));
         let blank = Generator::new("key", DEFAULT_MODEL, "medium").with_persona("   ");
         assert_eq!(blank.persona, crate::DEFAULT_PERSONA);
