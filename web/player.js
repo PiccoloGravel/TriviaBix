@@ -253,13 +253,17 @@ function renderMinigame(s, prev) {
   document.querySelectorAll("#mg-vip [data-vip-next], #mg-vip [data-vip-end]").forEach((b) => b.classList.toggle("hidden", !s.you.is_vip || playing));
 
   const pad = $("#mg-pad");
-  const tapper = m.kind !== "closest" && m.step !== "results";
+  const tapper = ["mash", "quick_draw", "stop_clock"].includes(m.kind) && m.step !== "results";
   pad.classList.toggle("hidden", !tapper);
   pad.classList.remove("wait", "go");
   if (tapper) {
     if (m.step === "rules") {
       pad.disabled = true;
       pad.textContent = m.kind === "mash" ? "Get ready…" : "Hands off…";
+    } else if (m.kind === "stop_clock") {
+      pad.disabled = mine.done;
+      pad.classList.toggle("go", !mine.done);
+      pad.textContent = mine.done ? "Stopped ✓" : "STOP!";
     } else if (m.kind === "mash") {
       pad.disabled = false;
       pad.textContent = "TAP!";
@@ -282,11 +286,34 @@ function renderMinigame(s, prev) {
   $("#mg-count").textContent = m.kind === "mash" && m.step === "play" ? `${Math.max(localTaps, mine.value || 0)} taps` : "";
 
   const guessing = m.kind === "closest" && m.step === "play";
-  $("#mg-prompt").classList.toggle("hidden", m.kind !== "closest" || m.step === "rules");
+  $("#mg-prompt").classList.toggle("hidden", (m.kind !== "closest" && m.kind !== "majority") || m.step === "rules");
   $("#mg-prompt").textContent = m.prompt || "";
   $("#mg-guess-form").classList.toggle("hidden", !guessing || mine.done);
   if (guessing && stepChanged) $("#mg-guess-input").value = "";
   if (guessing && mine.done) $("#mg-count").textContent = `Locked in: ${mine.value.toLocaleString()}${m.unit ? " " + m.unit : ""}`;
+
+  // Majority Rules and Lowball: tap one button to lock in.
+  const picking = (m.kind === "majority" || m.kind === "lowball") && m.step === "play";
+  const picks = $("#mg-picks");
+  picks.classList.toggle("hidden", !picking);
+  if (picking) {
+    const labels = m.kind === "majority" ? m.options : Array.from({ length: m.max_pick }, (_, i) => String(i + 1));
+    const values = m.kind === "majority" ? labels.map((_, i) => i) : labels.map((_, i) => i + 1);
+    if (stepChanged || picks.children.length !== labels.length) {
+      picks.className = `mg-picks ${m.kind === "majority" ? "options" : "numbers"}`;
+      picks.replaceChildren(...labels.map((label, i) => el("button", {
+        type: "button",
+        class: m.kind === "majority" ? `choice-${i}` : "secondary",
+        onclick: () => send({ type: "mini_guess", value: values[i] }),
+      }, label)));
+    }
+    [...picks.children].forEach((b, i) => {
+      b.disabled = mine.done;
+      b.classList.toggle("picked", mine.value === values[i]);
+    });
+    picks.classList.toggle("locked", !!mine.done);
+    if (mine.done) $("#mg-count").textContent = "Locked in!";
+  }
 
   const results = m.step === "results";
   $("#mg-result").classList.toggle("hidden", !results);
@@ -297,7 +324,11 @@ function renderMinigame(s, prev) {
     $("#mg-result-points").textContent = mine.points ? `+${mine.points}` : "";
     $("#mg-result-more").textContent = m.kind === "closest"
       ? `Answer: ${m.answer.toLocaleString()}${m.unit ? " " + m.unit : ""}${mine.value != null ? ` · you said ${mine.value.toLocaleString()}` : ""}`
-      : m.kind === "mash" ? `${mine.value || 0} taps` : mine.value != null ? `${(mine.value / 1000).toFixed(3)} seconds` : "";
+      : m.kind === "mash" ? `${mine.value || 0} taps`
+      : m.kind === "majority" ? (mine.value != null ? `You picked ${m.options[mine.value]}` : "You didn't pick")
+      : m.kind === "lowball" ? (mine.value != null ? `You picked ${mine.value}${m.entries.filter((e) => e.value === mine.value).length > 1 ? ", and so did someone else!" : ""}` : "You didn't pick")
+      : m.kind === "stop_clock" ? (mine.value != null ? `You stopped at ${(mine.value / 1000).toFixed(2)}s` : "You never stopped it")
+      : mine.value != null ? `${(mine.value / 1000).toFixed(3)} seconds` : "";
     if (stepChanged && navigator.vibrate) navigator.vibrate(mine.points ? [80, 40, 80] : 60);
   }
 }

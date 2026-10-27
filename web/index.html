@@ -79,6 +79,13 @@
     .mg-pad.go { background: var(--good); }
     .mg-pad.hit { transform: translateY(6px) scale(.98); box-shadow: 0 4px 0 rgba(0,0,0,.35); }
     .mg-count { font-family: "Bungee", sans-serif; font-size: 34px; text-align: center; color: var(--accent); min-height: 1.2em; }
+    .mg-picks { display: grid; gap: 10px; }
+    .mg-picks.options { grid-template-columns: 1fr; }
+    .mg-picks.options button { font-size: 22px; padding: 18px; color: #fff; }
+    .mg-picks.numbers { grid-template-columns: repeat(5, 1fr); }
+    .mg-picks.numbers button { font-family: "Bungee", sans-serif; font-size: 22px; padding: 14px 0; }
+    .mg-picks button.picked { outline: 4px solid #fff; }
+    .mg-picks.locked button:not(.picked) { opacity: .3; }
     #mg-guess-form { display: flex; flex-direction: column; gap: 12px; }
     #mg-guess-input { font-family: "Bungee", sans-serif; font-size: 34px; text-align: center; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
@@ -259,6 +266,7 @@
     <div class="timer" style="height:10px"><div class="timer-track"><div class="timer-fill" id="mg-timer"></div></div></div>
     <div class="prompt hidden" id="mg-prompt"></div>
     <button class="mg-pad hidden" type="button" id="mg-pad"></button>
+    <div class="mg-picks hidden" id="mg-picks"></div>
     <form id="mg-guess-form" class="hidden">
       <input id="mg-guess-input" type="number" inputmode="numeric" min="0" step="1" autocomplete="off" placeholder="Your guess" aria-label="Your guess">
       <button class="big" type="submit">Lock it in</button>

@@ -436,6 +436,8 @@ pub struct Room {
     minis_left: Vec<minigames::Kind>,
     /// Closest Guess questions this room has asked.
     used_estimates: Vec<usize>,
+    /// Majority Rules questions this room has asked.
+    used_polls: Vec<usize>,
     /// Index of the current question, puzzle or song (one "round" in hangman and songs).
     round: usize,
     question_started: Instant,
@@ -501,6 +503,7 @@ impl Room {
             mini: None,
             minis_left: Vec::new(),
             used_estimates: Vec::new(),
+            used_polls: Vec::new(),
             round: 0,
             question_started: Instant::now(),
             question_len: Duration::ZERO,
@@ -1921,11 +1924,19 @@ impl Room {
             self.minis_left = minigames::shuffled(&mut rand::rng());
         }
         let kind = self.minis_left.pop().unwrap_or(minigames::Kind::Mash);
-        let estimate = (kind == minigames::Kind::Closest)
-            .then(|| Minigame::pick_estimate(&mut self.used_estimates, &mut rand::rng()));
+        let question = match kind {
+            minigames::Kind::Closest => Some(Minigame::pick_estimate(
+                &mut self.used_estimates,
+                &mut rand::rng(),
+            )),
+            minigames::Kind::Majority => {
+                Some(Minigame::pick_poll(&mut self.used_polls, &mut rand::rng()))
+            }
+            _ => None,
+        };
         self.answers.clear();
         self.last_points.clear();
-        self.mini = Some(Minigame::new(kind, estimate));
+        self.mini = Some(Minigame::new(kind, question));
         let line = self.line(kind.event(), &[]);
         self.speak(vec![line], Vec::new(), Some("minigame_intro"));
         let pause = Duration::from_millis(1000);
@@ -2546,8 +2557,10 @@ impl Room {
         let recap = self.recap_view();
         let mini = self.mini.as_ref().filter(|_| self.phase == Phase::Minigame);
         let mini_players = self.mini_players();
-        // Nobody gets a countdown to Quick Draw's GO.
-        let secret_clock = mini.is_some_and(|m| m.step == Step::Ready);
+        // Nobody gets a countdown to Quick Draw's GO, or one to count Stop the Clock's 10 seconds by.
+        let secret_clock = mini.is_some_and(|m| {
+            m.step == Step::Ready || (m.kind == minigames::Kind::StopClock && m.step == Step::Play)
+        });
         let ms_left = ms_left.filter(|_| !secret_clock);
 
         for conn in self.conns.values() {

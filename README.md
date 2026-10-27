@@ -85,12 +85,15 @@ get their own round summary. Each question in the database has a `difficulty` of
 
 #### Mini games
 
-Between trivia rounds (not after the last one) the phones get a quick party game worth bonus points: 300, 200 and 100
+Between trivia rounds (not after the last one) the phones get a quick party game, one of six, worth bonus points: 300, 200 and 100
 for the top three. Each game plays once before any repeats:
 
 - **Button Mash**: tap as fast as you can for 10 seconds; the TV shows everyone's taps as a race.
 - **Closest Guess**: one number question (how many keys on a piano?); nearest guess wins, and spot on pays 200 more.
 - **Quick Draw**: wait for GO at a random moment, then tap; fastest wins and tapping early knocks you out.
+- **Stop the Clock**: a stopwatch runs on the TV for 3 seconds then vanishes; tap when you think 10 seconds are up.
+- **Majority Rules**: a silly either/or ("Pizza or tacos?"); everyone in the biggest group scores 300.
+- **Lowball**: pick 1 to 20; the lowest number nobody else picked wins, and clashes knock both out.
 
 They're on by default; the admin panel switches them off per room (any time, from the next break).
 
@@ -264,5 +267,5 @@ The correct answer (or the hangman phrase) is never sent until the round closes.
 `scoreboard`, `recap` and `final`. Trivia goes `round_intro`, then question and reveal for each question in the round, then
 `recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. With mini games
 on, a `minigame` phase follows each recap but the last, with a `minigame {kind, title, rules, step, prompt, unit, answer, entries}`
-object whose `step` goes `rules`, (`ready`,) `play`, `results`; phones send `mini_tap` and `mini_guess {value}`. Other modes
+object whose `step` goes `rules`, (`ready`,) `play`, `results`; phones send `mini_tap` and `mini_guess {value}` (a number, or an option's index in Majority Rules). Other modes
 use `scoreboard` after each reveal; each state carries `host {name, id, text, callouts, cue}`, the current host line, the graphics that go with it, and the cue that picks its cutscene.

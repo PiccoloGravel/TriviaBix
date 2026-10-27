@@ -1536,6 +1536,30 @@ async fn mini_games_play_between_trivia_rounds() {
                 send(&mut ann, json!({ "type": "mini_tap" })).await;
                 ann_id.clone()
             }
+            "stop_clock" => {
+                let play = wait_state(&mut host, |s| s["minigame"]["step"] == "play").await;
+                assert_eq!(play["minigame"]["target_ms"], 10_000);
+                assert!(play["ms_left"].is_null(), "no clock to count by");
+                send(&mut ann, json!({ "type": "mini_tap" })).await;
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                send(&mut bob, json!({ "type": "mini_tap" })).await;
+                // Bob held on longer, so he's nearer ten seconds.
+                bob_id.clone()
+            }
+            "majority" => {
+                let play = wait_state(&mut host, |s| s["minigame"]["step"] == "play").await;
+                assert!(play["minigame"]["options"].as_array().unwrap().len() >= 2);
+                send(&mut ann, json!({ "type": "mini_guess", "value": 0 })).await;
+                send(&mut bob, json!({ "type": "mini_guess", "value": 0 })).await;
+                // Both in the biggest group; Ann is listed first.
+                ann_id.clone()
+            }
+            "lowball" => {
+                wait_state(&mut host, |s| s["minigame"]["step"] == "play").await;
+                send(&mut ann, json!({ "type": "mini_guess", "value": 3 })).await;
+                send(&mut bob, json!({ "type": "mini_guess", "value": 5 })).await;
+                ann_id.clone()
+            }
             other => panic!("unknown mini game {other}"),
         };
         let results = wait_state(&mut host, |s| s["minigame"]["step"] == "results").await;

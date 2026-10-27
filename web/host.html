@@ -262,6 +262,8 @@
     .mg-big.wait { color: var(--bad); font-size: 14vh; animation: mg-pulse 1s infinite; }
     .mg-big.go { color: var(--good); font-size: 18vh; animation: logo-slam .5s cubic-bezier(.2,1.6,.4,1) both; }
     .mg-big.answer { color: var(--good); }
+    .mg-big.clock { font-size: 16vh; font-variant-numeric: tabular-nums; }
+    .mg-big.hidden-clock { color: var(--muted); }
     @keyframes mg-pulse { 50% { opacity: .55; } }
     #minigame .timer { width: 80vw; }
     .mg-rows { width: 80vw; display: grid; grid-template-columns: repeat(var(--cols, 1), 1fr); gap: 1vh 2vw; }

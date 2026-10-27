@@ -47,9 +47,9 @@ pub enum ClientMsg {
     Kick { player_id: u32 },
     /// TV: the host has finished saying line `id` (and its cutscene is over).
     Spoken { id: u64 },
-    /// Player, in a Button Mash or Quick Draw mini game: one tap.
+    /// Player, in Button Mash, Quick Draw or Stop the Clock: one tap.
     MiniTap,
-    /// Player, in a Closest Guess mini game: lock in a number.
+    /// Player, in Closest Guess, Lowball or Majority Rules (the option's index): lock in a number.
     MiniGuess { value: i64 },
     /// Keep-alive from the browser; ignored.
     Ping,
@@ -345,17 +345,23 @@ pub struct Callout {
 /// A mini game between trivia rounds (see crate::minigames).
 #[derive(Debug, Serialize)]
 pub struct MinigameView {
-    /// mash, closest or quick_draw.
+    /// mash, closest, quick_draw, stop_clock, majority or lowball.
     pub kind: &'static str,
     pub title: &'static str,
     pub rules: &'static str,
     /// rules, ready (Quick Draw, before GO), play or results.
     pub step: &'static str,
-    /// Closest Guess: the question and the answer's unit.
+    /// Closest Guess or Majority Rules: the question; Closest Guess: the answer's unit.
     pub prompt: Option<&'static str>,
     pub unit: Option<&'static str>,
     /// Closest Guess, in the results only.
     pub answer: Option<i64>,
+    /// Majority Rules: the answers to pick from.
+    pub options: &'static [&'static str],
+    /// Lowball: numbers go from 1 to this.
+    pub max_pick: Option<i64>,
+    /// Stop the Clock: the moment to tap, in ms after the start.
+    pub target_ms: Option<i64>,
     /// Every playing player; best first in the results.
     pub entries: Vec<MiniEntryView>,
 }
@@ -363,7 +369,7 @@ pub struct MinigameView {
 #[derive(Debug, Serialize)]
 pub struct MiniEntryView {
     pub player_id: u32,
-    /// Taps, the guess (hidden from other phones until the results), or reaction time in ms.
+    /// Taps, the guess or pick (hidden from others until the results), or time in ms.
     pub value: Option<i64>,
     /// Has nothing left to do (guessed, or tapped after GO).
     pub done: bool,
