@@ -12,6 +12,7 @@ use crate::characters::{self, CHARACTERS};
 use crate::db::{Db, Difficulty, Question, Rating, Standing};
 use crate::hangman::{self, Guess, Puzzle};
 use crate::host::{self, Host, Script};
+use crate::minigames::{self, Minigame, Step, Tapped};
 use crate::music::{self, Music};
 use crate::protocol::*;
 use crate::rounds;
@@ -137,6 +138,8 @@ pub struct Settings {
     pub per_round: usize,
     /// Name That Tune: the music library, the curated hits, or both.
     pub song_source: SongSource,
+    /// Trivia: a mini game between rounds.
+    pub minigames: bool,
 }
 
 impl Settings {
@@ -151,6 +154,7 @@ impl Settings {
             trivia_rounds: self.trivia_rounds,
             per_round: self.per_round,
             song_source: self.song_source,
+            minigames: self.minigames,
         }
     }
 }
@@ -171,6 +175,7 @@ pub struct SettingsChange {
     pub trivia_rounds: Option<u8>,
     pub per_round: Option<usize>,
     pub song_source: Option<SongSource>,
+    pub minigames: Option<bool>,
 }
 
 pub enum Join {
@@ -272,6 +277,8 @@ enum Phase {
     Scoreboard,
     /// After a trivia round: scores and a look back at its questions.
     Recap,
+    /// Between trivia rounds: a quick party game on the phones.
+    Minigame,
     Final,
 }
 
@@ -285,6 +292,7 @@ impl Phase {
             Phase::Reveal => "reveal",
             Phase::Scoreboard => "scoreboard",
             Phase::Recap => "recap",
+            Phase::Minigame => "minigame",
             Phase::Final => "final",
         }
     }
@@ -422,6 +430,12 @@ pub struct Room {
     right_answers: Vec<Vec<u32>>,
     /// Trivia only: points each player has won in the current round.
     stage_points: HashMap<u32, i64>,
+    /// The mini game between trivia rounds, while one is on.
+    mini: Option<Minigame>,
+    /// Mini games still to come this game, so each is played once before any repeats.
+    minis_left: Vec<minigames::Kind>,
+    /// Closest Guess questions this room has asked.
+    used_estimates: Vec<usize>,
     /// Index of the current question, puzzle or song (one "round" in hangman and songs).
     round: usize,
     question_started: Instant,
@@ -484,6 +498,9 @@ impl Room {
             stages: Vec::new(),
             right_answers: Vec::new(),
             stage_points: HashMap::new(),
+            mini: None,
+            minis_left: Vec::new(),
+            used_estimates: Vec::new(),
             round: 0,
             question_started: Instant::now(),
             question_len: Duration::ZERO,
@@ -905,6 +922,7 @@ impl Room {
                 trivia_rounds,
                 per_round,
                 song_source,
+                minigames,
             } => {
                 if !is_leader {
                     return Err("Only the VIP can change the game.".into());
@@ -918,7 +936,8 @@ impl Room {
                     || late_join.is_some()
                     || trivia_rounds.is_some()
                     || per_round.is_some()
-                    || song_source.is_some();
+                    || song_source.is_some()
+                    || minigames.is_some();
                 if !is_host && admin_only {
                     return Err("Only the admin can change the game's settings.".into());
                 }
@@ -932,6 +951,7 @@ impl Room {
                     trivia_rounds,
                     per_round,
                     song_source,
+                    minigames,
                 })?;
             }
             ClientMsg::Team { team } => {
@@ -996,6 +1016,30 @@ impl Room {
                 }
                 self.kick(player_id).await;
             }
+            ClientMsg::MiniTap => {
+                let pid = self.mini_player(role)?;
+                let Some(m) = self.mini.as_mut() else {
+                    return Err("There's no mini game on.".into());
+                };
+                let tapped = m.tap(pid, Instant::now())?;
+                if self.mini_all_done() {
+                    self.advance().await;
+                } else if matches!(tapped, Tapped::Push) {
+                    self.broadcast();
+                }
+            }
+            ClientMsg::MiniGuess { value } => {
+                let pid = self.mini_player(role)?;
+                let Some(m) = self.mini.as_mut() else {
+                    return Err("There's no mini game on.".into());
+                };
+                m.guess(pid, value)?;
+                if self.mini_all_done() {
+                    self.advance().await;
+                } else {
+                    self.broadcast();
+                }
+            }
         }
         Ok(())
     }
@@ -1058,6 +1102,7 @@ impl Room {
                 trivia_rounds,
                 per_round,
                 song_source,
+                minigames,
                 max_players,
             } => {
                 if let Some(n) = max_players {
@@ -1073,6 +1118,7 @@ impl Room {
                     trivia_rounds,
                     per_round,
                     song_source,
+                    minigames,
                 })?;
             }
         }
@@ -1105,11 +1151,13 @@ impl Room {
         }
         self.answers.clear();
         self.last_points.clear();
+        self.mini = None;
         self.set_phase(Phase::Lobby, None);
         self.broadcast();
     }
 
-    /// Rounds, rating and teams are locked once a game starts; late joins can be switched any time.
+    /// Rounds, rating and teams are locked once a game starts; late joins and mini games can be
+    /// switched any time.
     fn change_settings(&mut self, change: SettingsChange) -> Result<(), String> {
         let SettingsChange {
             rounds,
@@ -1121,6 +1169,7 @@ impl Room {
             trivia_rounds,
             per_round,
             song_source,
+            minigames,
         } = change;
         let locked = rounds.is_some()
             || max_rating.is_some()
@@ -1153,6 +1202,10 @@ impl Room {
         }
         if let Some(l) = late_join {
             self.settings.late_join = l;
+        }
+        // Takes effect from the next break between rounds.
+        if let Some(m) = minigames {
+            self.settings.minigames = m;
         }
         if let Some(r) = trivia_rounds {
             self.settings.trivia_rounds = r.clamp(rounds::MIN_ROUNDS, rounds::MAX_ROUNDS);
@@ -1223,6 +1276,8 @@ impl Room {
         self.warm_voice();
         self.right_answers.clear();
         self.stage_points.clear();
+        self.mini = None;
+        self.minis_left = minigames::shuffled(&mut rand::rng());
         // New background music for the scoreboards, without this game's songs in it.
         self.load_playlist().await;
         for p in &mut self.players {
@@ -1590,10 +1645,22 @@ impl Room {
                 self.begin_question();
                 return;
             }
+            Phase::Recap if self.settings.minigames => {
+                self.begin_minigame();
+                return;
+            }
             Phase::Recap => {
                 self.round += 1;
                 self.begin_stage();
                 return;
+            }
+            Phase::Minigame => {
+                if !self.step_minigame() {
+                    self.mini = None;
+                    self.round += 1;
+                    self.begin_stage();
+                    return;
+                }
             }
             Phase::Lobby | Phase::Final => self.set_phase(self.phase, None),
         }
@@ -1833,6 +1900,101 @@ impl Room {
         self.speak(vec![line], Vec::new(), cue);
         self.set_phase(Phase::RoundIntro, Some(self.hold(self.timing.round_intro)));
         self.broadcast();
+    }
+
+    /// A mini game between trivia rounds, starting with its rules card.
+    fn begin_minigame(&mut self) {
+        if self.minis_left.is_empty() {
+            self.minis_left = minigames::shuffled(&mut rand::rng());
+        }
+        let kind = self.minis_left.pop().unwrap_or(minigames::Kind::Mash);
+        let estimate = (kind == minigames::Kind::Closest)
+            .then(|| Minigame::pick_estimate(&mut self.used_estimates, &mut rand::rng()));
+        self.answers.clear();
+        self.last_points.clear();
+        self.mini = Some(Minigame::new(kind, estimate));
+        let line = self.line(kind.event(), &[]);
+        self.speak(vec![line], Vec::new(), Some("minigame_intro"));
+        let pause = Duration::from_millis(1000);
+        self.set_phase(
+            Phase::Minigame,
+            Some(minigames::RULES.max(self.talk() + pause)),
+        );
+        self.broadcast();
+    }
+
+    /// Moves a mini game to its next step. False once its results have been shown.
+    fn step_minigame(&mut self) -> bool {
+        let players = self.mini_players();
+        let Some(m) = self.mini.as_mut() else {
+            return false;
+        };
+        let len = match m.step {
+            Step::Rules => m.start(&mut rand::rng()),
+            Step::Ready => m.go(Instant::now()),
+            Step::Play => {
+                let (winners, points) = m.finish(&players);
+                self.mini_results(&winners, points)
+            }
+            Step::Results => return false,
+        };
+        self.set_phase(Phase::Minigame, Some(len));
+        true
+    }
+
+    /// Pays out a mini game and has the host name the winner. Returns how long the results stay up.
+    fn mini_results(&mut self, winners: &[u32], points: Vec<(u32, i64)>) -> Duration {
+        for (pid, p) in points {
+            self.award(pid, p);
+        }
+        if winners.is_empty() {
+            let line = self.line("mini_nobody", &[]);
+            self.speak(vec![line], Vec::new(), None);
+        } else {
+            let names: Vec<String> = winners.iter().map(|&id| self.name_of(id)).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let line = self.line("mini_win", &[("name", &host::name_list(&names))]);
+            let callouts = vec![Callout {
+                kind: "mini_winner",
+                player_id: (winners.len() == 1).then(|| winners[0]),
+                label: "MINI GAME CHAMP".into(),
+            }];
+            self.speak(vec![line], callouts, Some("minigame_winner"));
+        }
+        minigames::RESULTS.max(self.talk() + Duration::from_millis(1500))
+    }
+
+    /// Players taking part in the mini game: everyone in the game, connected or not.
+    fn mini_players(&self) -> Vec<u32> {
+        self.players
+            .iter()
+            .filter(|p| !p.waiting)
+            .map(|p| p.id)
+            .collect()
+    }
+
+    /// Everyone still here has played their part, so the mini game can end early.
+    fn mini_all_done(&self) -> bool {
+        let here: Vec<u32> = self
+            .players
+            .iter()
+            .filter(|p| p.conns > 0 && !p.waiting)
+            .map(|p| p.id)
+            .collect();
+        self.phase == Phase::Minigame && self.mini.as_ref().is_some_and(|m| m.all_done(&here))
+    }
+
+    fn mini_player(&self, role: Role) -> Result<u32, String> {
+        let Role::Player(pid) = role else {
+            return Err("The TV can't play, nice try.".into());
+        };
+        if self.players.iter().any(|p| p.id == pid && p.waiting) {
+            return Err("You're in from the next question. Hang tight!".into());
+        }
+        if self.phase != Phase::Minigame {
+            return Err("There's no mini game on.".into());
+        }
+        Ok(pid)
     }
 
     /// The host wraps up a trivia round: who won it, then the standings unless the finale is next.
@@ -2132,10 +2294,14 @@ impl Room {
         })
     }
 
-    /// Trivia: the round being played, from its title card to its recap.
+    /// Trivia: the round being played, from its title card to its recap and the mini game after it.
     fn current_stage(&self) -> Option<usize> {
         match self.phase {
-            Phase::RoundIntro | Phase::Question | Phase::Reveal | Phase::Recap => self.stage_idx(),
+            Phase::RoundIntro
+            | Phase::Question
+            | Phase::Reveal
+            | Phase::Recap
+            | Phase::Minigame => self.stage_idx(),
             _ => None,
         }
     }
@@ -2215,7 +2381,7 @@ impl Room {
     fn round_number(&self) -> usize {
         match self.phase {
             _ if self.in_round() => self.round + 1,
-            Phase::Final | Phase::Recap => self.round + 1,
+            Phase::Final | Phase::Recap | Phase::Minigame => self.round + 1,
             // The title card comes before the round's first question.
             Phase::RoundIntro => self.round,
             _ => 0,
@@ -2354,6 +2520,11 @@ impl Room {
             _ => 0,
         };
         let recap = self.recap_view();
+        let mini = self.mini.as_ref().filter(|_| self.phase == Phase::Minigame);
+        let mini_players = self.mini_players();
+        // Nobody gets a countdown to Quick Draw's GO.
+        let secret_clock = mini.is_some_and(|m| m.step == Step::Ready);
+        let ms_left = ms_left.filter(|_| !secret_clock);
 
         for conn in self.conns.values() {
             let is_host = matches!(conn.role, Role::Host);
@@ -2421,7 +2592,10 @@ impl Room {
                     }),
                 }),
                 ms_left,
-                phase_ms: self.phase_len.map(|d| d.as_millis() as u64),
+                phase_ms: self
+                    .phase_len
+                    .filter(|_| !secret_clock)
+                    .map(|d| d.as_millis() as u64),
                 // The correct answer is only sent once the question is closed.
                 reveal: question
                     .filter(|_| self.phase != Phase::Question)
@@ -2473,6 +2647,13 @@ impl Room {
                         .collect(),
                     outcome: self.hm.outcome.map(Outcome::name),
                     solved_by: self.hm.solved_by,
+                }),
+                minigame: mini.map(|m| {
+                    let viewer = match conn.role {
+                        Role::Player(id) => Some(id),
+                        Role::Host => None,
+                    };
+                    m.view(&mini_players, viewer)
                 }),
                 host: self.host_line.as_ref().map(|l| HostView {
                     name: self.host.name(),

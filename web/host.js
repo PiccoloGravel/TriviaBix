@@ -466,7 +466,7 @@ function render(s) {
   announceLateJoiners(s);
   ({
     lobby: renderLobby, intro: renderIntro, round_intro: renderRoundIntro, question: renderQuestion,
-    reveal: renderReveal, scoreboard: renderScores, recap: renderRecap, final: renderFinal,
+    reveal: renderReveal, scoreboard: renderScores, recap: renderRecap, minigame: renderMinigame, final: renderFinal,
   })[s.phase](s, phaseChanged);
   // The question is read out after the host's banter.
   // In Name That Tune the clip plays instead.
@@ -494,6 +494,10 @@ function phaseSound(s) {
       break;
     case "intro":
     case "round_intro":
+      Bgm.stop();
+      Sfx.play("round");
+      break;
+    case "minigame":
       Bgm.stop();
       Sfx.play("round");
       break;
@@ -569,7 +573,7 @@ function renderLobby(s, changed) {
     ? `🎵 Name That Tune · ${s.settings.rounds} songs · ${s.settings.clip_ms / 1000}-second clips · rated ${s.settings.max_rating}`
     : s.settings.mode === "hangman"
     ? `Speed Hangman · ${s.settings.rounds} puzzles · rated ${s.settings.max_rating}`
-    : `${s.settings.trivia_rounds} rounds of ${s.settings.per_round} questions, easy to hard${s.settings.trivia_rounds > 3 ? " plus a final" : ""} · rated ${s.settings.max_rating}`;
+    : `${s.settings.trivia_rounds} rounds of ${s.settings.per_round} questions, easy to hard${s.settings.trivia_rounds > 3 ? " plus a final" : ""}${s.settings.minigames ? " · mini games between rounds" : ""} · rated ${s.settings.max_rating}`;
   if (s.settings.teams) $("#lobby-settings").textContent += ` · ${s.settings.teams} teams`;
 
   const slots = $("#slots");
@@ -664,6 +668,89 @@ function renderRecap(s, changed) {
       : el("span", { class: "muted" }, "Nobody!")))));
   renderLadder(s, $("#rc-ladder"));
   if (changed) enter($("#recap"));
+}
+
+// ---------- Mini games between rounds ----------
+
+/** Art tags for each mini game (see the art catalog). */
+const MINI_TAGS = { mash: "button_mash", closest: "closest_guess", quick_draw: "quick_draw" };
+
+/** The value a mini game ranks by, as the TV shows it. */
+function miniValue(m, e) {
+  if (e.false_start) return "False start!";
+  if (e.value == null && m.step === "results") return m.kind === "closest" ? "No guess" : "No tap";
+  if (e.value == null) return m.kind === "closest" && e.done ? "Locked in" : "";
+  if (m.kind === "mash") return `${e.value} tap${e.value === 1 ? "" : "s"}`;
+  if (m.kind === "quick_draw") return `${(e.value / 1000).toFixed(3)}s`;
+  const off = m.answer != null ? Math.abs(e.value - m.answer) : null;
+  return `${e.value.toLocaleString()}${off != null ? (off ? ` (off by ${off.toLocaleString()})` : " · spot on!") : ""}`;
+}
+
+function renderMinigame(s, changed) {
+  const m = s.minigame;
+  const was = prev && prev.minigame;
+  const stepChanged = changed || !was || was.step !== m.step;
+  const screen = $("#minigame");
+  const st = stageOf(s);
+  $("#mg-round").textContent = st ? `After ${stageName(st).toLowerCase()} · bonus points` : "Bonus points";
+  $("#mg-code").textContent = s.code;
+  $("#mg-title").textContent = m.title;
+  $("#mg-rules").textContent = m.step === "results" ? "Results" : m.rules;
+  if (changed) {
+    const art = Cutscenes.pickArt({ kind: "backdrop", tags: [MINI_TAGS[m.kind]] }, { rating: s.settings.max_rating });
+    screen.classList.toggle("has-art", !!art);
+    if (art) screen.style.setProperty("--cat-art", `url("${art}")`);
+  }
+
+  const big = $("#mg-big");
+  big.className = "mg-big";
+  if (m.kind === "closest" && m.step !== "rules") {
+    big.classList.add("prompt");
+    big.textContent = m.prompt;
+  } else big.textContent = "";
+  if (m.step === "rules") big.textContent = { mash: "Get your thumbs ready…", closest: "Phones out…", quick_draw: "Fingers off the screen…" }[m.kind];
+  else if (m.kind === "quick_draw" && m.step === "ready") {
+    big.classList.add("wait");
+    big.textContent = "WAIT…";
+  } else if (m.kind === "quick_draw" && m.step === "play") {
+    big.classList.add("go");
+    big.textContent = "GO!";
+  } else if (m.kind === "mash" && m.step === "play") {
+    big.textContent = "TAP TAP TAP!";
+  } else if (m.step === "results" && m.kind === "closest") {
+    big.classList.remove("prompt");
+    big.classList.add("answer");
+    big.textContent = `${m.answer.toLocaleString()}${m.unit ? " " + m.unit : ""}`;
+  } else if (m.step === "results") {
+    big.textContent = "";
+  }
+  if (stepChanged) {
+    if (m.step === "play" && m.kind === "quick_draw") Sfx.play("reveal");
+    else if (m.step === "play") Sfx.play("round");
+    else if (m.step === "results") Sfx.play("scores");
+    // No countdown before GO; that would give it away.
+    TBX.runTimer($("#mg-timer"), m.step === "ready" ? null : s.ms_left, s.phase_ms);
+    if (m.step === "play" && s.ms_left) startSecs($("#mg-secs"), s.ms_left);
+    else { clearInterval(secsTimer); $("#mg-secs").textContent = ""; }
+    if (m.step === "play" && m.kind === "mash") Sfx.bed.play(s.ms_left);
+    else Sfx.bed.stop();
+  }
+
+  const byId = Object.fromEntries(s.players.map((p) => [p.id, p]));
+  const most = Math.max(1, ...m.entries.map((e) => (m.kind === "mash" && e.value) || 0));
+  const rows = m.entries.filter((e) => byId[e.player_id]);
+  $("#mg-rows").style.setProperty("--cols", rows.length > 6 ? 2 : 1);
+  $("#mg-rows").replaceChildren(...rows.map((e, i) => {
+    const p = byId[e.player_id];
+    const results = m.step === "results";
+    return el("div", { class: "mg-row" + (stepChanged ? " fresh" : "") + (e.false_start ? " out" : "") + (results && i === 0 && e.points > 0 ? " first" : ""), style: `--i:${i}` },
+      m.kind === "mash" ? el("div", { class: "mg-bar", style: `width:${((e.value || 0) / most) * 100}%;background:${p.color}55` }) : null,
+      TBX.avatar(p, "1.4em"),
+      el("span", { class: "mg-name" }, p.name),
+      el("span", { class: "mg-val" }, m.step === "rules" ? "" : miniValue(m, e)),
+      results ? el("span", { class: "mg-pts" }, e.points ? `+${e.points}` : "") : null);
+  }));
+  if (stepChanged) enter(screen);
 }
 
 /** Plays the clip once the host stops talking, then once more halfway through what's left for anyone who blinked. */

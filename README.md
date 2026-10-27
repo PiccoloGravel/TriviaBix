@@ -83,6 +83,17 @@ recap: the scoreboard with what everyone won that round, and every question with
 get their own round summary. Each question in the database has a `difficulty` of `easy`, `medium` or `hard` (default
 `medium`).
 
+#### Mini games
+
+Between trivia rounds (not after the last one) the phones get a quick party game worth bonus points: 300, 200 and 100
+for the top three. Each game plays once before any repeats:
+
+- **Button Mash**: tap as fast as you can for 10 seconds; the TV shows everyone's taps as a race.
+- **Closest Guess**: one number question (how many keys on a piano?); nearest guess wins, and spot on pays 200 more.
+- **Quick Draw**: wait for GO at a random moment, then tap; fastest wins and tapping early knocks you out.
+
+They're on by default; the admin panel switches them off per room (any time, from the next break).
+
 ### Speed Hangman
 
 The VIP picks **Speed Hangman** instead of Trivia. Each round puts one phrase on the TV with its category, and
@@ -228,6 +239,7 @@ No GPU at home? [gpu/README.md](gpu/README.md) rents one on vast.ai for a few ce
   - `host-script.json` is everything the host says.
   - `src/hangman.rs` holds the Speed Hangman puzzle rules.
   - `src/rounds.rs` plans a trivia game's rounds: difficulty, theme and points.
+  - `src/minigames.rs` has the mini games between trivia rounds and the Closest Guess questions.
   - `migrations/` creates the tables and seeds hangman phrases and songs.
   - `src/content.rs` loads the question packs into the database at startup.
 - `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
@@ -244,11 +256,13 @@ The TV connects to `/ws/host?code=ABCD&token=...` (token from `POST /api/rooms`)
 (or `&token=...` to rejoin). The server sends `welcome`, then a full `state` snapshot on every change, and `error` messages.
 Phones can pass `&character=fox` when joining (see `GET /api/characters`). Clients send `start`, `answer {choice}`, `next`,
 `play_again`, `profile {name, character}` and `team {team}` (phones, lobby only), and from the TV
-`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round, song_source}` and `kick {player_id}`.
+`settings {rounds, max_rating, mode, clip_ms, teams, late_join, trivia_rounds, per_round, song_source, minigames}` and `kick {player_id}`.
 In Speed Hangman, phones send `guess {letter}` and `solve {text}`, and state carries a `hangman` object instead of `question`.
 In Name That Tune only the TV gets the audio (`question.clip` and `next_clip`); phones get the choices and, at the reveal, `reveal.song`.
 Library clips are `/media/<token>` links that only work for files the server handed out; the TV's `playlist` (background music) works the same way.
 The correct answer (or the hangman phrase) is never sent until the round closes. Phases are `lobby`, `intro`, `round_intro`, `question`, `reveal`,
 `scoreboard`, `recap` and `final`. Trivia goes `round_intro`, then question and reveal for each question in the round, then
-`recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. Other modes
+`recap`; state carries `stages` (the round ladder), `stage` and `stage_question`, and `recap` between rounds. With mini games
+on, a `minigame` phase follows each recap but the last, with a `minigame {kind, title, rules, step, prompt, unit, answer, entries}`
+object whose `step` goes `rules`, (`ready`,) `play`, `results`; phones send `mini_tap` and `mini_guess {value}`. Other modes
 use `scoreboard` after each reveal; each state carries `host {name, id, text, callouts, cue}`, the current host line, the graphics that go with it, and the cue that picks its cutscene.

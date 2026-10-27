@@ -7,6 +7,7 @@ pub mod duplicates;
 pub mod hangman;
 pub mod host;
 pub mod library;
+pub mod minigames;
 pub mod music;
 pub mod packs;
 pub mod personas;

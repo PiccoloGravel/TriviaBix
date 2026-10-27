@@ -34,6 +34,7 @@ pub enum ClientMsg {
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
         song_source: Option<SongSource>,
+        minigames: Option<bool>,
     },
     /// Player: switch to another team while in the lobby.
     Team { team: u8 },
@@ -46,6 +47,10 @@ pub enum ClientMsg {
     Kick { player_id: u32 },
     /// TV: the host has finished saying line `id` (and its cutscene is over).
     Spoken { id: u64 },
+    /// Player, in a Button Mash or Quick Draw mini game: one tap.
+    MiniTap,
+    /// Player, in a Closest Guess mini game: lock in a number.
+    MiniGuess { value: i64 },
     /// Keep-alive from the browser; ignored.
     Ping,
 }
@@ -129,6 +134,8 @@ pub struct StateView<'a> {
     pub playlist: Vec<PlaylistView<'a>>,
     /// Only in speed hangman rounds.
     pub hangman: Option<HangmanView<'a>>,
+    /// Only during a mini game between trivia rounds.
+    pub minigame: Option<MinigameView>,
     /// What the host is saying right now, with graphics for the TV to show alongside it.
     pub host: Option<HostView<'a>>,
     /// Only on player connections.
@@ -171,6 +178,8 @@ pub struct SettingsView {
     pub per_round: usize,
     /// Name That Tune: where the songs come from.
     pub song_source: SongSource,
+    /// Trivia: a mini game between rounds.
+    pub minigames: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -299,11 +308,42 @@ pub struct VoicePart {
 #[derive(Debug, Serialize, Clone)]
 pub struct Callout {
     /// streak, streak_broken, roast, asleep, only_one, fastest, nobody, everyone, new_leader,
-    /// leader, tie, last_place, round_winner, winner.
+    /// leader, tie, last_place, round_winner, winner, mini_winner.
     pub kind: &'static str,
     pub player_id: Option<u32>,
     /// Short overlay text, like "3 IN A ROW".
     pub label: String,
+}
+
+/// A mini game between trivia rounds (see crate::minigames).
+#[derive(Debug, Serialize)]
+pub struct MinigameView {
+    /// mash, closest or quick_draw.
+    pub kind: &'static str,
+    pub title: &'static str,
+    pub rules: &'static str,
+    /// rules, ready (Quick Draw, before GO), play or results.
+    pub step: &'static str,
+    /// Closest Guess: the question and the answer's unit.
+    pub prompt: Option<&'static str>,
+    pub unit: Option<&'static str>,
+    /// Closest Guess, in the results only.
+    pub answer: Option<i64>,
+    /// Every playing player; best first in the results.
+    pub entries: Vec<MiniEntryView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MiniEntryView {
+    pub player_id: u32,
+    /// Taps, the guess (hidden from other phones until the results), or reaction time in ms.
+    pub value: Option<i64>,
+    /// Has nothing left to do (guessed, or tapped after GO).
+    pub done: bool,
+    /// Quick Draw: tapped before GO.
+    pub false_start: bool,
+    /// Bonus points won, in the results.
+    pub points: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -383,6 +423,7 @@ pub enum AdminCmd {
         trivia_rounds: Option<u8>,
         per_round: Option<usize>,
         song_source: Option<SongSource>,
+        minigames: Option<bool>,
         /// Room size, any time; never below the players already in the room.
         max_players: Option<usize>,
     },

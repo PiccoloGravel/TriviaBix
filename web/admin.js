@@ -150,10 +150,14 @@ function roomCard(r) {
 
   const lateJoin = el("input", { type: "checkbox", style: "width:auto", onchange: (e) => act(r.code, "settings", { late_join: e.target.checked }) });
   lateJoin.checked = r.settings.late_join;
+  // Can be switched mid-game; it takes effect at the next break between rounds.
+  const minis = el("input", { type: "checkbox", style: "width:auto", onchange: (e) => act(r.code, "settings", { minigames: e.target.checked }) });
+  minis.checked = r.settings.minigames;
   const sizes = [...new Set([...PLAYER_SIZES, r.max_players])].sort((a, b) => a - b)
     .filter((n) => n >= r.players.length);
   const settings = el("div", { class: "settings" },
     el("label", { class: "inline" }, lateJoin, "Late joins"),
+    trivia ? el("label", { class: "inline", title: "A quick party game on the phones between rounds" }, minis, "Mini games") : null,
     el("label", { class: "inline" }, "Max players",
       select(sizes.map((n) => [n, n]), r.max_players, (v) => act(r.code, "settings", { max_players: Number(v) }))),
     lobby ? el("label", { class: "inline" }, "Game",
@@ -222,6 +226,7 @@ $("#new-room").addEventListener("submit", async (e) => {
       max_rating: f.max_rating.value,
       teams: Number(f.teams.value),
       late_join: f.late_join.checked,
+      minigames: f.minigames.checked,
       max_players: Number(f.max_players.value),
       song_source: f.song_source.value,
     });

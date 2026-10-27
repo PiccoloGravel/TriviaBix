@@ -46,7 +46,7 @@ function joinGame(code, name, token) {
 function send(msg) { conn && conn.send(msg); }
 
 function flash(text) {
-  const target = !state ? $("#join-error") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
+  const target = !state ? $("#join-error") : state.phase === "minigame" ? $("#mg-status") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
   target.textContent = text;
 }
 
@@ -155,6 +155,8 @@ function render(s) {
     $("#rc-points").textContent = `+${(mine ? mine.points : 0).toLocaleString()}`;
     $("#rc-right").textContent = `${right} of ${s.recap.questions.length} right`;
     $("#rc-rank").textContent = `You're in ${ordinal(you.rank)} place`;
+  } else if (s.phase === "minigame") {
+    renderMinigame(s, prev);
   } else if (s.phase === "scoreboard") {
     $("#s-rank").textContent = ordinal(you.rank) + " place";
   } else if (s.phase === "final") {
@@ -173,7 +175,7 @@ function gameSummary(st) {
   const teams = st.teams ? ` · ${st.teams} teams` : "";
   if (st.mode === "songs") return `Name That Tune, ${st.rounds} songs, ${st.clip_ms / 1000}-second clips, ${rated}${teams}`;
   if (st.mode === "hangman") return `Speed Hangman, ${st.rounds} puzzles, ${rated}${teams}`;
-  return `Trivia, ${st.trivia_rounds} rounds of ${st.per_round}${st.trivia_rounds > 3 ? " plus a final" : ""}, ${rated}${teams}`;
+  return `Trivia, ${st.trivia_rounds} rounds of ${st.per_round}${st.trivia_rounds > 3 ? " plus a final" : ""}${st.minigames ? " with mini games between" : ""}, ${rated}${teams}`;
 }
 
 function renderPicker(s) {
@@ -227,6 +229,103 @@ function answer(i) {
   send({ type: "answer", choice: i });
   if (navigator.vibrate) navigator.vibrate(30);
 }
+
+// ---------- Mini games between rounds ----------
+
+let lastTap = 0;
+let localTaps = 0; // shown right away; the server's count catches up a moment later
+
+function renderMinigame(s, prev) {
+  const m = s.minigame;
+  const was = prev && prev.phase === "minigame" && prev.minigame;
+  const stepChanged = !was || was.step !== m.step || was.kind !== m.kind;
+  const mine = m.entries.find((e) => e.player_id === s.you.player_id) || {};
+  const playing = m.step === "play" || m.step === "ready";
+  $("#mg-title").textContent = m.title;
+  $("#mg-rules").textContent = m.rules;
+  if (stepChanged) {
+    TBX.runTimer($("#mg-timer"), m.step === "ready" ? null : s.ms_left, s.phase_ms);
+    $("#mg-status").textContent = "";
+    localTaps = 0;
+    if (m.step === "play" && navigator.vibrate) navigator.vibrate(m.kind === "quick_draw" ? 120 : 40);
+  }
+  // The VIP can skip the rules and results, but not end a game by mistake mid-tap.
+  document.querySelectorAll("#mg-vip [data-vip-next], #mg-vip [data-vip-end]").forEach((b) => b.classList.toggle("hidden", !s.you.is_vip || playing));
+
+  const pad = $("#mg-pad");
+  const tapper = m.kind !== "closest" && m.step !== "results";
+  pad.classList.toggle("hidden", !tapper);
+  pad.classList.remove("wait", "go");
+  if (tapper) {
+    if (m.step === "rules") {
+      pad.disabled = true;
+      pad.textContent = m.kind === "mash" ? "Get ready…" : "Hands off…";
+    } else if (m.kind === "mash") {
+      pad.disabled = false;
+      pad.textContent = "TAP!";
+    } else if (mine.false_start) {
+      pad.disabled = true;
+      pad.textContent = "False start 😬";
+    } else if (m.step === "ready") {
+      pad.disabled = false;
+      pad.classList.add("wait");
+      pad.textContent = "WAIT…";
+    } else if (mine.value != null) {
+      pad.disabled = true;
+      pad.textContent = `${(mine.value / 1000).toFixed(3)}s`;
+    } else {
+      pad.disabled = false;
+      pad.classList.add("go");
+      pad.textContent = "GO!";
+    }
+  }
+  $("#mg-count").textContent = m.kind === "mash" && m.step === "play" ? `${Math.max(localTaps, mine.value || 0)} taps` : "";
+
+  const guessing = m.kind === "closest" && m.step === "play";
+  $("#mg-prompt").classList.toggle("hidden", m.kind !== "closest" || m.step === "rules");
+  $("#mg-prompt").textContent = m.prompt || "";
+  $("#mg-guess-form").classList.toggle("hidden", !guessing || mine.done);
+  if (guessing && stepChanged) $("#mg-guess-input").value = "";
+  if (guessing && mine.done) $("#mg-count").textContent = `Locked in: ${mine.value.toLocaleString()}${m.unit ? " " + m.unit : ""}`;
+
+  const results = m.step === "results";
+  $("#mg-result").classList.toggle("hidden", !results);
+  if (results) {
+    const place = m.entries.findIndex((e) => e.player_id === s.you.player_id);
+    const won = mine.points > 0 && mine.points === m.entries[0].points;
+    $("#mg-result-text").textContent = won ? "You won it! 🏆" : mine.points > 0 ? `${ordinal(place + 1)} place` : mine.false_start ? "Jumped the gun!" : "No bonus this time";
+    $("#mg-result-points").textContent = mine.points ? `+${mine.points}` : "";
+    $("#mg-result-more").textContent = m.kind === "closest"
+      ? `Answer: ${m.answer.toLocaleString()}${m.unit ? " " + m.unit : ""}${mine.value != null ? ` · you said ${mine.value.toLocaleString()}` : ""}`
+      : m.kind === "mash" ? `${mine.value || 0} taps` : mine.value != null ? `${(mine.value / 1000).toFixed(3)} seconds` : "";
+    if (stepChanged && navigator.vibrate) navigator.vibrate(mine.points ? [80, 40, 80] : 60);
+  }
+}
+
+// Pointer down, not click, so fast tapping isn't slowed by the browser's tap handling.
+$("#mg-pad").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const pad = e.currentTarget;
+  if (!state || state.phase !== "minigame" || pad.disabled) return;
+  const now = Date.now();
+  if (now - lastTap < 50) return;
+  lastTap = now;
+  send({ type: "mini_tap" });
+  pad.classList.add("hit");
+  setTimeout(() => pad.classList.remove("hit"), 60);
+  if (state.minigame.kind === "mash") {
+    localTaps++;
+    $("#mg-count").textContent = `${localTaps} taps`;
+  } else if (navigator.vibrate) navigator.vibrate(30);
+});
+
+$("#mg-guess-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const value = Math.round(Number($("#mg-guess-input").value));
+  if (!state || state.phase !== "minigame" || $("#mg-guess-input").value === "" || !Number.isFinite(value)) return;
+  send({ type: "mini_guess", value });
+  $("#mg-guess-input").blur();
+});
 
 // ---------- Speed hangman ----------
 

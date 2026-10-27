@@ -393,6 +393,7 @@ pub(crate) struct CreateRoom {
     trivia_rounds: Option<u8>,
     per_round: Option<usize>,
     song_source: Option<SongSource>,
+    minigames: Option<bool>,
     /// Admin panel only; the public endpoint ignores it.
     pub(crate) max_players: Option<usize>,
 }
@@ -418,6 +419,7 @@ impl CreateRoom {
                 .unwrap_or(5)
                 .clamp(rounds::MIN_PER_ROUND, rounds::MAX_PER_ROUND),
             song_source: self.song_source.unwrap_or_default(),
+            minigames: self.minigames.unwrap_or(true),
         }
     }
 }

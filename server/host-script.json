@@ -721,6 +721,85 @@
         "Round {round} done and nobody scored. Not one of you. Wow.",
         "Zero points in round {round}. You absolute disappointments."
       ]
+    },
+    "mini_mash": {
+      "PG": [
+        "Break time! It's Button Mash. Tap your phone as fast as you can, starting now-ish.",
+        "Mini game! Button Mash. When I say go, tap like your phone owes you money.",
+        "Let's stretch those thumbs. Button Mash: most taps wins!"
+      ],
+      "PG-13": [
+        "Button Mash! Show me the thumb strength you've built up from years of doomscrolling."
+      ],
+      "MA": [
+        "Button Mash time. Tap that screen like it just said something about your mother."
+      ],
+      "NC-17": [
+        "Button Mash! Go hard, go fast, and try not to make it weird."
+      ]
+    },
+    "mini_closest": {
+      "PG": [
+        "Mini game! Closest Guess. I ask for a number, you get as close as you can.",
+        "Time for Closest Guess. No choices this time, just your best number.",
+        "Closest Guess! Nearest number wins, and nailing it exactly pays extra."
+      ],
+      "PG-13": [
+        "Closest Guess. Wild guesses welcome. Confident wrong guesses especially welcome."
+      ],
+      "MA": [
+        "Closest Guess! Pull a number out of wherever you keep them."
+      ],
+      "NC-17": [
+        "Closest Guess. Size matters, folks. Get it exactly right."
+      ]
+    },
+    "mini_quickdraw": {
+      "PG": [
+        "Quick Draw! Wait for GO, then tap. Fastest finger wins, and jumping the gun knocks you out.",
+        "Mini game: Quick Draw. Patience first, then speed. Don't tap until it says GO!",
+        "It's Quick Draw! Steady... steady... don't you dare tap early."
+      ],
+      "PG-13": [
+        "Quick Draw. Wait for it. I know waiting isn't your strong suit."
+      ],
+      "MA": [
+        "Quick Draw! Finish early and you lose. Story of somebody's life."
+      ],
+      "NC-17": [
+        "Quick Draw. Hold it, hold it... and only go when I say. Self-control, people."
+      ]
+    },
+    "mini_win": {
+      "PG": [
+        "{name} wins the mini game! Bonus points!",
+        "And the mini game goes to {name}. Nicely done!",
+        "{name} takes it! Grab those bonus points."
+      ],
+      "PG-13": [
+        "{name} wins the mini game. Peak performance, totally useless skill."
+      ],
+      "MA": [
+        "{name} crushed it. Everyone else, that was embarrassing."
+      ],
+      "NC-17": [
+        "{name} wins! Damn, look at those reflexes."
+      ]
+    },
+    "mini_nobody": {
+      "PG": [
+        "Nobody scored in that one. Let's pretend it didn't happen.",
+        "Zero points all round! Back to the trivia."
+      ],
+      "PG-13": [
+        "Wow. Nobody. Truly a mini game for the history books."
+      ],
+      "MA": [
+        "Nobody scored. Were you all holding your phones upside down?"
+      ],
+      "NC-17": [
+        "Not one of you. Damn, that was a mess."
+      ]
     }
   }
 }
