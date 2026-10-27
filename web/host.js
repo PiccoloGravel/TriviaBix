@@ -686,6 +686,23 @@ function miniValue(m, e) {
   return `${e.value.toLocaleString()}${off != null ? (off ? ` (off by ${off.toLocaleString()})` : " · spot on!") : ""}`;
 }
 
+/** Up to `n` different stickers with all of `tags`, from the art pack (fewer, or none, if not made). */
+function miniStickers(tags, rating, n) {
+  const got = [];
+  for (let i = 0; i < n * 4 && got.length < n; i++) {
+    const url = Cutscenes.pickArt({ kind: "sticker", tags: tags }, { rating: rating });
+    if (!url) break;
+    if (got.indexOf(url) < 0) got.push(url);
+  }
+  return got;
+}
+
+/** Shows a sticker in `img`, or hides it when there's none. */
+function showSticker(img, url) {
+  img.classList.toggle("hidden", !url);
+  if (url) img.src = url;
+}
+
 function renderMinigame(s, changed) {
   const m = s.minigame;
   const was = prev && prev.minigame;
@@ -700,6 +717,14 @@ function renderMinigame(s, changed) {
     const art = Cutscenes.pickArt({ kind: "backdrop", tags: [MINI_TAGS[m.kind]] }, { rating: s.settings.max_rating });
     screen.classList.toggle("has-art", !!art);
     if (art) screen.style.setProperty("--cat-art", `url("${art}")`);
+    const pair = miniStickers([MINI_TAGS[m.kind]], s.settings.max_rating, 2);
+    showSticker($("#mg-st-a"), pair[0]);
+    showSticker($("#mg-st-b"), pair[1]);
+  }
+  // The results swap one side for the winner's prize.
+  if (stepChanged && m.step === "results") {
+    const prize = miniStickers(["minigame_winner"], s.settings.max_rating, 1)[0];
+    if (prize) showSticker($("#mg-st-b"), prize);
   }
 
   const big = $("#mg-big");
