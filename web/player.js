@@ -45,8 +45,21 @@ function joinGame(code, name, token) {
 function send(msg) { conn && conn.send(msg); }
 
 function flash(text) {
-  const target = !state ? $("#join-error") : state.phase === "minigame" ? $("#mg-status") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
+  // A start that failed (no songs reachable, say) is shown under the Start button, where the VIP is looking.
+  const starting = state && state.phase === "lobby" && startPending();
+  if (starting) resetStart();
+  const target = !state ? $("#join-error") : starting ? $("#start-error") : state.phase === "minigame" ? $("#mg-status") : state.phase === "question" ? (state.hangman ? $("#h-status") : $("#q-status")) : $("#lobby-error");
   target.textContent = text;
+}
+
+// Starting can take a few seconds (Name That Tune looks up its clips first), so the button says so.
+let startTimer = null;
+function startPending() { return startTimer != null; }
+function resetStart() {
+  clearTimeout(startTimer);
+  startTimer = null;
+  $("#start-btn").disabled = false;
+  $("#start-btn").textContent = "Everybody's in! Start";
 }
 
 // Phones love to sleep mid-question; ask them not to while we're playing.
@@ -84,6 +97,7 @@ function render(s) {
     return renderHangman(s, fresh);
   }
   show(s.phase);
+  if (s.phase !== "lobby" && startPending()) resetStart();
 
   if (s.phase === "lobby") {
     $("#lobby-count").textContent = `${s.players.length} of ${s.max_players} players · room ${s.code}`;
@@ -93,11 +107,11 @@ function render(s) {
     $("#lobby-wait").textContent = `Up next: ${gameSummary(s.settings)}. ${vip ? vip.name : "The VIP"} picks the game and starts it.`;
     $("#admin-link").href = `/admin?room=${s.code}`;
     if (you.is_vip) renderPicker(s);
-    $("#lobby-error").textContent = "";
     const taken = s.players.map((p) => p.character);
     TBX.characterGrid($("#lobby-chars"), player.character, taken, (id) => {
       picked = id;
       TBX.save("tbx:character", id);
+      $("#lobby-error").textContent = "";
       send({ type: "profile", character: id });
     });
     $("#rename-input").placeholder = player.name;
@@ -273,6 +287,8 @@ function renderMinigame(s, prev) {
     }
   }
   $("#mg-count").textContent = m.kind === "mash" && m.step === "play" ? `${Math.max(localTaps, mine.value || 0)} taps` : "";
+  // The guessing games have no pad to look at while Bix explains, so say what's coming.
+  if (stepChanged && m.step === "rules" && !tapper) $("#mg-status").textContent = "Get ready… watch the TV!";
 
   const guessing = m.kind === "closest" && m.step === "play";
   $("#mg-prompt").classList.toggle("hidden", (m.kind !== "closest" && m.kind !== "majority") || m.step === "rules");
@@ -468,6 +484,7 @@ $("#rename-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("#rename-input").value.trim();
   if (!name) return;
+  $("#lobby-error").textContent = "";
   send({ type: "profile", name });
   if (me) me.name = name;
   TBX.save("tbx:name", name);
@@ -476,7 +493,13 @@ $("#rename-form").addEventListener("submit", (e) => {
   $("#rename-input").value = "";
 });
 
-$("#start-btn").addEventListener("click", () => send({ type: "start" }));
+$("#start-btn").addEventListener("click", () => {
+  $("#start-error").textContent = "";
+  $("#start-btn").disabled = true;
+  $("#start-btn").textContent = "Starting…";
+  startTimer = setTimeout(resetStart, 20000);
+  send({ type: "start" });
+});
 $("#again-btn").addEventListener("click", () => send({ type: "play_again" }));
 document.querySelectorAll("[data-vip-next]").forEach((b) => b.addEventListener("click", () => send({ type: "next" })));
 document.querySelectorAll("[data-vip-end]").forEach((b) => b.addEventListener("click", () => {

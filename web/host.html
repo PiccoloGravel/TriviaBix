@@ -28,7 +28,7 @@
     .join-card .url.long { font-size: 2.6vh; }
     .join-card .code { font-family: "Bungee", sans-serif; font-size: 17vh; line-height: 1; color: var(--accent); letter-spacing: .08em; margin: 1vh 0; }
     .join-card img { width: 22vh; height: 22vh; background: #fff; border-radius: 2vh; padding: 1vh; }
-    .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2vh 1.5vw; }
+    .slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2vh 1.5vw; }
     .slot { background: var(--panel); border-radius: 2.5vh; padding: 2vh 1vw; text-align: center; min-height: 18vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; font-size: 3vh; }
     .slot.empty { border: .4vh dashed rgba(255,255,255,.2); background: none; color: rgba(255,255,255,.3); }
     .slot.away { opacity: .45; }
@@ -123,8 +123,13 @@
     .hm-scores { display: flex; flex-wrap: wrap; gap: 1vh 1.5vw; align-content: flex-start; justify-content: flex-end; font-size: 2.6vh; }
     .hm-scores div { display: flex; align-items: center; gap: .5vw; background: var(--panel); padding: .4vh 1vw .4vh .4vw; border-radius: 999px; }
 
-    .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
+    .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 1vh 1vw; max-width: 36vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
+    /* Mid-game the extras tuck away (a TV has no mouse) and come back when one moves, so Bix's words have room. */
+    body.in-game:not(.pointer) .corner button:not(#sound-btn) { display: none; }
+    .sound-hint .short { display: none; }
+    body.in-game .sound-hint .short { display: inline; }
+    body.in-game .sound-hint .long { display: none; }
     .now-playing { position: fixed; left: 1.5vw; bottom: 1.5vh; z-index: 5; font-size: 2vh; color: var(--muted); background: rgba(0,0,0,.35); border-radius: 999px; padding: .6vh 1.2vw; max-width: 45vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Above the buttons and clear of Bix's bubble (which stops at 78vw), so neither hides it. */
     .sound-hint { position: fixed; right: 1.5vw; bottom: 7.5vh; max-width: 19vw; text-align: center; font-size: 2vh; background: var(--accent); color: #1a0b3d; border-radius: 1vh; padding: .6vh 1vw; }
@@ -133,6 +138,8 @@
 
     /* The host: a mic avatar and a speech bubble along the bottom of every screen. */
     .host-bar { position: fixed; left: 2vw; bottom: 2vh; right: 22vw; display: flex; align-items: flex-end; gap: 1.2vw; z-index: 6; pointer-events: none; transition: opacity .4s, transform .4s; }
+    /* In the lobby and on the final scores the extras along the bottom right stay, so the bubble stops short of them. */
+    body:not(.in-game) .host-bar { right: 38vw; }
     .host-bar.quiet { opacity: 0; transform: translateY(4vh); }
     /* Hidden from the admin panel: no Bix at all, or Bix without his words. */
     .host-bar.off { display: none; }
@@ -438,7 +445,7 @@
 
   <div class="now-playing hidden" id="now-playing"></div>
   <div class="corner">
-    <span class="sound-hint hidden" id="sound-hint">🔈 Click this screen once to turn on sound</span>
+    <span class="sound-hint hidden" id="sound-hint">🔈 <span class="long">Click this screen once to turn on sound</span><span class="short">Click for sound</span></span>
     <button class="secondary hidden" id="sound-btn">🔈 Tap for sound</button>
     <button class="secondary" id="music-btn" title="B">🎵 Music</button>
     <button class="secondary" id="mute-btn" title="M">🔊 Host voice</button>
