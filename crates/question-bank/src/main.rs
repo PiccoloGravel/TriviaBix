@@ -431,6 +431,10 @@ fn import_cmd(content: &Path, source: &ImportSource, strict: bool) -> Result<(),
             questions: vec![],
         }
     };
+    // Earlier imports could save a question twice; this write keeps one copy.
+    let mut ids = std::collections::HashSet::new();
+    pack.questions
+        .retain(|q| q.id.as_ref().is_none_or(|id| ids.insert(id.clone())));
     for q in pack.resolve("existing") {
         index.add(&q);
     }

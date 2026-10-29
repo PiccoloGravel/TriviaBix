@@ -479,7 +479,7 @@ mod tests {
         ));
     }
 
-    fn opentdb_body(prompts: &[&str]) -> String {
+    pub(super) fn opentdb_body(prompts: &[&str]) -> String {
         let results: Vec<String> = prompts
             .iter()
             .map(|p| {
@@ -570,6 +570,17 @@ mod tests {
 mod pack_tests {
     use super::*;
     use crate::{DuplicateIndex, Match, PackFile, PackMeta, PackQuestion};
+
+    #[test]
+    fn screening_skips_a_question_fetched_again() {
+        let body = super::tests::opentdb_body(&["Is it one?"]);
+        let bank = parse_opentdb(&body).unwrap();
+        let mut index = DuplicateIndex::of(&bank);
+        let out = screen(parse_opentdb(&body).unwrap(), &mut index, false);
+        assert!(out.fresh.is_empty());
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].1.id, bank[0].id);
+    }
 
     #[test]
     fn screening_skips_reworded_questions_already_in_the_bank() {

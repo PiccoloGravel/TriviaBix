@@ -316,6 +316,19 @@ impl DuplicateIndex {
         self.entries.push((q.id.clone(), q.prompt.clone(), p));
     }
 
+    /// The question already here with this id.
+    pub fn same_id(&self, id: &str) -> Option<Match> {
+        self.entries
+            .iter()
+            .find(|(other, _, _)| other == id)
+            .map(|(id, prompt, _)| Match {
+                verdict: Verdict::Duplicate,
+                id: id.clone(),
+                prompt: prompt.clone(),
+                score: 1.0,
+            })
+    }
+
     /// Every earlier question `q` looks like, surest and closest first. A question never
     /// matches one with its own id.
     pub fn matches(&self, q: &Question) -> Vec<Match> {
@@ -430,6 +443,11 @@ pub fn screen(new: Vec<Question>, index: &mut DuplicateIndex, strict: bool) -> S
     for q in new {
         if !validate_question(&q).is_empty() {
             out.invalid += 1;
+            continue;
+        }
+        // Imported ids come from the prompt, so the same id is the same question fetched again.
+        if let Some(m) = index.same_id(&q.id) {
+            out.skipped.push((q, m));
             continue;
         }
         match index.check(&q) {
