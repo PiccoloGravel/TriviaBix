@@ -111,14 +111,9 @@ nightly.
 
 ## Playing away from home (optional)
 
-The game only needs your LAN. To let people join from elsewhere:
-
-- **Tailscale** (easiest, built into Unraid 7): players on your tailnet open
-  `http://<unraid tailscale name>:8080`. Set Public URL to that address for the QR code.
-- **Reverse proxy** (Nginx Proxy Manager, SWAG, Cloudflare Tunnel): point a hostname at
-  `http://<unraid IP>:8080` and **turn on WebSocket support** (the game runs over `/ws/...`).
-  Set Public URL to the public `https://` address. Use a strong admin password, or block `/admin`
-  at the proxy, since anyone who finds the address can reach it.
+The game only needs your LAN. To play somewhere else, like at family's, give it a public https
+address with Tailscale Funnel (free) or Cloudflare Tunnel, without opening router ports. Guests
+still just scan the QR code. Step by step: [REMOTE.md](REMOTE.md).
 
 ## Your music library (Lidarr)
 

@@ -591,6 +591,7 @@ function renderLobby(s, changed) {
   if (!changed && prev && s.players.length > prev.players.length) Sfx.play("join");
   const url = joinBase.replace(/^https?:\/\//, "");
   $("#join-url").textContent = url;
+  $("#join-url").parentNode.classList.toggle("long", url.length > 24);
   $("#room-code").textContent = s.code;
   const link = `${joinBase}/?code=${s.code}`;
   const qr = $("#qr");
@@ -1219,7 +1220,7 @@ document.addEventListener("keydown", (e) => {
   await Promise.all([TBX.loadCharacters(), Cutscenes.load()]);
   try {
     const cfg = await (await fetch("/api/config")).json();
-    if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
+    joinBase = TBX.joinBase(cfg.public_url);
     voice.ming = !!cfg.voice;
     voice.speed = cfg.voice_speed || 1;
   } catch (_) { /* fall back to this page's address */ }

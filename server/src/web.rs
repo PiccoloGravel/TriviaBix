@@ -16,6 +16,10 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc;
+use tower_http::compression::{
+    CompressionLayer,
+    predicate::{DefaultPredicate, NotForContentType, Predicate},
+};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -119,8 +123,13 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         config.max_players,
         config.max_rooms,
     );
-    if config.admin_password.is_none() {
-        tracing::info!("ADMIN_PASSWORD is not set, so the admin panel is off");
+    match &config.admin_password {
+        None => tracing::info!("ADMIN_PASSWORD is not set, so the admin panel is off"),
+        Some(p) if p.chars().count() < 12 => tracing::warn!(
+            "ADMIN_PASSWORD is short; if the game can be reached from the internet, use 12 \
+             characters or more"
+        ),
+        Some(_) => {}
     }
     let render = crate::render::Render::new(
         config.render.clone(),
@@ -245,6 +254,17 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("no-cache"),
         ))
+        // Pages, scripts and JSON shrink a lot, which matters when the TV is a long way from the
+        // server (playing over the internet). Audio, video, pictures and the app are already packed,
+        // and the music library's clips are sent in ranges, so those go as they are.
+        .layer(
+            CompressionLayer::new().compress_when(
+                DefaultPredicate::new()
+                    .and(NotForContentType::const_new("audio/"))
+                    .and(NotForContentType::const_new("video/"))
+                    .and(NotForContentType::const_new("application/vnd.android")),
+            ),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state))
 }

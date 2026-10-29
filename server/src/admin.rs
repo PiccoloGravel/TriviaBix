@@ -23,12 +23,43 @@ use crate::web::{AppState, CreateRoom};
 
 const COOKIE: &str = "tbx_admin";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+/// Wrong passwords are forgotten after this long without another one.
+const STRIKES_FORGOTTEN: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Clone)]
 pub struct Admin {
     password: Option<Arc<str>>,
     /// Login session token -> when it expires.
     sessions: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Recent wrong passwords, for every address at once: behind a tunnel or proxy every login
+    /// comes from the same place, so there's no telling guessers apart.
+    strikes: Arc<Mutex<Strikes>>,
+}
+
+#[derive(Default)]
+struct Strikes {
+    count: u32,
+    last: Option<Instant>,
+    /// No password is checked before this.
+    locked_until: Option<Instant>,
+}
+
+/// How long logins pause after the `n`th wrong password in a row: not at all for the first few
+/// typos, then doubling from 2 seconds up to a minute, so guessing a long password over the
+/// internet takes lifetimes.
+fn strike_pause(n: u32) -> Duration {
+    if n <= 3 {
+        Duration::ZERO
+    } else {
+        Duration::from_secs((1u64 << (n - 3).min(6)).min(60))
+    }
+}
+
+enum Attempt {
+    Ok,
+    Wrong,
+    /// Too many wrong passwords lately; try again in this many seconds.
+    Wait(u64),
 }
 
 impl Admin {
@@ -36,6 +67,7 @@ impl Admin {
         Self {
             password: password.map(Into::into),
             sessions: Default::default(),
+            strikes: Default::default(),
         }
     }
 
@@ -43,6 +75,28 @@ impl Admin {
         self.password
             .as_deref()
             .is_some_and(|p| constant_time_eq(p.as_bytes(), attempt.as_bytes()))
+    }
+
+    /// Checks a login, refusing to while logins are paused after wrong passwords. Checked and
+    /// counted under one lock, so guesses sent all at once still count one by one.
+    fn attempt(&self, password: &str, now: Instant) -> Attempt {
+        let mut s = self.strikes.lock().unwrap();
+        if let Some(until) = s.locked_until.filter(|u| *u > now) {
+            return Attempt::Wait((until - now).as_secs_f64().ceil() as u64);
+        }
+        if self.check_password(password) {
+            *s = Strikes::default();
+            return Attempt::Ok;
+        }
+        if s.last
+            .is_some_and(|t| now.duration_since(t) > STRIKES_FORGOTTEN)
+        {
+            s.count = 0;
+        }
+        s.count += 1;
+        s.last = Some(now);
+        s.locked_until = Some(now + strike_pause(s.count)).filter(|u| *u > now);
+        Attempt::Wrong
     }
 
     fn new_session(&self) -> String {
@@ -161,7 +215,11 @@ struct Login {
     password: String,
 }
 
-async fn login(State(app): State<AppState>, Json(body): Json<Login>) -> Response {
+async fn login(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<Login>,
+) -> Response {
     if app.admin.password.is_none() {
         let error = "The admin panel is off. Set ADMIN_PASSWORD on the server to turn it on.";
         return (
@@ -170,19 +228,34 @@ async fn login(State(app): State<AppState>, Json(body): Json<Login>) -> Response
         )
             .into_response();
     }
-    if !app.admin.check_password(&body.password) {
-        // Slows down password guessing.
-        tokio::time::sleep(Duration::from_millis(750)).await;
-        tracing::warn!("failed admin login");
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Wrong password." })),
-        )
-            .into_response();
+    match app.admin.attempt(&body.password, Instant::now()) {
+        Attempt::Ok => {}
+        Attempt::Wrong => {
+            // Slows down password guessing.
+            tokio::time::sleep(Duration::from_millis(750)).await;
+            tracing::warn!(from = client_addr(&headers), "failed admin login");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "Wrong password." })),
+            )
+                .into_response();
+        }
+        Attempt::Wait(secs) => {
+            let error = format!("Too many wrong passwords. Try again in {secs} seconds.");
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(header::RETRY_AFTER, secs.to_string())],
+                Json(json!({ "error": error })),
+            )
+                .into_response();
+        }
     }
     let token = app.admin.new_session();
+    // Over https (through a tunnel or proxy), the browser only ever sends the login back over
+    // https too.
+    let secure = if is_https(&headers) { "; Secure" } else { "" };
     let cookie = format!(
-        "{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}",
+        "{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={}{secure}",
         SESSION_TTL.as_secs()
     );
     let mut res = Json(json!({ "ok": true })).into_response();
@@ -428,6 +501,22 @@ async fn music_sync(State(app): State<AppState>) -> Response {
     Json(app.music.library.start_sync(&app.db).await).into_response()
 }
 
+/// Whether the browser reached us over https, as a tunnel or reverse proxy in front says.
+fn is_https(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').next().unwrap_or("").trim() == "https")
+}
+
+/// Who's logging in, for the log: the address a tunnel or proxy passed on, if any.
+fn client_addr(headers: &HeaderMap) -> &str {
+    ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"]
+        .iter()
+        .find_map(|h| headers.get(*h)?.to_str().ok())
+        .map_or("direct", |v| v.split(',').next().unwrap_or(v).trim())
+}
+
 fn session_cookie(headers: &HeaderMap) -> Option<&str> {
     headers
         .get_all(header::COOKIE)
@@ -456,6 +545,53 @@ mod tests {
         assert!(!constant_time_eq(b"hunter2", b"hunter"));
         assert!(!constant_time_eq(b"hunter2", b"hunter22"));
         assert!(!constant_time_eq(b"hunter2", b"Hunter2"));
+    }
+
+    #[test]
+    fn wrong_passwords_pause_logins() {
+        let admin = Admin::new(Some("correct horse".into()));
+        let t0 = Instant::now();
+        assert!(matches!(admin.attempt("correct horse", t0), Attempt::Ok));
+        // A few typos cost nothing.
+        for _ in 0..3 {
+            assert!(matches!(admin.attempt("nope", t0), Attempt::Wrong));
+        }
+        assert!(matches!(admin.attempt("correct horse", t0), Attempt::Ok));
+        for _ in 0..4 {
+            assert!(matches!(admin.attempt("nope", t0), Attempt::Wrong));
+        }
+        // Even the right password waits out the pause, or guesses could be tested during it.
+        assert!(matches!(
+            admin.attempt("correct horse", t0),
+            Attempt::Wait(2)
+        ));
+        let t1 = t0 + Duration::from_secs(2);
+        assert!(matches!(admin.attempt("correct horse", t1), Attempt::Ok));
+        // Pauses grow with every wrong password in a row, up to a minute.
+        let mut t = t1;
+        for _ in 0..12 {
+            t += Duration::from_secs(61);
+            assert!(matches!(admin.attempt("guess", t), Attempt::Wrong));
+        }
+        assert!(matches!(admin.attempt("guess", t), Attempt::Wait(60)));
+        // And are forgotten after a quiet spell.
+        t += STRIKES_FORGOTTEN + Duration::from_secs(1);
+        assert!(matches!(admin.attempt("guess", t), Attempt::Wrong));
+        assert!(matches!(admin.attempt("guess", t), Attempt::Wrong));
+    }
+
+    #[test]
+    fn reads_what_the_proxy_says() {
+        let mut h = HeaderMap::new();
+        assert!(!is_https(&h));
+        assert_eq!(client_addr(&h), "direct");
+        h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("203.0.113.9, 10.0.0.1"),
+        );
+        assert!(is_https(&h));
+        assert_eq!(client_addr(&h), "203.0.113.9");
     }
 
     #[test]

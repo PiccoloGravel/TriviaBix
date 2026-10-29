@@ -172,8 +172,10 @@ and Wan art models. It also sets which GPUs may be rented and each GPU job's pri
 Saved values are kept in the database, win over the container's environment variables of the same name, and apply
 without a restart. Keys are never sent back to the page. **Test** checks each service without spending anything.
 
-Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. Serve the panel over HTTPS if anyone outside
-your home network can reach the server.
+Without `ADMIN_PASSWORD` the panel stays locked. The login lasts 12 hours. After a few wrong passwords in a row, logins
+pause for a little longer each time (up to a minute). Serve the panel over HTTPS if anyone outside your home network can
+reach the server: [deploy/unraid/REMOTE.md](deploy/unraid/REMOTE.md) sets that up with Tailscale Funnel or Cloudflare
+Tunnel.
 
 ## Running it
 

@@ -87,6 +87,20 @@ const TBX = {
     }));
   },
 
+  /**
+   * The address phones should open. A page opened on the LAN (an IP, `localhost` or a `.local`
+   * name) uses PUBLIC_URL when the server has one, since the TV's own address may not work on
+   * phones. A page opened on a real name, such as a tunnel's https address away from home, is
+   * already somewhere phones can reach, so it uses its own.
+   */
+  joinBase(publicUrl) {
+    const host = location.hostname;
+    const lan = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|\[)/.test(host) ||
+      /\.(local|lan|home|internal)$/.test(host) || host.indexOf(".") < 0;
+    if (publicUrl && lan) return publicUrl.replace(/\/$/, "");
+    return location.origin;
+  },
+
   load(key) {
     try { return JSON.parse(localStorage.getItem(key)); } catch (_) { return null; }
   },
@@ -107,11 +121,13 @@ const TBX = {
     let stopped = false;
     let retry = 0;
     let pingTimer = null;
+    let retryTimer = null;
 
     const open = () => {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const qs = new URLSearchParams(params()).toString();
-      ws = new WebSocket(`${proto}//${location.host}${path}?${qs}`);
+      const sock = new WebSocket(`${proto}//${location.host}${path}?${qs}`);
+      ws = sock;
       ws.onopen = () => {
         retry = 0;
         onStatus && onStatus(true);
@@ -127,11 +143,13 @@ const TBX = {
         onMessage(msg);
       };
       ws.onclose = () => {
+        // A socket already replaced by a reconnect.
+        if (sock !== ws) return;
         clearInterval(pingTimer);
         if (stopped) return;
         onStatus && onStatus(false);
         retry = Math.min(retry + 1, 6);
-        setTimeout(open, 500 * 2 ** (retry - 1));
+        retryTimer = setTimeout(open, 500 * 2 ** (retry - 1));
       };
     };
 
@@ -139,11 +157,48 @@ const TBX = {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
     };
 
+    // A phone coming back from its lock screen, or a network that drops for a moment (common
+    // on mobile data), reconnects straight away instead of waiting out the backoff.
+    const wake = () => {
+      if (stopped || document.hidden || !ws || ws.readyState !== WebSocket.CLOSED) return;
+      clearTimeout(retryTimer);
+      retry = 0;
+      open();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
+
     open();
     return {
       send,
-      close() { stopped = true; ws && ws.close(); },
+      close() {
+        stopped = true;
+        clearTimeout(retryTimer);
+        document.removeEventListener("visibilitychange", wake);
+        window.removeEventListener("online", wake);
+        ws && ws.close();
+      },
     };
+  },
+
+  /**
+   * Keeps the screen on while the page is showing, so a phone doesn't lock between questions.
+   * Browsers only allow it over https (or on localhost), so on plain http it does nothing.
+   */
+  keepAwake() {
+    if (TBX._awake || !("wakeLock" in navigator)) return;
+    TBX._awake = true;
+    let lock = null;
+    const ask = () => {
+      if (document.hidden || lock) return;
+      navigator.wakeLock.request("screen").then((l) => {
+        lock = l;
+        l.addEventListener("release", () => { lock = null; });
+      }).catch(() => { /* low battery or not allowed; the screen sleeps as usual */ });
+    };
+    // The lock goes when the page is hidden; take it again when it's back.
+    document.addEventListener("visibilitychange", ask);
+    ask();
   },
 
   /** Animates a timer bar from the time left in the current phase. */
