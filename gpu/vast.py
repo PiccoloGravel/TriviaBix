@@ -872,12 +872,20 @@ class Game:
     def __init__(self, base: str, password: str):
         self.base = base.rstrip("/")
         self.http = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
-        try:
-            self.call("POST", "/api/admin/login", {"password": password})
-        except urllib.error.HTTPError as e:
-            raise Abort(f"couldn't log in to {self.base}/admin ({e.code}); check ADMIN_PASSWORD")
-        except urllib.error.URLError as e:
-            raise Abort(f"couldn't reach the game server at {self.base}: {e.reason}")
+        for attempt in range(4):
+            try:
+                self.call("POST", "/api/admin/login", {"password": password})
+                return
+            except urllib.error.HTTPError as e:
+                # Logins pause for a while after someone types wrong passwords; wait it out.
+                if e.code == 429 and attempt < 3:
+                    wait = min(int(e.headers.get("Retry-After") or 30), 60)
+                    say(f"admin logins are paused after wrong passwords; trying again in {wait}s")
+                    time.sleep(wait)
+                    continue
+                raise Abort(f"couldn't log in to {self.base}/admin ({e.code}); check ADMIN_PASSWORD")
+            except urllib.error.URLError as e:
+                raise Abort(f"couldn't reach the game server at {self.base}: {e.reason}")
 
     def call(self, method: str, path: str, body=None):
         req = urllib.request.Request(self.base + path, None if body is None else json.dumps(body).encode(),

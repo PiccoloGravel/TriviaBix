@@ -274,7 +274,7 @@ $("#music-sync").addEventListener("click", async () => {
   await TBX.loadCharacters();
   try {
     const cfg = await (await fetch("/api/config")).json();
-    if (cfg.public_url) joinBase = cfg.public_url.replace(/\/$/, "");
+    joinBase = TBX.joinBase(cfg.public_url);
   } catch { /* use this page's address */ }
   let session = { enabled: false, logged_in: false };
   try { session = await (await fetch("/api/admin/session")).json(); } catch { /* treat as logged out */ }

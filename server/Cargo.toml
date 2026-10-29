@@ -17,7 +17,7 @@ sha2 = "0.10"
 sqlx = { version = "0.9.0", features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
 tokio = { version = "1.54.1", features = ["full"] }
 tower = { version = "0.5.3", features = ["util"] }
-tower-http = { version = "0.7.1", features = ["fs", "set-header", "trace"] }
+tower-http = { version = "0.7.1", features = ["compression-br", "compression-gzip", "fs", "set-header", "trace"] }
 tracing = "0.1.44"
 triviabix-questions = { path = "../crates/question-bank" }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

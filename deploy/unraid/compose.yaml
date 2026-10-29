@@ -10,7 +10,9 @@ services:
     ports:
       - "${TRIVIABIX_PORT:-8080}:8080"
     environment:
-      # The address phones open and the TV's QR code shows, e.g. http://192.168.1.20:8080.
+      # The address phones open and the TV's QR code shows at home, e.g. http://192.168.1.20:8080.
+      # A TV that opened the game on its https address (playing away, see REMOTE.md) shows that
+      # address instead, so keep this the LAN one.
       PUBLIC_URL: ${PUBLIC_URL:-}
       # Turns on the admin panel at /admin. Leave empty to keep it off.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -62,4 +64,40 @@ services:
       - /mnt/user/appdata/triviabix-tts/models:/models
       # Reference clips for a custom Bix voice (bix.wav + bix.txt).
       - /mnt/user/appdata/triviabix-tts/voices:/voices
+    restart: unless-stopped
+
+  # Playing away from home with Tailscale Funnel (deploy/unraid/REMOTE.md): a public
+  # https://triviabix.<your tailnet>.ts.net address, free, with no ports opened on the router.
+  # Start the stack with the "funnel" profile, with TS_AUTHKEY in .env and serve.json from this
+  # folder copied to /mnt/user/appdata/triviabix-tailscale/.
+  funnel:
+    image: tailscale/tailscale:stable
+    container_name: triviabix-funnel
+    profiles: [funnel]
+    hostname: ${TS_HOSTNAME:-triviabix}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-triviabix}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /var/lib/tailscale/serve.json
+      # No /dev/net/tun needed: Funnel only forwards web traffic to the game.
+      TS_USERSPACE: "true"
+    volumes:
+      # The node's login (so the auth key is used once) and serve.json.
+      - /mnt/user/appdata/triviabix-tailscale:/var/lib/tailscale
+    depends_on: [triviabix]
+    restart: unless-stopped
+
+  # Playing away from home with Cloudflare Tunnel (deploy/unraid/REMOTE.md): your own domain,
+  # e.g. https://trivia.example.com. Start the stack with the "tunnel" profile, with the tunnel's
+  # token in .env as CLOUDFLARE_TUNNEL_TOKEN, and point the tunnel's public hostname at
+  # http://triviabix:8080.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: triviabix-tunnel
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [triviabix]
     restart: unless-stopped

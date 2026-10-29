@@ -24,6 +24,8 @@
     #lobby .main { flex: 1; display: grid; grid-template-columns: 40% 1fr; gap: 4vw; align-items: center; }
     .join-card { background: var(--panel); border-radius: 3vh; padding: 4vh 2vw; text-align: center; }
     .join-card .url { font-size: 3.4vh; word-break: break-all; }
+    /* A tunnel's long address (triviabix.tail1234.ts.net) still fits on one line. */
+    .join-card .url.long { font-size: 2.6vh; }
     .join-card .code { font-family: "Bungee", sans-serif; font-size: 17vh; line-height: 1; color: var(--accent); letter-spacing: .08em; margin: 1vh 0; }
     .join-card img { width: 22vh; height: 22vh; background: #fff; border-radius: 2vh; padding: 1vh; }
     .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2vh 1.5vw; }
@@ -124,7 +126,8 @@
     .corner { position: fixed; right: 1.5vw; bottom: 1.5vh; display: flex; gap: 1vw; z-index: 5; }
     .corner button { font-size: 2vh; padding: .6vh 1vw; }
     .now-playing { position: fixed; left: 1.5vw; bottom: 1.5vh; z-index: 5; font-size: 2vh; color: var(--muted); background: rgba(0,0,0,.35); border-radius: 999px; padding: .6vh 1.2vw; max-width: 45vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sound-hint { font-size: 2vh; align-self: center; background: var(--accent); color: #1a0b3d; border-radius: 1vh; padding: .6vh 1vw; }
+    /* Above the buttons and clear of Bix's bubble (which stops at 78vw), so neither hides it. */
+    .sound-hint { position: fixed; right: 1.5vw; bottom: 7.5vh; max-width: 19vw; text-align: center; font-size: 2vh; background: var(--accent); color: #1a0b3d; border-radius: 1vh; padding: .6vh 1vw; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 1vh; font-size: 2.6vh; z-index: 10; }
     /* ---------- Game show graphics ---------- */
 

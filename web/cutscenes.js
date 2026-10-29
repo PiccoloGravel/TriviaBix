@@ -49,15 +49,25 @@ const Cutscenes = {
     this.preload();
   },
 
-  /** Fetches the art one file at a time, smallest first, so the stickers are ready long before the clips. */
+  /**
+   * Fetches the art smallest first, so the stickers are ready long before the clips. A few at a
+   * time: when the server is far away (played over the internet), one at a time spends most of
+   * its time waiting on the round trip.
+   */
   async preload() {
     const paths = Object.keys(this.art.files).sort((a, b) => (this.art.files[a].bytes || 0) - (this.art.files[b].bytes || 0));
-    for (const path of paths) {
-      try {
-        const blob = await (await fetch(this.base + "assets/gen/" + path)).blob();
-        this.preloaded[path] = URL.createObjectURL(blob);
-      } catch (_) { /* it'll load when it plays */ }
-    }
+    const worker = async () => {
+      while (paths.length) {
+        const path = paths.shift();
+        try {
+          const res = await fetch(this.base + "assets/gen/" + path);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          this.preloaded[path] = URL.createObjectURL(blob);
+        } catch (_) { /* it'll load when it plays */ }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
   },
 
   /**

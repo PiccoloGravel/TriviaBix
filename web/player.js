@@ -6,7 +6,6 @@ const PLAYER_KEY = "tbx:player";
 let conn = null;
 let state = null;
 let me = null; // { code, name, token, id }
-let wakeLock = null;
 let picked = TBX.load("tbx:character"); // character id chosen on the join screen
 
 function joinGame(code, name, token) {
@@ -24,7 +23,7 @@ function joinGame(code, name, token) {
         me.token = msg.token;
         me.id = msg.player_id;
         TBX.save(PLAYER_KEY, { code, name, token: msg.token });
-        keepAwake();
+        TBX.keepAwake();
       } else if (msg.type === "state") {
         render(msg);
       } else if (msg.type === "error") {
@@ -51,16 +50,6 @@ function flash(text) {
 }
 
 // Phones love to sleep mid-question; ask them not to while we're playing.
-async function keepAwake() {
-  try {
-    if ("wakeLock" in navigator && !wakeLock) {
-      wakeLock = await navigator.wakeLock.request("screen");
-      wakeLock.addEventListener("release", () => { wakeLock = null; });
-    }
-  } catch { /* not supported or not allowed; fine */ }
-}
-document.addEventListener("visibilitychange", () => { if (!document.hidden && conn) keepAwake(); });
-
 // ---------- Rendering ----------
 
 function render(s) {
@@ -509,7 +498,7 @@ async function tvAddress() {
   let base = location.origin;
   try {
     const cfg = await (await fetch("/api/config")).json();
-    if (cfg.public_url) base = cfg.public_url.replace(/\/$/, "");
+    base = TBX.joinBase(cfg.public_url);
   } catch { /* this page's address works for the TV too */ }
   return `${base.replace(/^https?:\/\//, "")}/tv`;
 }
