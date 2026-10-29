@@ -488,10 +488,12 @@ function render(s) {
   else if (["lobby", "scoreboard", "recap"].includes(s.phase) && !Bgm.blocked) Bgm.start();
   if (s.hangman && (s.phase === "question" || s.phase === "reveal")) {
     show("hangman");
+    document.body.classList.add("in-game");
     renderHangman(s, phaseChanged);
     return hostSays(s);
   }
   show(s.phase);
+  document.body.classList.toggle("in-game", s.phase !== "lobby" && s.phase !== "final");
   announceLateJoiners(s);
   ({
     lobby: renderLobby, intro: renderIntro, round_intro: renderRoundIntro, question: renderQuestion,
@@ -1133,6 +1135,13 @@ function primaryAction() {
 }
 
 $("#sound-btn").addEventListener("click", () => tune.unlock());
+// A mouse moving over the TV page brings the extras back for a few seconds.
+let pointerTimer = null;
+document.addEventListener("mousemove", () => {
+  document.body.classList.add("pointer");
+  clearTimeout(pointerTimer);
+  pointerTimer = setTimeout(() => document.body.classList.remove("pointer"), 4000);
+});
 document.addEventListener("pointerdown", () => { Sfx.unlock(); Bgm.unlock(); tune.unlock(); soundHint(); });
 
 // Browsers keep a page silent until someone clicks it once, so say so until that happens.

@@ -28,6 +28,7 @@
     .answers button .song small { font-size: 15px; opacity: .85; }
     .answers button.picked { outline: 5px solid #fff; }
     .answers.locked button:not(.picked) { opacity: .3; }
+    .answers button.picked, .mg-picks button.picked { opacity: 1; }
     .verdict { font-size: 72px; }
     .points { font-family: "Bungee", sans-serif; font-size: 40px; color: var(--accent); }
     .vip { background: var(--panel); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
@@ -133,6 +134,7 @@
         </div>
         <div class="muted" id="pick-summary" style="font-size:14px"></div>
         <button class="big" id="start-btn">Everybody's in! Start</button>
+        <p class="error" id="start-error" style="margin:0;font-size:15px"></p>
         <div class="pick-group hidden" id="kick-box">
           <label>Remove a player</label>
           <div id="kick-list"></div>
