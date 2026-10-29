@@ -120,17 +120,37 @@ impl QuestionBank {
         collect_pack_files(&packs_dir, &mut files)?;
         files.sort();
 
-        let mut questions = Vec::new();
-        let mut packs = HashMap::new();
+        let mut questions: Vec<Question> = Vec::new();
+        let mut packs: HashMap<String, PathBuf> = HashMap::new();
+        let mut by_id: HashMap<String, usize> = HashMap::new();
+        let mut repeats = Vec::new();
         for path in files {
             let rel = path.strip_prefix(&packs_dir).unwrap_or(&path).to_path_buf();
             for q in load_pack(&path)? {
+                // An import that fetched a question it already had saved a second copy. The
+                // copies are the same question, so the first one is kept.
+                let repeat = by_id
+                    .get(&q.id)
+                    .is_some_and(|&i| normalize(&questions[i].prompt) == normalize(&q.prompt));
+                if repeat {
+                    repeats.push(problem(
+                        &format!("question {}", q.id),
+                        &format!(
+                            "saved twice; using the copy in {} and skipping the one in {}",
+                            packs[&q.id].display(),
+                            rel.display()
+                        ),
+                    ));
+                    continue;
+                }
+                by_id.insert(q.id.clone(), questions.len());
                 packs.insert(q.id.clone(), rel.clone());
                 questions.push(q);
             }
         }
         let mut bank = Self::new(cats.categories, questions).map_err(LoadError::Invalid)?;
         bank.packs = packs;
+        bank.warnings = repeats;
         bank.load_scripts(&dir.join("scripts"), persona)?;
         let kept_path = dir.join(NOT_DUPLICATES);
         bank.kept = NotDuplicates::read(&kept_path).map_err(|message| LoadError::Parse {
@@ -703,6 +723,37 @@ mod tests {
         assert!(bank.warnings().is_empty(), "{:?}", bank.warnings());
         let pairs = bank.duplicates();
         assert!(pairs.is_empty(), "asked twice: {pairs:?}");
+    }
+
+    #[test]
+    fn a_question_saved_twice_loads_once() {
+        let dir = std::env::temp_dir().join(format!("tbx-twice-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("packs/imported")).unwrap();
+        std::fs::write(
+            dir.join("categories.toml"),
+            "[[category]]\nslug = \"science\"\nname = \"Science\"\n",
+        )
+        .unwrap();
+        let question = r#"
+[[question]]
+id = "opentdb-58b8916b"
+type = "multiple_choice"
+prompt = "What is the hardest natural substance?"
+choices = ["Diamond", "Quartz"]
+answer = "Diamond"
+"#;
+        let pack = format!("[pack]\ncategory = \"science\"\n{question}{question}");
+        std::fs::write(dir.join("packs/imported/opentdb-mixed.toml"), &pack).unwrap();
+        std::fs::write(dir.join("packs/imported/opentdb-17.toml"), &pack).unwrap();
+        let bank = QuestionBank::load_dir(&dir).unwrap();
+        assert_eq!(bank.questions().len(), 1);
+        assert_eq!(
+            bank.pack_of("opentdb-58b8916b"),
+            Some(Path::new("imported/opentdb-17.toml"))
+        );
+        assert_eq!(bank.warnings().len(), 3, "{:?}", bank.warnings());
+        assert!(bank.warnings()[0].message.contains("saved twice"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
