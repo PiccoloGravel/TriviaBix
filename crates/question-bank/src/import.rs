@@ -184,18 +184,33 @@ pub struct OpenTdbQuery {
     pub kind: Option<String>,
 }
 
+/// Open Trivia DB answers each IP at most once every 5 seconds, counting the token request.
+const OPENTDB_GAP: Duration = Duration::from_secs(6);
+
 /// Fetch questions from Open Trivia DB, 50 per request, waiting between requests to
 /// respect its rate limit. A session token keeps it from repeating questions.
 pub fn fetch_opentdb(q: &OpenTdbQuery) -> Result<Vec<Question>, ImportError> {
-    let agent = agent();
-    let token: serde_json::Value =
-        get_json(&agent, "https://opentdb.com/api_token.php?command=request")?;
-    let token = token["token"].as_str().map(str::to_string);
+    fetch_opentdb_with(q, OPENTDB_GAP, |url| get_text(&agent(), url))
+}
+
+fn fetch_opentdb_with(
+    q: &OpenTdbQuery,
+    gap: Duration,
+    mut get: impl FnMut(&str) -> Result<String, ImportError>,
+) -> Result<Vec<Question>, ImportError> {
+    // The token only stops repeats, so the import goes ahead without one.
+    let token = get("https://opentdb.com/api_token.php?command=request")
+        .ok()
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .and_then(|v| v["token"].as_str().map(str::to_string));
 
     let mut out = Vec::new();
     let mut remaining = q.amount;
+    let mut batch_cap = 50;
+    let mut rate_limited = 0;
     while remaining > 0 {
-        let batch = remaining.min(50);
+        std::thread::sleep(gap);
+        let batch = remaining.min(batch_cap);
         let mut url = format!("https://opentdb.com/api.php?amount={batch}&encode=base64");
         if let Some(c) = q.category {
             url.push_str(&format!("&category={c}"));
@@ -209,18 +224,38 @@ pub fn fetch_opentdb(q: &OpenTdbQuery) -> Result<Vec<Question>, ImportError> {
         if let Some(t) = &token {
             url.push_str(&format!("&token={t}"));
         }
-        let body = get_text(&agent, &url)?;
-        let got = parse_opentdb(&body)?;
+        let got = match get(&url).and_then(|body| parse_opentdb(&body)) {
+            Ok(got) => got,
+            // Too soon after the last request: wait and ask again.
+            Err(e) if is_rate_limited(&e) && rate_limited < 3 => {
+                rate_limited += 1;
+                continue;
+            }
+            // Not that many left for this category and difficulty: ask for fewer, and keep
+            // what earlier batches found.
+            Err(ImportError::OpenTdb(1 | 4, _)) if batch > 1 => {
+                batch_cap = batch / 2;
+                continue;
+            }
+            Err(ImportError::OpenTdb(1 | 4, _)) if !out.is_empty() => break,
+            Err(e) => return Err(e),
+        };
+        rate_limited = 0;
         if got.is_empty() {
             break;
         }
         remaining -= got.len().min(remaining);
         out.extend(got);
-        if remaining > 0 {
-            std::thread::sleep(Duration::from_secs(6));
-        }
     }
     Ok(out)
+}
+
+fn is_rate_limited(e: &ImportError) -> bool {
+    match e {
+        ImportError::OpenTdb(5, _) => true,
+        ImportError::Http(msg) => msg.contains("429"),
+        _ => false,
+    }
 }
 
 // ---------- The Trivia API ----------
@@ -393,10 +428,6 @@ fn get_text(agent: &ureq::Agent, url: &str) -> Result<String, ImportError> {
         .map_err(|e| ImportError::Http(e.to_string()))
 }
 
-fn get_json(agent: &ureq::Agent, url: &str) -> Result<serde_json::Value, ImportError> {
-    serde_json::from_str(&get_text(agent, url)?).map_err(|e| ImportError::Format(e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,6 +477,72 @@ mod tests {
             parse_opentdb(r#"{"response_code":5,"results":[]}"#),
             Err(ImportError::OpenTdb(5, _))
         ));
+    }
+
+    fn opentdb_body(prompts: &[&str]) -> String {
+        let results: Vec<String> = prompts
+            .iter()
+            .map(|p| {
+                format!(
+                    r#"{{"type":"{}","difficulty":"{}","category":"{}","question":"{}","correct_answer":"{}","incorrect_answers":["{}"]}}"#,
+                    enc("multiple"), enc("easy"), enc("Geography"), enc(p), enc("Yes"), enc("No")
+                )
+            })
+            .collect();
+        format!(r#"{{"response_code":0,"results":[{}]}}"#, results.join(","))
+    }
+
+    fn query(amount: usize) -> OpenTdbQuery {
+        OpenTdbQuery {
+            amount,
+            category: None,
+            difficulty: None,
+            kind: None,
+        }
+    }
+
+    #[test]
+    fn opentdb_waits_out_the_rate_limit() {
+        // The token request counts against the limit, so the first fetch can be refused.
+        let mut calls = Vec::new();
+        let mut replies = vec![
+            Ok(r#"{"response_code":0,"token":"abc"}"#.to_string()),
+            Err(ImportError::Http(
+                "https://opentdb.com/api.php: status code 429".into(),
+            )),
+            Ok(r#"{"response_code":5,"results":[]}"#.to_string()),
+            Ok(opentdb_body(&["Is it one?", "Is it two?"])),
+        ]
+        .into_iter();
+        let got = fetch_opentdb_with(&query(2), Duration::ZERO, |url| {
+            calls.push(url.to_string());
+            replies.next().unwrap()
+        })
+        .unwrap();
+        assert_eq!(got.len(), 2);
+        assert!(calls[3].contains("amount=2") && calls[3].contains("token=abc"));
+    }
+
+    #[test]
+    fn opentdb_asks_for_fewer_when_a_category_runs_short() {
+        let mut calls = Vec::new();
+        let mut replies = vec![
+            Err(ImportError::Http("token down".into())),
+            Ok(r#"{"response_code":1,"results":[]}"#.to_string()),
+            Ok(opentdb_body(&["Is it one?"])),
+            Ok(r#"{"response_code":1,"results":[]}"#.to_string()),
+        ]
+        .into_iter();
+        let got = fetch_opentdb_with(&query(2), Duration::ZERO, |url| {
+            calls.push(url.to_string());
+            replies
+                .next()
+                .unwrap_or_else(|| Ok(r#"{"response_code":1,"results":[]}"#.into()))
+        })
+        .unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(calls[1].contains("amount=2") && !calls[1].contains("token="));
+        assert!(calls[2].contains("amount=1"));
     }
 
     #[test]
