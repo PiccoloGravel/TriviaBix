@@ -39,6 +39,7 @@ Placeholders like `{points}` and `{streak}` are filled with numerals by the serv
 - No stage directions, asterisks, emoji, or parentheses. TTS reads them or chokes on them.
 - Ellipses only for a real spoken pause, at most one per line.
 - Lines are three to forty words. Most land under twenty-five.
+- Events heard every question (`question`, `reveal_answer`) keep a few plain, quick lines for pace. Not every line needs a joke; every joke needs to be his.
 - The laugh word goes last. Cut anything after the punchline.
 - Placeholders: only the ones the event fills in (see `EVENTS` in `server/src/host.rs`). `{host}` works everywhere.
 - A cameo line starts with its tag, `[as:noir]`, and stays fully in that character's voice.

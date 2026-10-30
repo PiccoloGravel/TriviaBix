@@ -10,11 +10,11 @@
   "lines": {
     "room_open": {
       "PG": [
-        "Room {code} is open. Grab your phones!",
-        "Hi, I'm {host}, your host. Room code {code}. Phones out, people.",
+        "Room {code} is open! Grab your phones! Gary, house lights! ... Gary is a lamp. Those are the house lights.",
+        "Hi, I'm {host}, your host. You may remember me from Brain Blast. You may not. Room code {code}.",
         "The room code is {code}. Join now, or forever hold your peace.",
         "Welcome to TriviaBix! Room {code}. I'm {host}, and I'll be judging you tonight.",
-        "Room {code} is live. Grab a phone, pick a face, and get comfy.",
+        "Room {code} is live. Grab a phone, pick a face, and get comfy. The couch is the front row tonight.",
         "Code {code}. Type it in. I'll wait. I'm very patient. Mostly.",
         "Room {code} is open! Gary, hit the lights. ... Gary is a lamp. Gary, please.",
         "Ladies and gentlemen, we are back on the air! Room {code}. Well, on a TV. Close enough.",
@@ -34,7 +34,7 @@
       ],
       "MA": [
         "Room {code}. Get in here before I sober up.",
-        "I'm {host}, the only one here with a working brain. Room code {code}.",
+        "I'm {host}. Twenty years in show business and three in recovery. Room code {code}.",
         "Room {code}. Pour something strong, you'll need it.",
         "Code {code}. Get in, loser, we're doing trivia.",
         "Room {code}. I've had two drinks and a pep talk from a floor lamp. Let's go.",
@@ -43,8 +43,7 @@
       ],
       "NC-17": [
         "Room {code} is open. Whip 'em out. Your phones, you animals.",
-        "Room {code}. Get your sorry asses on your phones and let's do this.",
-        "Room {code}. Get your fingers warmed up, you filthy animals.",
+        "Room {code}. Get your sorry asses on your phones. Daddy has a comeback to film.",
         "Code {code}. Phones out, pants on, let's go.",
         "Room {code}. Welcome to Bix After Dark. Nobody called in last time either.",
         "Room {code}. Phones out, inhibitions down, expectations in the gutter where they belong.",
@@ -53,14 +52,12 @@
     },
     "join": {
       "PG": [
-        "{name} has entered the building.",
+        "{name} has entered the building! Gary, a spotlight! ... That's Gary. That's all he does.",
         "Welcome, {name}. Lower your expectations.",
         "Oh good, {name} is here. Now it's a party.",
         "{name} joined. I've heard things about you, {name}.",
-        "Look who it is, {name}!",
         "{name} is here. Everyone act natural.",
-        "Make some noise for {name}!",
-        "{name} has arrived, and so has the competition.",
+        "Make some noise for {name}! Louder! I'm used to twenty-two million!",
         "{name}! Welcome to the show! Gary, give them a spotlight. Gary is a lamp. That's the spotlight.",
         "{name} is here! That's one more viewer than last week. The ratings are through the roof.",
         "Welcome, {name}. Sit anywhere. The couch is the front row. The floor is the cheap seats.",
@@ -72,7 +69,6 @@
         "{name} is here. Somebody hide the snacks.",
         "Look who it is. {name}, back for more humiliation.",
         "{name} joined. Bold of you to show your face.",
-        "{name} showed up. Bold move.",
         "Ah, {name}. I was hoping you'd be the easy one.",
         "{name} is here. Great. Another person to disappoint.",
         "Welcome, {name}. You look like someone who's about to guess Paris for everything.",
@@ -81,8 +77,7 @@
       "MA": [
         "{name} is here, and somehow already three drinks in.",
         "Oh hell, it's {name}. This is going to be a long night.",
-        "{name} has arrived. Somebody call their therapist.",
-        "{name} is here, and already a drink ahead of everyone.",
+        "{name} has arrived. Somebody call their therapist. Tell them to call mine, too.",
         "Oh no. {name} came. Hide the good snacks.",
         "{name} has arrived, and the talent level in this room just went up. Not by much. But up.",
         "{name} is here. Hide your drinks. Hide mine too, actually.",
@@ -91,8 +86,7 @@
       "NC-17": [
         "{name} just slid in. Easy there, tiger.",
         "{name} is here. Lock up your parents.",
-        "Holy shit, {name} actually showed up.",
-        "{name} just slid in. Smooth.",
+        "Holy shit, {name} actually showed up. That's more than Marty ever did.",
         "Well, well, {name}. Look what the cat dragged in.",
         "{name} just came in hot. Easy, tiger. It's trivia.",
         "Well, hello, {name}. Welcome to Bix After Dark. Keep your hands where I can see them.",
@@ -103,8 +97,7 @@
       "PG": [
         "Back for more? I respect that.",
         "Round two. Same room, fresh shame.",
-        "Back for more? I love it.",
-        "Same players, fresh questions. Let's go again.",
+        "Same players, fresh questions. The network never gave me a second season this fast.",
         "Round two. Grudges allowed.",
         "A rematch! You know what that is? That's a renewal. I haven't been renewed since two thousand four.",
         "They want another one! Marty, are you seeing this? Marty? Nobody tell Marty, he'll want fifteen percent.",
@@ -113,7 +106,6 @@
       ],
       "PG-13": [
         "Rematch! Somebody's ego couldn't take it.",
-        "Rematch! Somebody's salty.",
         "Run it back. Last game didn't count. Says the loser.",
         "Again? Okay, but this time, when I say Bix it, somebody say miss it. Anybody. Please.",
         "Rematch! Somebody here thinks they got robbed. You did not get robbed. You got Bixed.",
@@ -121,7 +113,6 @@
       ],
       "MA": [
         "Again? You people have nothing better to do. Same. Let's go.",
-        "Another one? You people have nowhere better to be.",
         "Rematch time. Losers buy the next round.",
         "Another round? You know who never asked for another round? The network. Screw the network. Let's go.",
         "Rematch. This is what a comeback looks like, folks. Sticky couch, cold pizza, pure glory.",
@@ -140,9 +131,8 @@
         "Welcome to TriviaBix! I'm {host}. {count} contestants, {rounds} questions, and only one big brain. Let's play!",
         "Ladies and gentlemen, welcome to TriviaBix! Tonight: {names}. One of you will win. The rest of you will make excuses.",
         "It's TriviaBix time! I'm your host, {host}. {rounds} questions. Answer fast for bonus points. Try not to cry.",
-        "Welcome, {names}! {rounds} questions stand between you and glory.",
+        "Welcome, {names}! {rounds} questions stand between you and glory. I stood there once. Nineteen ninety-eight. Lost to a chef.",
         "We've got {count} brave players and {rounds} questions. Let's find out who's the smartest person in the room.",
-        "Hello, {names}. I'm {host}. Answer fast, answer right, and try not to cry.",
         "Good evening, and welcome to TriviaBix! I'm {host}, formerly of Brain Blast, currently of your living room. {count} players, {rounds} questions. Let's GO!",
         "Tonight's contestants: {names}! And I'm your host, {host}, live from the couch. It's not live. It's on. Let's play!",
         "Welcome, welcome, welcome! {count} brave players. {rounds} questions. One host who has wanted this more than anything in his life. No pressure.",
@@ -154,7 +144,6 @@
         "Welcome to TriviaBix, where friendships go to die! I'm {host}. {count} of you, {rounds} questions, zero mercy.",
         "Good evening, I'm {host}. Tonight, {names} find out who here actually reads. Spoiler: nobody.",
         "{count} players, {rounds} questions, and exactly zero mercy from me. Hi, I'm {host}.",
-        "Welcome, {names}. Phones up, egos down.",
         "Welcome to TriviaBix! {count} players, {rounds} questions, and a host who's had a very interesting decade. Let's play!",
         "Tonight, {names} battle for glory, bragging rights, and my approval, which, I'll be honest, is easy to get.",
         "Welcome, {names}! When I say Bix it, you say miss it! Bix it! ... We'll work on it. {rounds} questions!"
@@ -162,7 +151,6 @@
       "MA": [
         "Welcome to TriviaBix, the only game show hosted by someone this hot and this unemployed. I'm {host}. {rounds} questions. Let's ruin some reputations.",
         "Evening, degenerates. I'm {host}. {count} of you, {rounds} questions, and I've already judged every single one of you.",
-        "{count} of you, {rounds} questions, and one very judgmental host. Let's do this.",
         "Welcome, {names}. Somebody's leaving here humbled.",
         "Welcome to TriviaBix, I'm {host}. The network canceled me, my agent ghosted me, and my wife left me for a boom mic. But I've got you. {rounds} questions.",
         "{count} players, {rounds} questions, and one microphone who's been sober for almost the whole afternoon. Let's do this.",
@@ -172,7 +160,6 @@
         "Welcome to TriviaBix! I'm {host}, and tonight {names} get absolutely wrecked. {rounds} questions. No safe word.",
         "Hello, you filthy animals. I'm {host}. {rounds} questions stand between you and glory. Most of you won't last. Story of your love life.",
         "{count} players, {rounds} questions. Let's find out who's a genius and who's just a pretty face.",
-        "Welcome, {names}. Tonight, someone gets their ass handed to them. Let's begin.",
         "Welcome to Bix After Dark, the trivia edition. {names}, {rounds} questions. Nobody's safe and nobody's sober.",
         "Hello, {names}. I'm {host}, and I've been fired from better rooms than this. Not many. {rounds} questions. Let's get filthy."
       ]
@@ -180,10 +167,9 @@
     "question_first": {
       "PG": [
         "Question one. {category}. Let's ease you in.",
-        "Here we go! First up, {category}.",
         "Here we go! Question one, {category}.",
         "First up: {category}. Everybody starts at zero. Not for long.",
-        "Let's warm up with {category}.",
+        "Let's warm up with {category}. On Brain Blast, I'd stretch first. Now I just fluff the hair.",
         "Question one! {category}! Oh, I love a first question. It's full of hope. Enjoy it. It doesn't last.",
         "Here we go, here we go! Question one, {category}. Gary, the dramatic lighting. Thank you, Gary.",
         "First question, {category}. On Brain Blast this is where I'd spin the big wheel. Now I just say it. Spin.",
@@ -205,7 +191,6 @@
       ],
       "NC-17": [
         "Question one, {category}. Foreplay's over.",
-        "Question one, {category}. Let's get this party started, you degenerates.",
         "First up, {category}. Don't blow your load early.",
         "Question one, {category}. Let's get you nice and loosened up.",
         "First question. {category}. Gentle at first. Then I get rough."
@@ -214,15 +199,12 @@
     "question": {
       "PG": [
         "Question {round}. {category}.",
-        "Next up, {category}.",
         "Question {round} of {total}. {category}. Fingers ready.",
         "{category}. You know this one. Probably.",
         "Let's see who's been paying attention. {category}.",
-        "Here comes question {round}. {category}!",
-        "{category}, coming right up.",
         "Question {round}. Eyes on the screen. {category}.",
-        "Okay, {category}. Show me what you've got.",
-        "Moving right along. {category}.",
+        "Okay, {category}. Show me what you've got. I've shown you everything I've got. Twice.",
+        "Moving right along. {category}. We don't linger here. Lingering is how you end up at six in the morning.",
         "Question {round}! {category}! Oh, this is a big one. They're all big ones. I'm a big ones guy.",
         "Here comes question {round}, {category}. Gary, give me something moody. Gary is on full brightness. Gary only has one setting.",
         "{category}! I love {category}. I say that about every category. I mean it every time.",
@@ -237,15 +219,13 @@
         "Question {round}. Faster answers get more points, slowpokes.",
         "{category}. Don't overthink it. Or do. I'm not your mom.",
         "Question {round}, {category}. Somebody's about to look silly.",
-        "{category}. Phones up, egos down.",
         "Question {round}. {category}. If you're googling under the blanket, I can see the glow.",
         "{category}, question {round}. Read the whole question this time. Some of you know who you are.",
         "Question {round}. {category}. Brenda would know this one. Brenda has her own show now. Seven seasons. I'm happy for her."
       ],
       "MA": [
         "Question {round}, {category}. Put the drink down and think.",
-        "{category}. I swear to god, if you get this wrong.",
-        "Question {round}. {category}. Let's separate the geniuses from the dumbasses.",
+        "Question {round}. {category}. Let's separate the geniuses from the people who'll blame their phone.",
         "{category}. Put the snacks down, this one needs both hands.",
         "Question {round}. {category}. Think fast, drink later.",
         "{category}. If you miss this one, you're doing a shot. I don't make the rules. Actually, I do.",
@@ -257,9 +237,7 @@
         "Question {round}, {category}. Don't screw this up.",
         "{category}. Put your phone hand to good use for once.",
         "Question {round}. {category}. Somebody here is about to get absolutely railed by this one.",
-        "{category}. Let's see who's all talk.",
         "Question {round}. {category}. Time to put your money where your mouth is.",
-        "{category}. Get it right or get the hell out.",
         "Question {round}. {category}. Get your fingers ready, you dirty little geniuses.",
         "{category}. Question {round}. Think hard. Harder. That's the face. Hold that face."
       ]
@@ -268,8 +246,6 @@
       "PG": [
         "Final question! {category}. Everything rides on this.",
         "Last one! {category}. Make it count.",
-        "Last question! {category}. Everything comes down to this.",
-        "Final question, {category}. Make it count.",
         "This is it. Question {round} of {total}. {category}.",
         "The final question! {category}! Gary, the big lights! That's it. That's all Gary's got. It's perfect.",
         "Last question, {category}. This is the moment. This is what the twenty-two million used to tune in for. Now it's you. Even better.",
@@ -286,13 +262,11 @@
       "MA": [
         "Last question. {category}. Win this, or live with it forever.",
         "Last question, {category}. Do or die. Mostly die.",
-        "Final question. {category}. Pray.",
         "Final question, {category}. Get this wrong and you'll be thinking about it at three in the morning. Trust me. I still think about nineteen ninety-eight.",
         "Last one. {category}. Put the phone in your good hand and pray to whatever you've got."
       ],
       "NC-17": [
         "Final question. {category}. Finish strong, for once in your life.",
-        "Last question. {category}. Finish strong, for once in your life.",
         "Final one, {category}. Bring it home, you beautiful disasters.",
         "Final question. {category}. This is the climax, people. Don't be the one who can't get there.",
         "Last question, {category}. Everything you've got. Leave it all on the couch."
@@ -302,11 +276,9 @@
       "PG": [
         "The answer is {answer}.",
         "It's {answer}!",
-        "And the answer... {answer}.",
         "The correct answer is {answer}.",
         "Drumroll please... {answer}!",
-        "Survey says... {answer}!",
-        "It's {answer}. Of course it is.",
+        "Survey says... {answer}! I'm not allowed to say survey says. Different show. Don't tell anybody.",
         "The answer is... {answer}! Gary, the lights! Gary did nothing. Gary's perfect.",
         "And it's {answer}! I knew it. I didn't know it. I have a card. But I felt it.",
         "{answer}! Oh, I love a reveal. That's my favorite part. Every part is my favorite part.",
@@ -316,7 +288,6 @@
       "PG-13": [
         "It was {answer}, obviously.",
         "{answer}. Did you really not know that?",
-        "The answer was {answer}. Try to keep up.",
         "{answer}! Some of you are sweating now.",
         "It's {answer}. I'd say I'm surprised, but I've seen how you people answer.",
         "{answer}! And somewhere, a teacher who believed in you just sat up in bed.",
@@ -324,18 +295,15 @@
       ],
       "MA": [
         "It's {answer}, you beautiful idiots.",
-        "{answer}. How hard was that, honestly?",
         "The answer is {answer}. Pour one out for the wrong guesses.",
-        "{answer}. Yeah. That's the one.",
         "{answer}. That's the answer. Some of you are going to need a minute. Take a sip.",
         "It's {answer}, people. I've had blackouts with more clarity than some of those guesses.",
         "The answer is {answer}. I'd hit the buzzer, but I'm saving my strength for the roasts."
       ],
       "NC-17": [
-        "It's {answer}. Write that down, dumbasses.",
+        "It's {answer}. Write that down. Tattoo it somewhere. You clearly need the reminder.",
         "{answer}, damn it. It was right there.",
         "It's {answer}. Some of you should be ashamed.",
-        "{answer}. Holy hell, people.",
         "{answer}. It was {answer}. Who in the hell guessed anything else?",
         "It's {answer}, you magnificent idiots. Feel that? That's shame. Lean into it."
       ]
@@ -345,7 +313,6 @@
         "Not a single one of you. Incredible.",
         "Zero. Nobody. I'm embarrassed for all of us.",
         "Nobody got it! It was {answer}. That one was tough.",
-        "Zero for everyone. The answer was {answer}.",
         "Not a single right answer. It was {answer}. I'm disappointed in all of you.",
         "[as:noir] It was {answer}. Nobody saw it. Nobody ever does. That's this town for you.",
         "[as:nature] Remarkable. Not a single member of the herd knew it was {answer}. Nature can be cruel.",
@@ -358,14 +325,12 @@
       ],
       "PG-13": [
         "Nobody got it. Your teachers are crying somewhere.",
-        "Nobody? Really? It was {answer}. Wow.",
         "Shut out! {answer}, people. {answer}!",
         "Nobody got {answer}? I've seen houseplants with better general knowledge. Gary would've got it. Gary's a lamp.",
         "Zero. Zip. Nada. It was {answer}. I'm calling your schools.",
         "Nobody knew {answer}. Brenda would've known. Brenda knows everything. I'm happy for her."
       ],
       "MA": [
-        "Not one of you. What the hell was that?",
         "Not one of you got {answer}? I need a drink.",
         "Nobody. It was {answer}. I'm embarrassed to be your host.",
         "Not one of you knew {answer}. I've lost Emmys with more dignity than that.",
@@ -374,8 +339,7 @@
       ],
       "NC-17": [
         "Zero for everyone. That was a group failure of biblical proportions.",
-        "Nobody got {answer}? What the hell is wrong with you people?",
-        "{answer}. Zero of you. A whole room of dumbasses.",
+        "{answer}. Zero of you. I've hosted at six in the morning to sleepwalkers who did better.",
         "Nobody got {answer}? You're all a bunch of beautiful, useless bastards, and I love you, and I hate this.",
         "Not a single one of you. {answer}. That was a group effort in being terrible."
       ]
@@ -384,9 +348,7 @@
       "PG": [
         "Everyone got it. Too easy, I'll be meaner next time.",
         "A clean sweep. Don't get cocky.",
-        "Everybody got it! Nice work, team.",
         "A perfect round! Too easy?",
-        "Wow, everyone's a genius tonight.",
         "[as:chef] Everybody got it! Magnifique! Every plate licked clean! I could weep!",
         "Everybody got it! Gary, the celebration lights! He's on. He was already on. Celebrate anyway!",
         "A perfect round! If the network could see this, they'd renew me on the spot. There's no network. Still!",
@@ -397,20 +359,16 @@
       "PG-13": [
         "Everybody got that? Who's cheating?",
         "All of you? I'll make the next one harder.",
-        "Everyone got it. That's suspicious. Were you cheating?",
         "Everybody got it. Either you're all geniuses or that question was way too easy. I'm going with geniuses. It's better for ratings.",
         "All of you. Look at that. Even the one who's been on their phone the whole time. Especially you."
       ],
       "MA": [
-        "All of you got it. Even the drunk ones. Especially the drunk ones.",
         "Clean sweep. Even the drunk one got it.",
-        "Everybody nailed it. Don't get cocky.",
         "Everyone got it! Group hug! No? Fine. I'll hug Gary.",
         "A clean sweep. I'm so proud I could quit drinking. I won't. But I could."
       ],
       "NC-17": [
         "Everybody got it. Look at you, all getting off at the same time.",
-        "Every single one of you. Hot damn.",
         "Everyone scored. What a time to be alive.",
         "Everybody got it at the same time. Beautiful. Somebody light a cigarette.",
         "All of you nailed it. Look at this room. A whole couch of smug little geniuses."
@@ -420,8 +378,6 @@
       "PG": [
         "Only {name} got it! Everyone else, shame.",
         "{name} stands alone. The rest of you, take notes.",
-        "Only {name} knew that one!",
-        "{name} stands alone. Impressive.",
         "One right answer, and it belongs to {name}.",
         "Only {name} got it! {name}, you're the Brenda of this room. That's a compliment. Mostly.",
         "Just {name}! Gary, put a spotlight on {name}. Gary, point at them. Gary can't point. Gary's a lamp.",
@@ -436,15 +392,13 @@
         "{name} is the only one who got it. Which means {name} is either a genius or the only one paying attention. Both. It's both."
       ],
       "MA": [
-        "{name} is the only one with a functioning brain cell tonight.",
         "{name} is the only one with a working brain tonight.",
         "Only {name}. Everyone else, sit with that.",
         "Only {name}. Everyone else, I want you to sit with that the way I sit with my residuals. Quietly. In shame.",
         "{name} is carrying the whole damn room on their back. Somebody get {name} a drink."
       ],
       "NC-17": [
-        "Just {name}. The rest of you should be ashamed of your shitty selves.",
-        "Only {name} got it. The rest of you are useless.",
+        "Just {name}. The rest of you should be ashamed. I know shame. I got replaced by a knife infomercial.",
         "{name}, you magnificent bastard. Only you.",
         "Just {name}. Everybody else got absolutely nothing. Story of your love lives.",
         "{name}, the only one who knew. The rest of you should be ashamed. And a little turned on."
@@ -454,10 +408,8 @@
       "PG": [
         "{name} got it fastest. Show-off.",
         "{name} was quickest on the draw.",
-        "Big points for {name}.",
+        "Big points for {name}! Big! I haven't said big points since two thousand five. It feels so good.",
         "{name} was lightning fast!",
-        "Speed points go to {name}.",
-        "{name} buzzed in first. Nice reflexes.",
         "[as:announcer] And {name} is off the line like a rocket! Folks, we have never seen speed like this!",
         "[as:nature] Observe {name}, the swiftest of the herd, striking before the others have even noticed the question.",
         "{name} was fastest! Those thumbs! I used to be that fast. On a buzzer. In nineteen ninety-six.",
@@ -467,7 +419,6 @@
       ],
       "PG-13": [
         "{name} knew that one a little too well.",
-        "{name} answered that suspiciously fast.",
         "{name} didn't even read the question, did they?",
         "{name}'s thumbs are on fire.",
         "{name} tapped before I finished reading. Bold. Right, it turns out, but bold.",
@@ -475,7 +426,6 @@
       ],
       "MA": [
         "{name} slammed that in like it was last call.",
-        "{name} answered so fast it's honestly concerning.",
         "{name} took that like a shot. Fast and without thinking.",
         "{name} answered like they were trying to get out of a bad date. Fast and confident.",
         "{name} was quickest. I haven't moved that fast since the bar called last orders."
@@ -483,7 +433,6 @@
       "NC-17": [
         "{name} came first. As usual, I hear.",
         "{name} was quick. Probably a bit of a problem in other areas.",
-        "{name} got there first. Smooth and fast. Just how they like it.",
         "{name} got there first, again. Somebody teach {name} about foreplay.",
         "{name} was the fastest. Quick fingers. I'm not going to elaborate. I don't need to."
       ]
@@ -491,9 +440,6 @@
     "streak": {
       "PG": [
         "{name} is on a {streak} question streak! Somebody stop them!",
-        "That's {streak} in a row for {name}. On fire!",
-        "{name} has {streak} in a row! On fire!",
-        "That's {streak} straight for {name}. Somebody stop them!",
         "{name} is unstoppable. {streak} in a row!",
         "[as:announcer] {name} with {streak} in a row! Somebody stop this player! Nobody can stop this player!",
         "{name}, {streak} in a row! This is the kind of run that gets you a spinoff. Trust me, I've watched other people get spinoffs.",
@@ -504,13 +450,11 @@
       ],
       "PG-13": [
         "{streak} straight for {name}. Okay, we get it, you read books.",
-        "{streak} in a row for {name}. Show-off.",
         "{name} is on a {streak} streak. Who's feeding them answers?",
         "{name} is on {streak} in a row and getting very smug about it. I recognize the look. I invented the look.",
         "{streak} straight, {name}. Can someone else please get one? Anyone? I'm begging."
       ],
       "MA": [
-        "{name}, {streak} in a row. Who the hell let you get smart?",
         "{name} is {streak} for {streak}. Somebody check their phone for cheat sheets.",
         "{streak} in a row, {name}. Insufferable.",
         "{name}, {streak} in a row. I haven't been this impressed with anyone since my lawyer.",
@@ -518,7 +462,6 @@
       ],
       "NC-17": [
         "{name} is {streak} deep and not slowing down. Get a room.",
-        "{name} is {streak} in a row. Damn, save some for the rest of us.",
         "{streak} straight, {name}. You're a goddamn machine.",
         "{name} has gone {streak} rounds and still hasn't finished. Stamina. Respect.",
         "{streak} in a row, {name}. You absolute show-off. Keep going. I like watching."
@@ -528,8 +471,6 @@
       "PG": [
         "And {name}'s {streak} question streak is over. Gone. Like tears in rain.",
         "Ooh, {name} breaks a {streak} question streak.",
-        "And {name}'s streak of {streak} is over!",
-        "Oh no! {name}'s {streak}-question streak ends here.",
         "The streak is dead. {streak} good questions, {name}. Rest in peace.",
         "And {name}'s streak of {streak} is over. Cancelled mid-season. I know exactly how that feels.",
         "{name} loses a {streak} question streak. They'll replace it with an infomercial. That's what they did to me.",
@@ -544,9 +485,8 @@
         "{streak} in a row, and now, nothing. {name}, welcome to the rest of us."
       ],
       "MA": [
-        "There goes {name}'s {streak} streak. Pride comes before the fall, dumbass.",
+        "There goes {name}'s {streak} streak. Pride comes before the fall. I've done the fall. Nineteen ninety-eight. Black tie.",
         "{name}'s {streak}-streak just went up in flames. Beautiful.",
-        "And there goes {name}. {streak} in a row, then splat.",
         "{name} had {streak} straight and blew it. I did that with a network contract once. Two drinks, one phone call.",
         "There goes the streak. {streak} in a row, {name}. Pride, people. Pride and hubris and probably wine."
       ],
@@ -563,10 +503,8 @@
         "{name} said {wrong}. Bless your heart.",
         "{name} went with {wrong}. Bold. Wrong, but bold.",
         "{wrong}? Really, {name}?",
-        "{wrong}, {name}? Interesting choice.",
-        "{name} said {wrong}. We'll pretend that didn't happen.",
+        "{name} said {wrong}. We'll pretend that didn't happen. I'm very good at that. Ask me about two thousand five.",
         "Oh, {name}. {wrong}. Oh no.",
-        "{name} went for {wrong}. Points for confidence, none for accuracy.",
         "{name} said {wrong}. I love the confidence. I'd love it more if it were attached to a right answer.",
         "{wrong}, {name}? You know, on Brain Blast we had a consolation prize for that. It was a toaster. You'd have earned the toaster.",
         "{name} went with {wrong}. That's okay. I once called a curling match like the moon landing. We all make choices.",
@@ -579,28 +517,20 @@
         "{name} picked {wrong}. Did you go to school, or just walk past one?",
         "{wrong}, {name}? I'm telling your mom.",
         "{name} guessed {wrong}. I've seen smarter houseplants.",
-        "{wrong}? {name}, are you okay?",
-        "{name} said {wrong}. Somebody take their phone away.",
         "{name} picked {wrong}. Did you read the question, or just kind of look at it?",
         "{wrong}, {name}? I've seen people guess better with their eyes closed. I've seen you guess better with your eyes closed.",
         "{name} said {wrong}. I'm not mad. I'm just going to bring it up for the rest of the night."
       ],
       "MA": [
-        "{name} picked {wrong}. Cut them off, they've clearly had enough.",
         "{wrong}? {name}, you absolute potato.",
         "{name} picked {wrong}. I'm calling someone to drive you home.",
-        "{wrong}, {name}? That's the dumbest thing I've heard all night.",
-        "{name} went with {wrong}. Bold strategy, idiot.",
         "{wrong}? {name}, I've made worse decisions, but I had a wellness retreat to blame them on.",
         "{name} said {wrong}. I've been divorced by a boom mic and that still hurt less.",
         "{name}, {wrong}. Bold choice for someone with a phone that could've just googled it."
       ],
       "NC-17": [
-        "{name} said {wrong}. Your parents should have used protection.",
         "{wrong}, {name}? You dumb son of a bitch. I love you, but damn.",
-        "{name} said {wrong}. Jesus Christ.",
-        "{wrong}? {name}, you're dumber than you look, and you look pretty dumb.",
-        "{name} picked {wrong}. Unbelievable. Truly a dumbass of the highest order.",
+        "{wrong}? {name}, I've had a critic call me a microphone with nothing to say, and even he'd have known better.",
         "{name} said {wrong}. That's the dumbest thing anyone's said to me since my agent said I'd be fine.",
         "{wrong}? {name}, I've had one-night stands that made better choices than you.",
         "{name} picked {wrong}. Whoever raised you, I want to speak to them. I want to apologize to them."
@@ -610,9 +540,7 @@
       "PG": [
         "{name} didn't even answer. Are you okay?",
         "Hello? {name}? Anybody home?",
-        "{name}, are you still with us?",
         "Earth to {name}!",
-        "{name} didn't answer. Napping?",
         "{name} didn't answer. That's okay. I did three hours of cable access to nobody. I can talk to a quiet person.",
         "Hello, {name}? Gary, put a light on {name}. Gary, more. That's all Gary's got. {name}, wake up!",
         "{name} skipped that one. Saving your energy? Smart. I never did. Look where it got me.",
@@ -628,14 +556,12 @@
       "MA": [
         "{name} is either asleep or dead. Somebody check.",
         "{name} is too drunk to answer. Respect.",
-        "{name}, wake up, you're missing everything.",
         "{name} didn't answer. Either they're asleep or they've finally realized what they signed up for.",
         "{name} went quiet. Somebody check on {name}. And then check on their drink."
       ],
       "NC-17": [
         "{name} didn't answer. Too busy scrolling hookup apps?",
         "{name}, get your hands off whatever you're doing and answer the damn question.",
-        "{name} is asleep. Someone draw on their face.",
         "{name} didn't answer. I hope you're doing something more fun than this. You're not, are you?",
         "{name} ghosted the question. Like my ex. Like my agent. Like my entire nineteen nineties."
       ]
@@ -643,9 +569,7 @@
     "leader": {
       "PG": [
         "{name} is in the lead by {gap} points.",
-        "{name} is out in front, {gap} points ahead.",
         "{name} leads the pack by {gap}.",
-        "{name} is still on top, {gap} points clear.",
         "Leading the way: {name}, up by {gap}.",
         "{name} leads by {gap}! If this were Brain Blast, you'd be going to the bonus wheel. Don't worry, it only hit one person.",
         "{name} is up {gap} points. That's a ratings lead, folks. I know a ratings lead. I had one once.",
@@ -655,20 +579,17 @@
       "PG-13": [
         "{name} leads by {gap}. Everybody gang up on them.",
         "{name} is up by {gap} and getting smug about it.",
-        "{name} leads by {gap}. Somebody humble them.",
         "{name} is ahead by {gap} and getting comfortable. Don't get comfortable. I got comfortable, and they moved me to six in the morning.",
         "{name} leads by {gap}. Everybody else, I'm not saying team up. I'm saying team up."
       ],
       "MA": [
         "{name} is up by {gap}. Somebody knock them down a peg.",
-        "{name} is up {gap} points. Everyone else, step it up.",
         "{name} is crushing you all by {gap}. Pathetic. Not them, you.",
         "{name} is up {gap}. You know what happens to people on top? Ask Brenda. Actually, Brenda's still on top. Bad example.",
         "{name} leads by {gap}. Enjoy it now, {name}. The fall is where the fun is."
       ],
       "NC-17": [
         "{name} is on top by {gap}. Enjoy it while it lasts, sweetheart.",
-        "{name} is on top by {gap}. Somebody knock them off.",
         "{name} leads by {gap}. The rest of you are getting screwed.",
         "{name} is on top by {gap} and loving every second. I know that look. I used to have that look.",
         "{name} leads by {gap}. The rest of you are getting dominated, and not the fun way."
@@ -678,8 +599,6 @@
       "PG": [
         "We have a new leader! {name} takes the top spot!",
         "Shake-up! {name} is now in first.",
-        "We have a new leader: {name}!",
-        "{name} takes the top spot!",
         "Look out, {name} just took the lead!",
         "[as:trailer] In a world where nobody saw it coming... one player rose to the top. {name}. Now in first place.",
         "A new leader! {name}! This is the plot twist the network always wanted, and never gave me.",
@@ -696,14 +615,12 @@
       "MA": [
         "{name} takes the lead! Somebody's getting cocky now.",
         "{name} just snatched the lead. Savage.",
-        "{name} is on top now. Somebody's mad.",
         "{name} is the new leader. Remember who knocked you off, old leader. Hold that grudge. Grudges are free.",
         "{name} just took the top spot. A hostile takeover. Like the network did to my time slot."
       ],
       "NC-17": [
         "{name} just climbed on top. Look at them go.",
         "{name} just took the lead. Hostile takeover, baby.",
-        "{name} climbed on top. Look at them go.",
         "{name} just got on top, and the old leader didn't even see it coming. Classic.",
         "New leader: {name}. The old one just got flipped. Hope you stretched."
       ]
@@ -718,7 +635,6 @@
       ],
       "PG-13": [
         "{names} are tied for first. Fight it out.",
-        "{names} are tied. Awkward.",
         "Dead heat: {names}. Fight!",
         "{names} are tied. Look at each other. Really look. That's the face of your enemy now.",
         "A tie between {names}. The tension! The drama! The lighting! Gary, you're doing great."
@@ -726,12 +642,10 @@
       "MA": [
         "Dead heat between {names}. This is getting spicy.",
         "{names} are tied. Settle it with a drinking contest.",
-        "Nobody's winning yet. {names} are even.",
         "{names} are tied. Somebody's friendship ends tonight, and I'm here for it.",
         "{names}, all even. This is the most tension I've felt since my last contract negotiation."
       ],
       "NC-17": [
-        "{names} are neck and neck. Kinky.",
         "{names} are tied up at the top. Kinky.",
         "{names}, all even. Time to get dirty.",
         "{names} are tied up. I don't judge what you do in your free time.",
@@ -742,9 +656,7 @@
       "PG": [
         "And {name} is holding down last place. Somebody has to.",
         "{name}, you're in last. It's not over yet. Well, it might be.",
-        "{name} is in last place, but there's still time!",
-        "Hang in there, {name}.",
-        "{name}, the only way is up.",
+        "{name}, the only way is up. That's what I've been telling myself since two thousand five.",
         "{name} is in last. But you know what? I've been in last. I was on at six in the morning. You come back from this.",
         "{name}, you're bringing up the rear. That's the comeback spot. It's my favorite spot. I live there.",
         "Last place, {name}. Don't worry. Somebody has to make the rest of us look good. You're a hero.",
@@ -752,7 +664,6 @@
       ],
       "PG-13": [
         "{name} is dead last. Participation trophy incoming.",
-        "{name} is bringing up the rear.",
         "{name} is in last place. It's a choice, I guess.",
         "{name} is dead last and somehow still smiling. That's the spirit. That's the denial. I know it well.",
         "{name}, last place. On the bright side, nobody's watching you. Except all of us. We're all watching."
@@ -760,13 +671,11 @@
       "MA": [
         "{name} is in last place. Have another drink, it can't hurt your score.",
         "{name} is dead last. Maybe switch to water.",
-        "{name} is losing so hard it's kind of impressive.",
         "{name} is in last. I've hit rock bottom too, {name}. It's a nice place. Good parking.",
         "{name}, dead last. Want to borrow my agent? He won't call you either."
       ],
       "NC-17": [
         "{name}, dead last. Getting screwed every round, huh?",
-        "{name} is in last place. Absolutely getting wrecked.",
         "{name} is bottom of the barrel. And not in the fun way.",
         "{name} is in last. You're taking this harder than I took my divorce, and I took that pretty hard.",
         "{name} is at the bottom. Somebody's got to be. You make it look natural."
@@ -775,8 +684,6 @@
     "one_left": {
       "PG": [
         "One question left. Anything can happen!",
-        "One more question to go!",
-        "Last question coming up. Everything's still possible!",
         "This is it. One question left.",
         "One question left! This is it! This is the moment the twenty-two million used to wait for! Now it's you. And honestly? Better crowd.",
         "One more question! Gary, give me the big finale lights! ... Gary only has the one light. It's very finale.",
@@ -784,7 +691,6 @@
       ],
       "PG-13": [
         "One question left. Time to panic.",
-        "One left. Time for a miracle.",
         "Final question coming. Hold on to your phones.",
         "One left. Anything can happen. Last place, this is your redemption arc. First place, this is your villain origin story.",
         "One question left. Get your excuses ready. I've had mine ready since two thousand five."
@@ -792,13 +698,11 @@
       "MA": [
         "One question left. Pray, sinners.",
         "One question left. Somebody's about to cry.",
-        "Last one coming. Drink up, losers.",
         "One question left. Finish your drink. Then finish mine. I need to be able to read.",
         "Last one coming up. Somebody's about to be a legend, and somebody's about to be the subject of a very long group chat."
       ],
       "NC-17": [
         "One left. Don't finish too early.",
-        "One question left. Time to finish what you started.",
         "Last one. Don't screw it up now.",
         "One question left. Don't pull out now.",
         "Last question coming. Whatever you've been saving, use it."
@@ -809,8 +713,6 @@
         "{name} wins with {score} points! Everyone else, there's always next time. Probably.",
         "All hail {name}, the big brain of the room!",
         "{name} takes the crown with {score} points. Speech! Actually, no, please don't.",
-        "And the winner is {name}, with {score} points!",
-        "{name} wins with {score}! Take a bow!",
         "Champion of the night: {name}, with {score} points!",
         "[as:trailer] One player. One living room. One champion. {name}, with {score} points. Coming soon to bragging rights near you.",
         "{name} wins with {score} points! Take a bow! I'd hand you an Emmy, but I never got mine. You deserve one more than I do.",
@@ -828,14 +730,12 @@
       ],
       "MA": [
         "{name} wins it all with {score} points! Drinks are on {name}.",
-        "{name} wins with {score} points. Drinks are on them.",
         "{name} is your champion with {score}. Insufferable from now on.",
         "{name} wins with {score} points. Pour them a drink. Pour me one too. I'm emotional.",
         "{name} wins it all with {score}. The rest of you can go home and think about what you did. I'll be here. I'm always here."
       ],
       "NC-17": [
         "{name} wins with {score} points! The rest of you just got your asses handed to you.",
-        "{name} wins with {score}. The rest of you got schooled.",
         "{name}, {score} points. You beautiful, smug bastard.",
         "{name} wins with {score}! The rest of you just got thoroughly, publicly embarrassed. I loved every second.",
         "{name}, {score} points, champion of Bix After Dark. You filthy genius. Take a victory lap. Pants optional."
@@ -844,7 +744,6 @@
     "finale_tie": {
       "PG": [
         "It's a tie! {names} share the crown.",
-        "It's a tie! {names} share the crown!",
         "We have co-champions: {names}!",
         "It's a tie! {names} share the crown! On Brain Blast we'd go to a tiebreaker. Then a commercial. Then a cancellation. You two just share it.",
         "{names}, co-champions! Two winners! That's double the ratings! That's not how ratings work. Let me have this."
@@ -857,8 +756,8 @@
       ],
       "MA": [
         "{names} tied. Settle it in the parking lot.",
-        "{names} tied for the win. Settle it in the parking lot.",
-        "{names} are tied. Settle it like adults. Rock, paper, scissors. Best of seventeen."
+        "{names} are tied. Settle it like adults. Rock, paper, scissors. Best of seventeen.",
+        "{names}, tied. Nobody wins. Welcome to show business."
       ],
       "NC-17": [
         "{names} tied for first. Somebody's sleeping on the couch tonight.",
@@ -870,8 +769,7 @@
       "PG": [
         "And a special mention for {name}, who came last. We still like you.",
         "{name} came last. But you came, and that's what matters.",
-        "And {name} finished last. There's always next time!",
-        "{name}, last place. You'll get 'em next time.",
+        "{name}, last place. You'll get 'em next time. There's always a next time. That's what comebacks are made of.",
         "And {name}, you came last. But you came. And you played. And frankly, I've had worse years than your night.",
         "A special shout-out to {name}, in last place. Every great comeback starts at the bottom. I should know. I'm still starting.",
         "{name} finished last. That's okay. I finished last at the nineteen ninety-eight Daytime Emmys. And look at me now. Hosting your living room."
@@ -899,8 +797,7 @@
       "PG": [
         "I'm {host}. Thanks for playing TriviaBix!",
         "That's the show! I'm {host}. Good night!",
-        "Thanks for playing! I'm {host}, good night!",
-        "That's the game! Play again?",
+        "That's the game! Play again? Please? Gary and I don't have anywhere to be.",
         "That's all, folks. Thanks for playing!",
         "That's the show! I'm {host}. Twenty-two million people used to watch me say good night. Tonight it's you. Best crowd I've ever had. Good night!",
         "Thank you, thank you! I'm {host}! Gary, the lights! ... Gary's on a timer. He'll go off at eleven. Good night, everybody!",
@@ -918,13 +815,11 @@
       "MA": [
         "That's the show, I'm {host}, and you've all been terrible. Same time next week.",
         "That's the show. Tip your bartender.",
-        "Game over. Somebody call a ride for the loser.",
         "That's the show. I'm {host}. You were wonderful. I'm going to sit with Gary in the dark for a while. Good night.",
         "Good night, everyone! Drive safe, drink water, and never, ever let a network tell you you're done."
       ],
       "NC-17": [
         "That's the show. I'm {host}. Now get the hell out of my living room.",
-        "That's it. Get the hell out of here. Love you.",
         "Game over. Go home, you magnificent degenerates.",
         "That's Bix After Dark, you filthy, beautiful people. Get home safe. Get lucky. Get out.",
         "Show's over. Thanks for using me. Same time next week?"
@@ -935,7 +830,6 @@
         "Round {round} of {total}! The category is {category}. These ones are {difficulty}, and they're worth {points}.",
         "Welcome to round {round}: {category}. Difficulty? {difficulty}. Points? {points}. Brains? Hopefully.",
         "On to round {round}. It's all about {category}, the questions are {difficulty}, and every answer pays {points}.",
-        "Round {round}! It's {category}, it's {difficulty}, and each answer is worth {points}.",
         "Here comes round {round} of {total}: {category}. {difficulty} questions, {points} each.",
         "Round {round} of {total}! It's {category}! The questions are {difficulty}, and they're worth {points}. Oh, I love this round. I love every round.",
         "Here comes round {round}. {category}, {difficulty} questions, {points} apiece. Gary, round lights! Gary, those are the same lights. Lovely.",
@@ -944,18 +838,19 @@
       "PG-13": [
         "Round {round}: {category}. They're {difficulty} now, so no more coasting. {points} on every question.",
         "Round {round} of {total}. {category}. {difficulty} questions, {points}. Somebody's about to look silly.",
-        "Round {round}. {category}. They're {difficulty}, and they pay {points}. Try to keep up.",
         "Round {round}: {category}. {difficulty} questions, {points} points each. Some of you are about to get exposed."
       ],
       "MA": [
         "Round {round}. {category}. {difficulty} questions for {points}. Sober up, this is where it gets real.",
         "Round {round}: {category}, {difficulty}, {points} a pop. Let's get messy.",
-        "Round {round}. {category}. These are {difficulty}, they're worth {points}, and I'm two drinks into caring about all of it."
+        "Round {round}. {category}. These are {difficulty}, they're worth {points}, and I'm two drinks into caring about all of it.",
+        "Round {round}, {category}. {difficulty}, {points} apiece. I've been sober for this whole round. Don't waste it."
       ],
       "NC-17": [
         "Round {round}, {category}. {difficulty} and worth {points}. Time to find out who's all talk.",
-        "Round {round}. {category}. {difficulty} and worth {points}. Let's see who can handle it.",
-        "Round {round}, {category}, {difficulty}, {points} each. Strap in, you degenerates."
+        "Round {round}, {category}, {difficulty}, {points} each. Strap in, you degenerates.",
+        "Round {round}. {category}. {difficulty} and worth {points}. Welcome back to Bix After Dark. Hands on your phones.",
+        "Round {round}, {category}. They're {difficulty}, they pay {points}, and nobody here is getting out clean."
       ]
     },
     "round_final": {
@@ -963,7 +858,6 @@
         "This is it, the final round! The hardest questions from every category, and they're worth {points}. Anyone can still win!",
         "Final round! Everything's worth {points}, so the scoreboard can flip on a single question. Good luck!",
         "The final round! It's {category}, and every answer is worth {points}!",
-        "Last round! {category}. {points} each. Anyone can still win!",
         "[as:psychic] The final round. I see {category}... I see {points} per question... and I see someone in this room about to have their heart broken.",
         "[as:trailer] This fall... one final round. {category}. {points} a question. No second chances.",
         "The final round! {category}, worth {points} a question! This is it, folks. This is the big finish Brain Blast never got.",
@@ -990,7 +884,6 @@
         "That's the end of round {round}! {name} won the round with {points} points.",
         "Round {round} is in the books. Biggest haul: {name}, with {points} points.",
         "Round {round} goes to {name}, with {points} points!",
-        "{name} owned round {round}. {points} points!",
         "Round {round} is done! {name} took it with {points} points! Gary, a little celebration flicker. ... Okay, no flicker. Celebrate anyway!",
         "End of round {round}, and the star of the round is {name}, with {points}! If this were Brain Blast, you'd get a toaster."
       ],
@@ -1001,8 +894,8 @@
       ],
       "MA": [
         "Round {round} is over and {name} raked in {points} points. Show-off.",
-        "Round {round}: {name}, {points} points. Everyone else, step it up.",
-        "Round {round}, {name}, {points} points. Somebody buy {name} a drink, and somebody buy me two."
+        "Round {round}, {name}, {points} points. Somebody buy {name} a drink, and somebody buy me two.",
+        "Round {round} goes to {name}, with {points}. That's the most anyone's scored in this living room since my divorce lawyer."
       ],
       "NC-17": [
         "End of round {round}. {name} scored {points} points and is feeling very smug about it.",
@@ -1013,7 +906,6 @@
     "recap_nobody": {
       "PG": [
         "That's the end of round {round}, and nobody scored a single point. Impressive, in the wrong way.",
-        "Round {round} is over. Nobody scored! Let's do better.",
         "No points at all in round {round}. Ouch.",
         "Round {round} is over, and nobody scored. Not one point. This is the lowest-rated round since my show at six in the morning.",
         "Zero points in round {round}. That's okay. Gary had a zero-point round once. He was unplugged."
@@ -1025,8 +917,8 @@
       ],
       "MA": [
         "Round {round}, and not one point on the board. I've seen smarter furniture.",
-        "Round {round} and not one point. I need a drink.",
-        "Nobody scored in round {round}. I've had more productive hangovers."
+        "Nobody scored in round {round}. I've had more productive hangovers.",
+        "Zero points in round {round}. Marty would call that a rebuilding year. Marty wouldn't call."
       ],
       "NC-17": [
         "Round {round} done and nobody scored. Not one of you. Wow.",
