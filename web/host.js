@@ -474,6 +474,7 @@ function toast(text, kind) {
 function render(s) {
   prev = state;
   state = s;
+  TBX.look(s.look);
   const phaseChanged = !prev || prev.phase !== s.phase || prev.round !== s.round;
   if (phaseChanged) {
     Cutscenes.stop();

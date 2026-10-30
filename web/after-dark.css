@@ -1,0 +1,167 @@
+/* After Dark, the default look (LOOK on the admin Settings page; "classic" is the original purple).
+ *
+ * Bix's show after the network pulled the plug (bible/characters/bix.md): a dim velvet studio, one
+ * hot spotlight, a marquee sign with a bulb that won't stay on, tarnished gold, a little VHS fuzz.
+ * Playful with a dark edge, still a party. Everything here is scoped to html[data-look="after-dark"],
+ * so classic keeps the rules in style.css and the pages' own styles untouched.
+ *
+ * The TV page also runs in older TV browsers (Chromium 63), so no inset, :is() or color-mix here. */
+
+html[data-look="after-dark"] {
+  --bg: #0b0710;
+  --bg2: #3a0d22;
+  --panel: rgba(255, 232, 200, 0.07);
+  --text: #f4e9d8;
+  --muted: #b9a2a8;
+  --accent: #e8b84a;
+  --good: #4fd69c;
+  --bad: #ff4d5e;
+  --c0: #b3214a;
+  --c1: #2a58a3;
+  --c2: #c47f0e;
+  --c3: #23804f;
+  --velvet: #5a1630;
+  --ink: #1c0d14;
+  --card: #f1e3c3;
+}
+
+/* A warm pool of light from above, falling off into the dark. */
+html[data-look="after-dark"], html[data-look="after-dark"] body {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% -8%, rgba(232, 184, 74, 0.16), transparent 70%),
+    radial-gradient(circle at 20% 10%, var(--bg2), var(--bg) 72%) fixed;
+  background-color: var(--bg);
+}
+html[data-look="after-dark"] button { color: var(--ink); }
+html[data-look="after-dark"] button.secondary { color: var(--text); }
+html[data-look="after-dark"] input { background: #f6ecdb; color: var(--ink); }
+html[data-look="after-dark"] .avatar { color: var(--ink); }
+html[data-look="after-dark"] .char.sel { background: rgba(232, 184, 74, 0.25); }
+
+/* The answer colours are deeper and a touch worn, with a thin highlight like old studio plastic. */
+html[data-look="after-dark"] .choice,
+html[data-look="after-dark"] .answers button {
+  box-shadow: inset 0 0.25em 0 rgba(255, 255, 255, 0.08), inset 0 -0.3em 0 rgba(0, 0, 0, 0.25), 0 6px 0 rgba(0, 0, 0, 0.45);
+}
+html[data-look="after-dark"] .choice.dim { background: rgba(255, 232, 200, 0.04); box-shadow: none; }
+
+/* ---------- TV ---------- */
+
+/* VHS fuzz over everything: scanlines and a vignette. Static, so it costs a Fire stick nothing. */
+html[data-look="after-dark"] body.tv::after {
+  content: "";
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 30;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 48%, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
+    repeating-linear-gradient(rgba(0, 0, 0, 0.13) 0, rgba(0, 0, 0, 0.13) 1px, transparent 1px, transparent 3px);
+}
+
+/* The marquee: a gold sign with a pink neon edge, and one bulb that won't stay on. */
+html[data-look="after-dark"] #setup h1,
+html[data-look="after-dark"] #intro .logo {
+  color: #ffe1a1;
+  text-shadow: 0 0 0.04em #fff3d6, 0 0 0.12em var(--accent), 0 0 0.35em rgba(255, 61, 127, 0.55), 0 0.08em 0 rgba(0, 0, 0, 0.6);
+}
+html[data-look="after-dark"] #setup h1 { animation: ad-sign 7s steps(1) infinite; }
+html[data-look="after-dark"] #intro .logo { animation: logo-slam .9s cubic-bezier(.2,1.6,.4,1) both, ad-sign 7s 1.5s steps(1) infinite; }
+@keyframes ad-sign {
+  0%, 61%, 64%, 67%, 100% { opacity: 1; }
+  62%, 65% { opacity: 0.35; }
+  66% { opacity: 0.7; }
+}
+html[data-look="after-dark"] #intro .tagline::after { content: " · still on the air"; color: var(--bad); }
+html[data-look="after-dark"] .spot { background: linear-gradient(rgba(255, 214, 140, 0.2), transparent 75%); }
+html[data-look="after-dark"] .join-card { border: 0.3vh solid rgba(232, 184, 74, 0.25); box-shadow: 0 0 6vh rgba(0, 0, 0, 0.5); }
+html[data-look="after-dark"] .join-card img { background: var(--card); }
+html[data-look="after-dark"] .slot.empty { border-color: rgba(255, 232, 200, 0.15); color: rgba(255, 232, 200, 0.28); }
+html[data-look="after-dark"] .cat,
+html[data-look="after-dark"] .ri-title,
+html[data-look="after-dark"] #scoreboard h2,
+html[data-look="after-dark"] #final h2,
+html[data-look="after-dark"] #recap h2 { text-shadow: 0 0 0.4em rgba(232, 184, 74, 0.35); }
+html[data-look="after-dark"] .step .block { background: linear-gradient(rgba(255, 232, 200, 0.1), rgba(90, 22, 48, 0.55)); }
+html[data-look="after-dark"] .rung.current { background: rgba(255, 232, 200, 0.14); }
+
+/* Bix stands in his own spotlight, in his 1998 velvet jacket, with the gold Brain Blast! band. */
+html[data-look="after-dark"] .host-face::before {
+  content: "";
+  position: absolute;
+  left: -30%; right: -30%; top: -20%; bottom: -15%;
+  z-index: -1;
+  background: radial-gradient(ellipse at 50% 60%, rgba(255, 214, 140, 0.32), transparent 65%);
+}
+html[data-look="after-dark"] .host-face::after { background: var(--velvet); box-shadow: 0 0 0 0.25vh var(--accent); }
+html[data-look="after-dark"] .bix .bix-handle { fill: var(--velvet); stroke: var(--ink); }
+html[data-look="after-dark"] .bix .bix-band { fill: var(--accent); stroke: var(--ink); }
+html[data-look="after-dark"] .bix .bix-tie { fill: #1c0d14; }
+/* His words are on a yellowed cue card. */
+html[data-look="after-dark"] .host-bubble { background: var(--card); color: var(--ink); box-shadow: 0 0.8vh 0 rgba(0, 0, 0, 0.5), inset 0 -0.4vh 0 rgba(120, 80, 30, 0.15); }
+html[data-look="after-dark"] .host-bar.cameo .host-bubble { background: #f3d99a; }
+html[data-look="after-dark"] .host-as { background: var(--bad); }
+
+/* Callouts: the same stamps, in the after-hours colours. */
+html[data-look="after-dark"] .callout { box-shadow: 0 1vh 0 rgba(0, 0, 0, 0.5); }
+html[data-look="after-dark"] .callout.roast { background: #a3122f; }
+html[data-look="after-dark"] .callout.streak { background: linear-gradient(90deg, #c2260f, #e8a33a); }
+html[data-look="after-dark"] .callout.streak_broken,
+html[data-look="after-dark"] .callout.asleep,
+html[data-look="after-dark"] .callout.last_place,
+html[data-look="after-dark"] .callout.nobody { background: #3a2030; border: 0.3vh solid rgba(255, 232, 200, 0.2); }
+html[data-look="after-dark"] .callout.new_leader,
+html[data-look="after-dark"] .callout.leader,
+html[data-look="after-dark"] .callout.winner,
+html[data-look="after-dark"] .callout.tie,
+html[data-look="after-dark"] .callout.everyone,
+html[data-look="after-dark"] .callout.round_winner,
+html[data-look="after-dark"] .callout.mini_winner { color: var(--ink); }
+
+/* Generated art sits a little deeper in the shadows. */
+html[data-look="after-dark"] #round_intro.has-art::before,
+html[data-look="after-dark"] #minigame.has-art::before {
+  background: radial-gradient(ellipse at 50% 45%, rgba(11, 7, 16, 0.45), rgba(11, 7, 16, 0.92) 85%), var(--cat-art) center / cover;
+}
+html[data-look="after-dark"] .now-playing { background: rgba(0, 0, 0, 0.5); }
+html[data-look="after-dark"] .sound-hint,
+html[data-look="after-dark"] .vip-tag,
+html[data-look="after-dark"] .mg-tag,
+html[data-look="after-dark"] .toast.info { color: var(--ink); }
+html[data-look="after-dark"] #h-gallows .frame { stroke: #7c5a3c; }
+
+/* ---------- Cutscenes ---------- */
+
+/* Scene colours come from each scene's JSON; after dark knocks them down a stop and adds a vignette. */
+html[data-look="after-dark"] .cs-backdrop { -webkit-filter: saturate(0.78) brightness(0.72) contrast(1.08); filter: saturate(0.78) brightness(0.72) contrast(1.08); }
+html[data-look="after-dark"] .cs-bg-curtains { background: radial-gradient(ellipse at 50% 40%, #4a1430, #0b0710 70%); }
+html[data-look="after-dark"] .cs-bg-spotlight { background: #0b0710; }
+html[data-look="after-dark"] .cs-bg-dim { background: rgba(11, 7, 16, 0.8); }
+html[data-look="after-dark"] .cs-valance { border-bottom-color: #b48a2c; }
+html[data-look="after-dark"] .cutscene::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(0, 0, 0, 0.6) 100%);
+}
+html[data-look="after-dark"] .cs-art { -webkit-filter: saturate(0.85) contrast(1.05); filter: saturate(0.85) contrast(1.05); }
+html[data-look="after-dark"] .cs-art-shade { background: radial-gradient(ellipse at 50% 45%, rgba(11, 7, 16, 0.25), #0b0710 92%); }
+html[data-look="after-dark"] .cs-text-title { -webkit-text-stroke-color: var(--ink); text-shadow: 0 0.08em 0 rgba(0, 0, 0, 0.5), 0 0 0.35em rgba(232, 184, 74, 0.35); }
+html[data-look="after-dark"] .cs-text-bubble { background: var(--card); color: var(--ink); }
+html[data-look="after-dark"] .cs-image-frame { border-color: var(--card); }
+
+/* ---------- Phones ---------- */
+
+html[data-look="after-dark"] body:not(.tv) h1 { color: #ffe1a1; text-shadow: 0 0 6px var(--accent), 0 0 18px rgba(255, 61, 127, 0.45); }
+html[data-look="after-dark"] .me,
+html[data-look="after-dark"] .vip { border: 1px solid rgba(232, 184, 74, 0.18); }
+html[data-look="after-dark"] .answers button { color: #fff6e6; }
+html[data-look="after-dark"] .answers button.picked { outline-color: var(--card); }
+html[data-look="after-dark"] .badge.good,
+html[data-look="after-dark"] .team-chip,
+html[data-look="after-dark"] #team-buttons button.picked { color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-look="after-dark"] #setup h1 { animation: none; }
+}

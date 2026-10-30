@@ -68,6 +68,7 @@ function resetStart() {
 function render(s) {
   const prev = state;
   state = s;
+  TBX.look(s.look);
   const you = s.you;
   const player = s.players.find((p) => p.id === you.player_id);
   if (!player) return;

@@ -110,7 +110,7 @@ only uses what the asset store already has, and lists the rest in `web/cutscenes
 `/data/art-studio.json` next to the art folder), never in the image:
 
 - **Themes** draw the whole catalog in another look. The default, *Bix cartoon*, is `[style]` above;
-  [`themes.toml`](themes.toml) ships Retro arcade, Comic book, Claymation and Synthwave, and new ones
+  [`themes.toml`](themes.toml) ships Retro arcade, Comic book, Claymation, Synthwave and After dark (Bix's faded 90s set with the lights down), and new ones
   (a look and a palette) can be made on the page. Each theme's TV files live in their own folder
   (`ART_DIR/themes/<id>/`, the default stays in `ART_DIR`) and its originals under their own style in
   the asset store, so switching the TV to a theme and back never makes anything twice. Until a theme

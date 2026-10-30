@@ -1,0 +1,61 @@
+{
+  "_about": "Bix calls for the lights and gets Gary, the floor lamp (bible: Gary is a lamp).",
+  "duration": 3600,
+  "backdrop": {
+    "kind": "spotlight",
+    "colors": [
+      "#ffd88a"
+    ],
+    "enter": "fade"
+  },
+  "layers": [
+    {
+      "type": "emoji",
+      "char": "💡",
+      "x": 30,
+      "y": 48,
+      "size": 26,
+      "at": 150,
+      "in": "drop",
+      "loop": "flicker"
+    },
+    {
+      "type": "text",
+      "style": "title",
+      "text": "GARY, THE LIGHTS!",
+      "y": 16,
+      "size": 10,
+      "at": 400,
+      "in": "slam",
+      "color": "#ffe1a1"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "Gary is a lamp. He tries.",
+      "y": 86,
+      "size": 4,
+      "at": 1600,
+      "in": "fade"
+    },
+    {
+      "type": "bix",
+      "mood": "shocked",
+      "x": 72,
+      "y": 56,
+      "size": 30,
+      "at": 700,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "crickets",
+      "at": 200
+    },
+    {
+      "sound": "slam",
+      "at": 400
+    }
+  ]
+}

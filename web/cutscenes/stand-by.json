@@ -1,0 +1,62 @@
+{
+  "_about": "Dead air: the station's test card, like the night Brain Blast! was pulled for a knife infomercial.",
+  "duration": 3400,
+  "backdrop": {
+    "kind": "stripes",
+    "colors": [
+      "#2a1424",
+      "#140a12"
+    ],
+    "enter": "iris"
+  },
+  "layers": [
+    {
+      "type": "emoji",
+      "char": "📺",
+      "x": 50,
+      "y": 46,
+      "size": 34,
+      "at": 100,
+      "in": "pop",
+      "loop": "shake"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "PLEASE STAND BY",
+      "y": 18,
+      "size": 9,
+      "at": 500,
+      "in": "stamp",
+      "color": "#e8b84a"
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "Technical difficulties",
+      "y": 82,
+      "size": 3.6,
+      "at": 1200,
+      "in": "fade"
+    },
+    {
+      "type": "bix",
+      "mood": "sad",
+      "x": 84,
+      "y": 66,
+      "size": 24,
+      "at": 1500,
+      "in": "rise"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "slam",
+      "at": 500
+    },
+    {
+      "sound": "sad_trombone",
+      "at": 1500
+    }
+  ]
+}

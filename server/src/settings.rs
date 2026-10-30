@@ -73,6 +73,16 @@ pub const FIELDS: &[Field] = &[
         help: "How long the TV stays on the answer, the scores and the round cards before moving on. Bix always finishes his line first, and the game moves on as soon as he has. Quick keeps the gaps to a couple of seconds; relaxed is the old, longer pace. Answer time doesn't change. Running games pick it up at their next question.",
     },
     Field {
+        key: "LOOK",
+        group: SHOW,
+        label: "Look",
+        kind: Kind::Choice {
+            options: &["after-dark", "classic"],
+        },
+        default: Some("after-dark"),
+        help: "How the TV and the phones look. After dark is the show after the network pulled the plug: a dim velvet studio, one hot spotlight, tarnished gold and a little VHS fuzz. Still a party, just with the lights down. Classic is the original bright purple. Changes on the TV and phones at once. The generated art has its own After dark theme on the Art page.",
+    },
+    Field {
         key: "BIX_ON_TV",
         group: SHOW,
         label: "Bix on the TV",
