@@ -129,6 +129,8 @@ pub struct StateView<'a> {
     pub next_clip: Option<&'a str>,
     /// TV only: whether to show Bix and the words he says.
     pub tv: Option<TvView>,
+    /// The TV's and phones' look: "after-dark" or "classic".
+    pub look: &'static str,
     /// TV only: background music from the library for the lobby and scoreboards, within the
     /// room's rating. Empty without a music library.
     pub playlist: Vec<PlaylistView<'a>>,

@@ -112,6 +112,20 @@ const TBX = {
   },
 
   /**
+   * The show's look (LOOK on the admin Settings page): "after-dark" or "classic". Every state
+   * carries it; the last one is remembered so the next page load starts in the right look.
+   */
+  look(name) {
+    const look = name === "classic" ? "classic" : "after-dark";
+    const root = document.documentElement;
+    if (root.getAttribute("data-look") === look) return;
+    root.setAttribute("data-look", look);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", look === "classic" ? "#1a0b3d" : "#0b0710");
+    TBX.save("tbx-look", look);
+  },
+
+  /**
    * Opens a game socket and keeps it open. `params()` is called on every
    * (re)connect so it can include a token learned from the welcome message.
    * A fatal server error stops reconnecting and calls onFatal.
@@ -215,3 +229,6 @@ const TBX = {
     fill.style.transform = "scaleX(0)";
   },
 };
+
+// Start in the look from last time, before the first state says which it is.
+if (TBX.load("tbx-look") === "classic") TBX.look("classic");

@@ -1,0 +1,63 @@
+{
+  "_about": "Last place gets the network's verdict, the same one Bix got in 2005. Roasts the score, not the player.",
+  "duration": 3400,
+  "backdrop": {
+    "kind": "curtains",
+    "colors": [
+      "#5a1630"
+    ],
+    "enter": "fade",
+    "open": 100
+  },
+  "layers": [
+    {
+      "type": "player",
+      "who": "subject",
+      "x": 40,
+      "y": 56,
+      "size": 22,
+      "at": 300,
+      "in": "rise"
+    },
+    {
+      "type": "text",
+      "style": "stamp",
+      "text": "CANCELLED",
+      "x": 40,
+      "y": 52,
+      "size": 11,
+      "at": 1000,
+      "in": "stamp",
+      "color": "#ff4d5e",
+      "z": 3
+    },
+    {
+      "type": "text",
+      "style": "sub",
+      "text": "Replaced by a knife ad",
+      "y": 88,
+      "size": 3.8,
+      "at": 1700,
+      "in": "fade"
+    },
+    {
+      "type": "bix",
+      "mood": "smug",
+      "x": 80,
+      "y": 62,
+      "size": 28,
+      "at": 600,
+      "in": "right"
+    }
+  ],
+  "sounds": [
+    {
+      "sound": "drumroll",
+      "at": 200
+    },
+    {
+      "sound": "slam",
+      "at": 1000
+    }
+  ]
+}

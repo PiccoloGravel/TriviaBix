@@ -38,7 +38,8 @@
       "mood": "shocked",
       "scenes": [
         "nobody",
-        "tumbleweed"
+        "tumbleweed",
+        "stand-by"
       ]
     },
     "only_one": {
@@ -73,7 +74,8 @@
     "asleep": {
       "mood": "smug",
       "scenes": [
-        "asleep"
+        "asleep",
+        "lights-out"
       ],
       "chance": 0.5
     },
@@ -100,7 +102,8 @@
       "mood": "laugh",
       "scenes": [
         "last-place",
-        "participation"
+        "participation",
+        "cancelled"
       ]
     },
     "winner": {

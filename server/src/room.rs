@@ -112,6 +112,14 @@ impl Pace {
     }
 }
 
+/// How the TV and phones look: LOOK on the admin Settings page.
+pub fn look(app: &crate::settings::Settings) -> &'static str {
+    match app.get("LOOK").as_deref().map(str::trim) {
+        Some("classic") => "classic",
+        _ => "after-dark",
+    }
+}
+
 /// What the TV shows of the host: BIX_ON_TV and BIX_CAPTIONS on the admin Settings page.
 pub fn tv_view(app: &crate::settings::Settings) -> TvView {
     let shown = |key| app.get(key).is_none_or(|v| v.trim() != "hide");
@@ -2660,6 +2668,7 @@ impl Room {
                     }),
                 next_clip: next_clip.filter(|_| is_host),
                 tv: is_host.then(|| tv_view(&self.app)),
+                look: look(&self.app),
                 playlist: if is_host {
                     playlist.clone()
                 } else {

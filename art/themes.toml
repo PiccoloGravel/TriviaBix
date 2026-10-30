@@ -44,3 +44,18 @@ prompt = """TriviaBix TV game show graphics as 1980s synthwave poster art, chrom
 neon grid floor, airbrushed retro futurism, lens flares, no text"""
 palette = "magenta, deep purple, teal and sunset orange gradients"
 version = "v1"
+
+[[theme]]
+id = "after-dark"
+name = "After dark"
+description = "A faded 90s game show after the lights go down: one hot spotlight, worn velvet, VHS grain."
+# Bix's world (bible/): Brain Blast! was cancelled in 2005 and he's hosting his comeback anyway. Still
+# a cartoon and still a party, just lit like the last taping before the network pulled the plug.
+prompt = """TriviaBix TV game show graphics after hours, bold cartoon with thick dark outlines, a faded \
+1990s game show set at night, one hot spotlight cutting through deep shadow, worn velvet and tarnished \
+chrome, flickering marquee bulbs with a few burnt out, light VHS grain and scanlines, moody noir \
+lighting, cheeky and playful with a mischievous dark edge, never gory, readable from across a living \
+room, no text"""
+palette = "near-black plum and oxblood shadows, wine red velvet, tarnished gold, a single cold teal rim light"
+backdrop = "wide shot, empty center with room for a big title, strong perspective, no people in front, deep vignette with the middle lit"
+version = "v1"
