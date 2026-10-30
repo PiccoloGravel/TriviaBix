@@ -48,6 +48,10 @@ with open models (FLUX.1-schnell, BiRefNet, Wan2.2) on a rented vast.ai GPU or y
 tagged winner") so pieces get reused across scenes, every original is kept in the asset store so nothing is made twice, and
 everything falls back to the drawn backgrounds until art exists. See [`art/README.md`](art/README.md).
 
+Who Bix is lives in his character bible, [`bible/`](bible/characters/bix.md): his backstory, running gags (Marty, Brenda, the
+1998 Emmy, Gary the lamp), voice, tone line and what changes at each rating. It's a [Story Skills](https://github.com/danjdewhurst/story-skills)
+project, so `story check bible` keeps it consistent, and the `bix-writer` skill in `.claude/skills/` has Claude write lines from it.
+
 The script is [`server/host-script.json`](server/host-script.json). Lines are grouped by rating; a room uses every line at or
 below its rating and leans heavily toward the spiciest tier allowed, so PG rooms stay friendly and NC-17 rooms get filthy. Edit
 it and rebuild, or point `HOST_SCRIPT` at your own copy. The server checks the script on startup (known events, a PG line for
@@ -247,6 +251,7 @@ No GPU at home? [gpu/README.md](gpu/README.md) rents one on vast.ai for a few ce
   - `src/minigames.rs` has the mini games between trivia rounds and the Closest Guess questions.
   - `migrations/` creates the tables and seeds hangman phrases and songs.
   - `src/content.rs` loads the question packs into the database at startup.
+- `bible/` is Bix's character bible, a Story Skills project (characters, places, glossary, style sheet).
 - `content/` is the question bank: packs (hand-written and imported) and per-question host scripts. See
   [content/README.md](content/README.md). `crates/question-bank` reads it and has the command line tool.
 - `tts/` is the optional voice service (Python, Ming-3.0-tts on a GPU).
