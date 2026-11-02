@@ -280,6 +280,7 @@ impl Packs {
                 Some(seed) => format!("Take {seed}"),
                 None => "Cloned voice".into(),
             },
+            "fish" => "Fish Audio".into(),
             _ => "Designed voice".into(),
         };
         name.chars().take(MAX_NAME - 5).collect()
@@ -356,6 +357,8 @@ impl Packs {
         let ok = match voice.split_once(':') {
             Some(("ip", name)) => BUILT_IN.contains(&name),
             Some(("clone", key)) => self.sample_file(key, "wav").is_some(),
+            // Lines voiced elsewhere and filed here (gpu/fish_import.py), so only once there are some.
+            Some(("fish", _)) => self.voice.voices_on_disk().iter().any(|k| k == voice),
             _ => false,
         };
         if ok {
@@ -371,6 +374,8 @@ fn spec_of(key: &str) -> Option<String> {
     let (kind, rest) = key.split_once(':')?;
     match kind {
         "ip" | "freeform" | "design" => Some(key.to_string()),
+        // fish:<name>, voiced by Fish Audio on CouchCritters' render box (gpu/fish_import.py).
+        "fish" if !rest.is_empty() => Some(key.to_string()),
         // clone:<asset key>.wav:<hash of the clip>, from a designed voice.
         "clone" => {
             let (name, _) = rest.split_once(':')?;
@@ -433,6 +438,8 @@ mod tests {
         assert_eq!(spec_of("ip:US_James").as_deref(), Some("ip:US_James"));
         assert_eq!(spec_of("clone:bix.wav:abcdef012345"), None);
         assert_eq!(spec_of("nonsense"), None);
+        assert_eq!(spec_of("fish:bix").as_deref(), Some("fish:bix"));
+        assert_eq!(spec_of("fish:"), None);
     }
 
     #[test]

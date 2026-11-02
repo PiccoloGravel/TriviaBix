@@ -1127,6 +1127,9 @@ def voice(server: str, password: str, bix_voice: str = "ip:US_James", hours: flo
     """Makes every line waiting for Bix's voice in one batch job: the whole backlog goes up to a rented GPU,
     which runs several copies of the model at once (tts/batch.py), and the audio comes back while it works.
     With `hours`, instead keeps a voice service up that long for live lines during a game (serve_voice)."""
+    if bix_voice.startswith("fish:"):
+        raise Abort(f"{bix_voice} is voiced by Fish Audio on CouchCritters' render box and filed with "
+                    "gpu/fish_import.py; this voice model can't speak it. Pick another voice to make lines here.")
     if hours:
         return serve_voice(server, password, bix_voice, hours, max_hours, min_vram, max_price, disk, image, login,
                            boot_minutes, yes, dry_run, another, vast)

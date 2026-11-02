@@ -228,7 +228,7 @@ pub const FIELDS: &[Field] = &[
         label: "Voice (on rented GPUs)",
         kind: Kind::Text,
         default: Some("ip:US_James"),
-        help: "One of the model's built-in voices as ip:NAME (US_James, US_Emma, UK_George, UK_Charlotte), or a designed voice as clone:ID, which Pipeline → Design Bix's voice sets for you. Each voice is a voice pack (Pipeline → Voice packs) that keeps every line made in it, so switching back costs nothing.",
+        help: "One of the model's built-in voices as ip:NAME (US_James, US_Emma, UK_George, UK_Charlotte), or a designed voice as clone:ID, which Pipeline → Design Bix's voice sets for you. fish:bix is his Fish Audio voice, made on CouchCritters' render box and filed with gpu/fish_import.py. Each voice is a voice pack (Pipeline → Voice packs) that keeps every line made in it, so switching back costs nothing.",
     },
     Field {
         key: "BIX_SPEED",

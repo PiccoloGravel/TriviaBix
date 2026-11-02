@@ -95,6 +95,25 @@ voice designed below, or `clone:/path/bix.wav` for a clip on this machine with i
 For a cloned voice the GPU starts with a small receiver instead of the voice service; `vast.py` sends it
 the clip and transcript (behind the rental's token), and it then starts the service speaking in that voice.
 
+## Bix in Fish Audio
+
+Bix's better voice, Fish Audio Drama 3, isn't made here. It needs an 80 GB GPU, so his lines go on the same
+rental as CouchCritters' story lines (`couchcritters/tools/voice/render.js --extra`), cloned from his
+designed voice's sample. That run leaves one `<line hash>.wav` per line, named by the backlog for the voice
+`fish:bix`. To put them in the game:
+
+```sh
+export ADMIN_PASSWORD=<the game's admin password>
+python3 gpu/fish_import.py --server http://localhost:8080 <the run's out/lines folder> --dry-run   # counts
+python3 gpu/fish_import.py --server http://localhost:8080 <the run's out/lines folder>
+```
+
+It evens the loudness, makes each an Ogg Opus clip, files it in the asset store as the voice pack "Fish
+Audio" (`fish:bix`) and sets `BIX_VOICE=fish:bix`. Lines already filed are skipped, so it can be run again.
+Any line without a clip (new or edited lines, and live ones such as a new player's name or a score) is read by the TV's
+browser voice. `vast.py voice` won't run for `fish:bix`, as this voice model can't speak it; switching
+back to another pack in Pipeline → Voice packs keeps both packs' lines.
+
 ## Designing Bix's voice
 
 ```sh
