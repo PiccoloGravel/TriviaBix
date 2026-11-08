@@ -73,6 +73,46 @@ pub const FIELDS: &[Field] = &[
         help: "How long the TV stays on the answer, the scores and the round cards before moving on. Bix always finishes his line first, and the game moves on as soon as he has. Quick keeps the gaps to a couple of seconds; relaxed is the old, longer pace. Answer time doesn't change. Running games pick it up at their next question.",
     },
     Field {
+        key: "QUESTION_SECS",
+        group: SHOW,
+        label: "Answer time",
+        kind: Kind::Choice {
+            options: &["10", "15", "20", "25", "30"],
+        },
+        default: Some("20"),
+        help: "Seconds to answer a trivia question, on top of the time Bix spends reading it out. The question ends early once everyone has answered. Running games pick it up at their next question.",
+    },
+    Field {
+        key: "HURRY_SECS",
+        group: SHOW,
+        label: "Last one to answer",
+        kind: Kind::Choice {
+            options: &["off", "3", "5", "8"],
+        },
+        default: Some("5"),
+        help: "With three or more playing, once everyone but one person has answered, the clock drops to this many seconds. Their phone says everyone is waiting on them and the TV calls them out, so one slow thumb never holds up the room. Off lets the clock run out as normal.",
+    },
+    Field {
+        key: "CHATTER",
+        group: SHOW,
+        label: "Bix's chatter after answers",
+        kind: Kind::Choice {
+            options: &["snappy", "chatty", "full"],
+        },
+        default: Some("chatty"),
+        help: "How much Bix says after each answer and at the end of a round. He always says the answer; on top of that he picks from who got it, the question's joke or fun fact, streaks and roasts until he runs out of time. Snappy keeps it to about 8 seconds, chatty about 13, and full says everything (the old way, up to half a minute). The callout stamps on the TV still show whatever he skips.",
+    },
+    Field {
+        key: "BONUSES",
+        group: SHOW,
+        label: "Streak and comeback bonuses",
+        kind: Kind::Choice {
+            options: &["streaks+comebacks", "streaks", "off"],
+        },
+        default: Some("streaks+comebacks"),
+        help: "Streaks pay +100 for a third right answer in a row, +200 for a fourth and +300 from then on. Comebacks give anyone in the bottom half of the scoreboard 20% more for a right answer, so nobody is out of it by round two. Both grow with the round's points (x1.5, x2, x3) and show on the phones. Running games pick it up at their next question.",
+    },
+    Field {
         key: "LOOK",
         group: SHOW,
         label: "Look",

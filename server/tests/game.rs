@@ -1383,13 +1383,18 @@ async fn trivia_rounds_get_harder_with_recaps_between() {
             send(&mut ann, json!({ "type": "answer", "choice": 0 })).await;
             let reveal = wait_state(&mut ann, |s| s["phase"] == "reveal").await;
             let correct = reveal["reveal"]["correct"].as_u64().unwrap();
-            let points = reveal["reveal"]["results"][0]["points"].as_i64().unwrap();
+            let result = &reveal["reveal"]["results"][0];
+            let points = result["points"].as_i64().unwrap();
             if correct == 0 {
-                // A right answer pays 500 to 1000, scaled up by the round.
+                // A right answer pays 500 to 1000, scaled up by the round, plus any streak bonus
+                // (the only player is never behind anyone, so there's no comeback bonus).
                 let pct = pct as i64;
+                let streak = result["streak_bonus"].as_i64().unwrap_or(0);
+                assert!(result.get("comeback_bonus").is_none(), "{result}");
+                let base = points - streak;
                 assert!(
-                    points >= 500 * pct / 100 && points <= 1000 * pct / 100,
-                    "{points}"
+                    base >= 500 * pct / 100 && base <= 1000 * pct / 100,
+                    "{points} with {streak} for a streak"
                 );
             } else {
                 assert_eq!(points, 0);
@@ -2090,4 +2095,70 @@ async fn admin_can_hide_bix_and_his_words_on_the_tv() {
     )
     .await;
     wait_state(&mut host, |s| s["phase"] == "question").await;
+}
+
+#[tokio::test]
+async fn the_last_one_to_answer_gets_a_short_clock() {
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let cookie = admin_login(&addr).await;
+    for (key, value) in [("QUESTION_SECS", "30"), ("HURRY_SECS", "3")] {
+        let res = http
+            .put(format!("http://{addr}/api/admin/settings"))
+            .header("cookie", &cookie)
+            .json(&json!({ "key": key, "value": value }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "{key}");
+    }
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let mut phones = Vec::new();
+    for name in ["Ann", "Bob", "Cy"] {
+        let mut p = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut p).await;
+        phones.push(p);
+    }
+    send(&mut host, json!({ "type": "start" })).await;
+    let q = wait_state(&mut host, |s| s["phase"] == "question").await;
+    // The admin's answer time, not the room's 5 seconds.
+    assert!(
+        q["phase_ms"].as_u64().unwrap() >= 30_000,
+        "{}",
+        q["phase_ms"]
+    );
+    assert!(q["hurry"].is_null());
+
+    send(&mut phones[0], json!({ "type": "answer", "choice": 0 })).await;
+    let one = wait_state(&mut host, |s| {
+        s["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["answered"] == true)
+            .count()
+            == 1
+    })
+    .await;
+    assert!(one["hurry"].is_null(), "two still to answer");
+
+    send(&mut phones[1], json!({ "type": "answer", "choice": 1 })).await;
+    let rushed = wait_state(&mut host, |s| !s["hurry"].is_null()).await;
+    let cy = rushed["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Cy")
+        .unwrap()["id"]
+        .clone();
+    assert_eq!(rushed["hurry"], cy);
+    assert!(
+        rushed["ms_left"].as_u64().unwrap() <= 3_000,
+        "{}",
+        rushed["ms_left"]
+    );
+    let started = std::time::Instant::now();
+    wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }

@@ -133,6 +133,13 @@ function render(s) {
     $("#r-verdict").textContent = right ? "✅" : result.choice == null ? "⏰" : "❌";
     $("#r-text").textContent = right ? "Correct!" : result.choice == null ? "Too slow!" : "Nope!";
     $("#r-points").textContent = right ? `+${result.points}` : "";
+    const bonus = [
+      result.streak_bonus ? `🔥 +${result.streak_bonus} streak` : "",
+      result.comeback_bonus ? `🚀 +${result.comeback_bonus} comeback` : "",
+    ].filter(Boolean).join(" · ");
+    $("#r-bonus").textContent = bonus;
+    $("#r-bonus").classList.toggle("hidden", !bonus);
+    $("#r-standing").textContent = standing(s);
     $("#r-answer").textContent = `Answer: ${s.question.choices[s.reveal.correct]}`;
     const song = s.reveal.song;
     $("#r-link").classList.toggle("hidden", !(song && song.store_url));
@@ -151,6 +158,7 @@ function render(s) {
     $("#ri-cat").textContent = st.category;
     $("#ri-points").textContent = `×${st.points_pct / 100} points`;
     $("#ri-diff").textContent = `${st.final_round ? "The hardest questions" : st.difficulty[0].toUpperCase() + st.difficulty.slice(1) + " questions"} · eyes on the TV!`;
+    $("#ri-standing").textContent = s.stage > 1 ? standing(s) : "";
   } else if (s.phase === "recap") {
     const st = s.stages[s.stage - 1];
     const mine = s.recap.points.find((p) => p.player_id === you.player_id);
@@ -158,11 +166,12 @@ function render(s) {
     $("#rc-title").textContent = `${st.final_round ? "Final round" : "Round " + st.number} done`;
     $("#rc-points").textContent = `+${(mine ? mine.points : 0).toLocaleString()}`;
     $("#rc-right").textContent = `${right} of ${s.recap.questions.length} right`;
-    $("#rc-rank").textContent = `You're in ${ordinal(you.rank)} place`;
+    $("#rc-rank").textContent = standing(s);
   } else if (s.phase === "minigame") {
     renderMinigame(s, prev);
   } else if (s.phase === "scoreboard") {
     $("#s-rank").textContent = ordinal(you.rank) + " place";
+    $("#s-standing").textContent = standing(s).replace(/^.*? · /, "");
   } else if (s.phase === "final") {
     $("#f-emoji").textContent = you.rank === 1 ? "🏆" : you.rank <= 3 ? "🎉" : "🫠";
     $("#f-text").textContent = you.rank === 1 ? "You won!" : `You came ${ordinal(you.rank)}`;
@@ -170,6 +179,20 @@ function render(s) {
     $("#again-btn").classList.toggle("hidden", !you.is_vip);
     $("#f-wait").classList.toggle("hidden", you.is_vip);
   }
+}
+
+/** Where you stand and what it takes to move up: "3rd place · 140 behind Sam". */
+function standing(s) {
+  const me = s.players.find((p) => p.id === s.you.player_id);
+  if (!me) return "";
+  const others = s.players.filter((p) => p.id !== me.id && !p.waiting);
+  if (!others.length) return "";
+  const place = `${ordinal(s.you.rank)} place`;
+  const ahead = others.filter((p) => p.score > me.score).sort((a, b) => a.score - b.score)[0];
+  if (ahead) return `${place} · ${(ahead.score - me.score).toLocaleString()} behind ${ahead.name}`;
+  const best = Math.max(...others.map((p) => p.score));
+  if (best === me.score) return `Tied for the lead with ${others.filter((p) => p.score === me.score).map((p) => p.name).join(" & ")}`;
+  return `In the lead by ${(me.score - best).toLocaleString()} 👑`;
 }
 
 // ---------- VIP: pick the game ----------
@@ -202,10 +225,17 @@ document.querySelectorAll("#vip-box [data-opt]").forEach((b) => b.addEventListen
   send({ type: "settings", [opt]: val });
 }));
 
+let hurried = null;
+
 function renderQuestion(s, fresh) {
   const picked = s.you.answer;
+  // The clock was cut short for the last one to answer: restart the bar from the new time.
+  const hurry = s.hurry != null ? `${s.round}:${s.hurry}` : null;
+  const rushed = hurry && hurry !== hurried;
+  hurried = hurry;
   const song = s.question.kind === "song";
   $("#q-prompt").textContent = song ? "🎧 Listen to the TV! Name that tune." : s.question.prompt;
+  if (rushed && !fresh) TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
   if (fresh) {
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
     $("#q-status").textContent = "";
@@ -216,9 +246,16 @@ function renderQuestion(s, fresh) {
   const buttons = [...$("#answers").children];
   buttons.forEach((b, i) => { b.disabled = picked != null; b.classList.toggle("picked", picked === i); });
   $("#answers").classList.toggle("locked", picked != null);
+  $("#question").classList.toggle("on-you", picked == null && s.hurry === s.you.player_id);
   if (picked != null) {
-    const waiting = s.players.filter((p) => p.connected && !p.answered).length;
-    $("#q-status").textContent = waiting ? `Locked in! Waiting on ${waiting} more…` : "Locked in!";
+    const waiting = s.players.filter((p) => p.connected && !p.answered && !p.waiting);
+    const names = waiting.map((p) => p.name);
+    $("#q-status").textContent = !waiting.length ? "Locked in!"
+      : waiting.length <= 3 ? `Locked in! Waiting on ${names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]}…`
+      : `Locked in! Waiting on ${waiting.length} more…`;
+  } else if (s.hurry === s.you.player_id) {
+    $("#q-status").textContent = "⏰ Everyone's waiting on you!";
+    if (rushed && navigator.vibrate) navigator.vibrate([120, 80, 120]);
   }
 }
 
