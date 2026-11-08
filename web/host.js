@@ -891,21 +891,34 @@ function renderQuestion(s, changed) {
   $("#question").classList.toggle("song", song);
   $("#q-eq").classList.toggle("hidden", !song);
   $("#q-listen").classList.toggle("hidden", !song);
+  // Everyone but one has answered and the clock was cut short for them.
+  const hurry = s.hurry != null ? s.round + ":" + s.hurry : null;
+  const rushed = hurry && hurry !== tvHurried;
+  tvHurried = hurry;
   if (changed) {
     $("#q-choices").replaceChildren(...s.question.choices.map(choiceTile));
     TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
     startSecs($("#q-secs"), s.ms_left);
     enter($("#question"));
     if (song) playClip(s);
+  } else if (rushed) {
+    TBX.runTimer($("#q-timer"), s.ms_left, s.phase_ms);
+    startSecs($("#q-secs"), s.ms_left);
+    Sfx.play("hurry");
   }
   const late = s.players.length - playing(s).length;
+  const slow = s.hurry != null ? s.players.find((p) => p.id === s.hurry) : null;
   $("#q-answered").replaceChildren(...playing(s).map((p) => {
     const a = TBX.avatar(p, "6vh");
     if (!p.answered) a.classList.add("waiting");
+    if (slow && p.id === slow.id && !p.answered) a.classList.add("on-you");
     a.title = p.name;
     return a;
-  }), ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []));
+  }), ...(slow && !slow.answered ? [el("span", { class: "hurry-call" }, "Waiting on " + slow.name + "!")] : []),
+  ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []));
 }
+
+let tvHurried = null;
 
 function startSecs(target, ms, dangerAt = 0) {
   clearInterval(secsTimer);

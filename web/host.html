@@ -54,6 +54,8 @@
     .answered-row { display: flex; gap: 1vw; justify-content: center; align-items: center; min-height: 7vh; font-size: 2.6vh; }
     .answered-row .avatar { transition: opacity .2s, transform .2s; }
     .answered-row .waiting { opacity: .25; transform: scale(.8); }
+    .answered-row .waiting.on-you { opacity: 1; transform: scale(1.15); box-shadow: 0 0 0 .5vh var(--bad); animation: throb .5s ease-in-out infinite alternate; }
+    .answered-row .hurry-call { font-family: "Bungee", sans-serif; color: var(--bad); font-size: 3vh; margin-left: 1vw; }
     .secs { font-family: "Bungee", sans-serif; font-size: 5vh; color: var(--accent); }
 
     #scoreboard h2, #final h2 { text-align: center; font-size: 7vh; margin: 1vh 0 3vh; color: var(--accent); }

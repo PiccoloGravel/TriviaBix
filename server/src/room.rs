@@ -112,6 +112,112 @@ impl Pace {
     }
 }
 
+/// How long the host talks after an answer or at the end of a round: CHATTER on the admin
+/// Settings page. He always says the answer; the other beats fill the time until it runs out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Chatter {
+    Snappy,
+    Chatty,
+    Full,
+}
+
+impl Chatter {
+    pub fn parse(s: Option<&str>) -> Self {
+        match s.map(str::trim) {
+            Some("snappy") => Self::Snappy,
+            Some("full") => Self::Full,
+            _ => Self::Chatty,
+        }
+    }
+
+    pub fn budget(self) -> Option<Duration> {
+        match self {
+            Self::Snappy => Some(Duration::from_secs(8)),
+            Self::Chatty => Some(Duration::from_secs(13)),
+            Self::Full => None,
+        }
+    }
+}
+
+/// Which bonuses right answers can earn: BONUSES on the admin Settings page.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Bonuses {
+    pub streaks: bool,
+    pub comebacks: bool,
+}
+
+impl Bonuses {
+    pub fn parse(s: Option<&str>) -> Self {
+        let (streaks, comebacks) = match s.map(str::trim) {
+            Some("off") => (false, false),
+            Some("streaks") => (true, false),
+            _ => (true, true),
+        };
+        Self { streaks, comebacks }
+    }
+}
+
+/// Extra points for a right answer that makes `streak` in a row: +100 for the third, +200 for
+/// the fourth, +300 from then on, before the round's multiplier.
+pub fn streak_bonus(streak: u32) -> i64 {
+    if streak < 3 {
+        0
+    } else {
+        (100 * (streak as i64 - 2)).min(300)
+    }
+}
+
+/// The share extra a right answer pays someone in the bottom half of the scoreboard.
+pub const COMEBACK_PCT: i64 = 20;
+
+/// Whose scores are in the bottom half: at least half the room (rounded up) is strictly ahead
+/// of them. Ties sit together, so nobody trails while everyone is level.
+pub fn trailing(scores: &[(u32, i64)]) -> HashSet<u32> {
+    let half = scores.len().div_ceil(2);
+    scores
+        .iter()
+        .filter(|(_, mine)| scores.iter().filter(|(_, s)| s > mine).count() >= half)
+        .map(|s| s.0)
+        .collect()
+}
+
+/// Picks which of the host's beats to drop so what's left fits `budget`. `len_of` is each
+/// beat's talk time. The first `keep` beats always stay, and at least one more beat stays with
+/// them. `first` goes before the others, which go in the order given. Returns the indices kept.
+pub fn fit_beats(
+    lens: &[Duration],
+    keep: usize,
+    first: Option<usize>,
+    order: &[usize],
+    budget: Duration,
+) -> Vec<usize> {
+    let mut kept: Vec<bool> = vec![true; lens.len()];
+    let total = |kept: &[bool]| -> Duration {
+        lens.iter()
+            .zip(kept)
+            .filter(|(_, k)| **k)
+            .map(|(l, _)| *l)
+            .sum()
+    };
+    let mut drop: Vec<usize> = first
+        .filter(|&i| i >= keep && i < lens.len())
+        .into_iter()
+        .collect();
+    drop.extend(
+        order
+            .iter()
+            .copied()
+            .filter(|&i| i >= keep && i < lens.len() && Some(i) != first),
+    );
+    for i in drop {
+        if total(&kept) <= budget || kept.iter().filter(|k| **k).count() <= keep + 1 {
+            break;
+        }
+        kept[i] = false;
+    }
+    (0..lens.len()).filter(|&i| kept[i]).collect()
+}
+
 /// How the TV and phones look: LOOK on the admin Settings page.
 pub fn look(app: &crate::settings::Settings) -> &'static str {
     match app.get("LOOK").as_deref().map(str::trim) {
@@ -452,8 +558,14 @@ pub struct Room {
     question_len: Duration,
     /// Who was alone in first at the last scoreboard, to call out a new leader.
     leader: Option<u32>,
+    /// How much of the question's time is the host reading it out.
+    question_talk: Duration,
+    /// The one player everyone is waiting on, once the clock has been cut short for them.
+    hurry: Option<u32>,
     answers: HashMap<u32, Answer>,
     last_points: HashMap<u32, i64>,
+    /// Streak and comeback points inside `last_points`, for the phones to show.
+    last_bonus: HashMap<u32, (i64, i64)>,
     game_id: Option<i64>,
     empty_since: Option<Instant>,
     created_at: u64,
@@ -515,6 +627,9 @@ impl Room {
             round: 0,
             question_started: Instant::now(),
             question_len: Duration::ZERO,
+            question_talk: Duration::ZERO,
+            hurry: None,
+            last_bonus: HashMap::new(),
             leader: None,
             answers: HashMap::new(),
             last_points: HashMap::new(),
@@ -591,11 +706,7 @@ impl Room {
                         self.empty_since = Some(Instant::now());
                     }
                     // Someone leaving can mean everyone still here has answered.
-                    if self.phase == Phase::Question && self.all_answered() {
-                        self.advance().await;
-                    } else {
-                        self.broadcast();
-                    }
+                    self.answers_changed().await;
                 }
             }
             RoomCmd::Msg { conn_id, msg } => {
@@ -809,11 +920,7 @@ impl Room {
                         after: self.question_started.elapsed(),
                     },
                 );
-                if self.all_answered() {
-                    self.advance().await;
-                } else {
-                    self.broadcast();
-                }
+                self.answers_changed().await;
             }
             ClientMsg::Guess { letter } => {
                 let pid = self.hangman_guesser(role)?;
@@ -1267,11 +1374,7 @@ impl Room {
             // Dropping the sender ends that socket's write loop, which closes it.
             self.conns.remove(&conn_id);
         }
-        if self.phase == Phase::Question && self.all_answered() {
-            self.advance().await;
-        } else {
-            self.broadcast();
-        }
+        self.answers_changed().await;
     }
 
     async fn start_game(&mut self) -> Result<(), String> {
@@ -1577,6 +1680,8 @@ impl Room {
         }
         self.answers.clear();
         self.last_points.clear();
+        self.last_bonus.clear();
+        self.hurry = None;
         self.hm = HangmanRound::default();
         let total = self.game_len();
         let (event, cue) = match self.round {
@@ -1612,11 +1717,12 @@ impl Room {
         self.speak(parts, Vec::new(), Some(cue));
         // The clock starts now, but players get extra time while the host does the intro banter.
         let base = match self.settings.mode {
-            GameMode::Trivia => self.timing.question,
+            GameMode::Trivia => self.answer_time(),
             GameMode::Songs => self.timing.song_question,
             GameMode::Hangman => self.timing.hangman,
         };
-        self.question_len = base + self.talk();
+        self.question_talk = self.talk();
+        self.question_len = base + self.question_talk;
         self.question_started = Instant::now();
         self.set_phase(Phase::Question, Some(self.question_len));
         self.broadcast();
@@ -1660,6 +1766,7 @@ impl Room {
             }
             Phase::Reveal => {
                 let (parts, callouts) = self.score_update();
+                let parts = self.trim_chatter(parts, 1, None);
                 let cue = headline(&callouts);
                 self.speak(parts, callouts, cue);
                 self.set_phase(Phase::Scoreboard, Some(self.hold(self.timing.scoreboard)));
@@ -1697,6 +1804,19 @@ impl Room {
         let scale = self.stage_idx().map_or(100, |i| self.stages[i].points_pct) as f64 / 100.0;
         let q = &self.questions[self.round];
         let limit = self.question_len.as_secs_f64().max(0.001);
+        let bonuses = self.bonuses();
+        // Who's behind is decided by the scores before this question.
+        let behind = if bonuses.comebacks {
+            let scores: Vec<(u32, i64)> = self
+                .players
+                .iter()
+                .filter(|p| !p.waiting)
+                .map(|p| (p.id, p.score))
+                .collect();
+            trailing(&scores)
+        } else {
+            HashSet::new()
+        };
         let (mut right, mut wrong, mut silent, mut streaks, mut broken) =
             (vec![], vec![], vec![], vec![], vec![]);
         for p in self.players.iter_mut().filter(|p| !p.waiting) {
@@ -1708,11 +1828,25 @@ impl Room {
                 }
                 _ => 0,
             };
-            p.score += points;
-            self.last_points.insert(p.id, points);
-            *self.stage_points.entry(p.id).or_default() += points;
+            let (mut streak_pts, mut comeback_pts) = (0, 0);
+            if points > 0 {
+                if bonuses.streaks {
+                    streak_pts = (streak_bonus(p.streak + 1) as f64 * scale).round() as i64;
+                }
+                if behind.contains(&p.id) {
+                    comeback_pts = points * COMEBACK_PCT / 100;
+                }
+            }
+            let total = points + streak_pts + comeback_pts;
+            p.score += total;
+            self.last_points.insert(p.id, total);
+            if streak_pts + comeback_pts > 0 {
+                self.last_bonus.insert(p.id, (streak_pts, comeback_pts));
+            }
+            *self.stage_points.entry(p.id).or_default() += total;
             if points > 0 {
                 p.streak += 1;
+                // The fastest finger is the fastest, whatever bonuses they earned on top.
                 right.push((p.id, points));
                 if p.streak >= 3 {
                     streaks.push((p.id, p.streak));
@@ -1794,9 +1928,13 @@ impl Room {
         }
         // With a lot to say, sometimes skip who got it (the TV still shows the stamp), so reveals
         // don't all follow the same four beats.
+        let mut who = Some(who_at);
         if parts.len() >= 4 && rand::random_bool(0.4) {
             parts.remove(who_at);
+            who = None;
         }
+        // Then, if it's still a lot, who got it goes first (the stamp says it), then the rest.
+        let parts = self.trim_chatter(parts, 1, who);
         let cue = headline(&callouts);
         self.speak(parts, callouts, cue);
     }
@@ -1993,7 +2131,7 @@ impl Room {
             }];
             self.speak(vec![line], callouts, Some("minigame_winner"));
         }
-        minigames::RESULTS.max(self.talk() + Duration::from_millis(1500))
+        self.hold(minigames::RESULTS)
     }
 
     /// Players taking part in the mini game: everyone in the game, connected or not.
@@ -2070,6 +2208,7 @@ impl Room {
             parts.extend(more);
             callouts.extend(more_callouts);
         }
+        let parts = self.trim_chatter(parts, 1, None);
         let cue = headline(&callouts);
         self.speak(parts, callouts, cue);
     }
@@ -2178,6 +2317,101 @@ impl Room {
         Pace::parse(self.app.get("GAME_PACE").as_deref())
     }
 
+    /// Answer time for a trivia question: QUESTION_SECS on the admin Settings page.
+    fn answer_time(&self) -> Duration {
+        self.app
+            .get("QUESTION_SECS")
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|s| (5..=120).contains(s))
+            .map_or(self.timing.question, Duration::from_secs)
+    }
+
+    /// How long the last one to answer gets once everyone else has: HURRY_SECS, off for none.
+    fn hurry_time(&self) -> Option<Duration> {
+        match self.app.get("HURRY_SECS").as_deref().map(str::trim) {
+            Some("off") => None,
+            Some(v) => v
+                .parse::<u64>()
+                .ok()
+                .filter(|s| (1..=60).contains(s))
+                .map(Duration::from_secs),
+            None => Some(Duration::from_secs(5)),
+        }
+    }
+
+    fn bonuses(&self) -> Bonuses {
+        Bonuses::parse(self.app.get("BONUSES").as_deref())
+    }
+
+    /// How long one of the host's beats takes to say, at the speed the TV plays it.
+    fn talk_of(&self, text: &str) -> Duration {
+        let cps = self.timing.talk_cps * crate::web::voice_speed(&self.app);
+        let (_, said) = triviabix_questions::split_cameo(text);
+        host::talk_time(&crate::voice::without_tags(said), cps)
+    }
+
+    /// Drops the host's extra beats until what he says fits CHATTER. The first `keep` beats
+    /// stay; `first` (who got it, say) goes before the rest, which go in random order so every
+    /// kind of beat still gets its turn over a game.
+    fn trim_chatter(&self, parts: Vec<String>, keep: usize, first: Option<usize>) -> Vec<String> {
+        let Some(budget) = Chatter::parse(self.app.get("CHATTER").as_deref()).budget() else {
+            return parts;
+        };
+        let lens: Vec<Duration> = parts.iter().map(|p| self.talk_of(p)).collect();
+        let mut order: Vec<usize> = (keep..parts.len()).collect();
+        rand::seq::SliceRandom::shuffle(order.as_mut_slice(), &mut rand::rng());
+        let kept = fit_beats(&lens, keep, first, &order, budget);
+        parts
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| kept.contains(i))
+            .map(|(_, p)| p)
+            .collect()
+    }
+
+    /// Someone answered or left mid-question: move on if everyone's in, or cut the clock short
+    /// for the one person everyone is waiting on.
+    async fn answers_changed(&mut self) {
+        if self.phase != Phase::Question {
+            return self.broadcast();
+        }
+        if self.all_answered() {
+            return self.advance().await;
+        }
+        self.maybe_hurry();
+        self.broadcast();
+    }
+
+    fn maybe_hurry(&mut self) {
+        if self.hurry.is_some() || self.settings.mode != GameMode::Trivia {
+            return;
+        }
+        let Some(hurry) = self.hurry_time() else {
+            return;
+        };
+        let active: Vec<u32> = self
+            .players
+            .iter()
+            .filter(|p| p.conns > 0 && !p.waiting)
+            .map(|p| p.id)
+            .collect();
+        let left: Vec<u32> = active
+            .iter()
+            .copied()
+            .filter(|id| !self.answers.contains_key(id))
+            .collect();
+        if active.len() < 3 || left.len() != 1 {
+            return;
+        }
+        // Never before the host has finished reading the question out.
+        let read = self.question_started + self.question_talk;
+        let soonest = read.max(Instant::now()) + hurry;
+        if self.deadline.is_some_and(|d| d > soonest) {
+            self.deadline = Some(soonest);
+            self.hurry = Some(left[0]);
+        }
+    }
+
     /// The shortest a between-questions phase lasts at the room's pace.
     fn linger(&self, base: Duration) -> Duration {
         base.mul_f64(self.pace().scale())
@@ -2195,12 +2429,18 @@ impl Room {
         if self.host_line.as_ref().map(|l| l.id) != Some(id) {
             return;
         }
-        let base = match self.phase {
-            Phase::Intro => self.timing.intro,
-            Phase::RoundIntro => self.timing.round_intro,
-            Phase::Reveal => self.timing.reveal,
-            Phase::Scoreboard => self.timing.scoreboard,
-            Phase::Recap => self.timing.recap,
+        let shortest = match self.phase {
+            Phase::Intro => self.linger(self.timing.intro),
+            Phase::RoundIntro => self.linger(self.timing.round_intro),
+            Phase::Reveal => self.linger(self.timing.reveal),
+            Phase::Scoreboard => self.linger(self.timing.scoreboard),
+            Phase::Recap => self.linger(self.timing.recap),
+            // A mini game's rules stay up long enough to read, whatever the pace.
+            Phase::Minigame => match self.mini.as_ref().map(|m| m.step) {
+                Some(Step::Rules) => minigames::RULES,
+                Some(Step::Results) => self.linger(minigames::RESULTS),
+                _ => return,
+            },
             _ => return,
         };
         let (Some(deadline), Some(len)) = (self.deadline, self.phase_len) else {
@@ -2209,7 +2449,7 @@ impl Room {
         let Some(started) = deadline.checked_sub(len) else {
             return;
         };
-        let soonest = (started + self.linger(base)).max(Instant::now() + self.pace().pause());
+        let soonest = (started + shortest).max(Instant::now() + self.pace().pause());
         if soonest < deadline {
             self.deadline = Some(soonest);
         }
@@ -2409,6 +2649,7 @@ impl Room {
                     player_id: p.id,
                     choice: None,
                     points: self.stage_points.get(&p.id).copied().unwrap_or(0),
+                    ..Default::default()
                 })
                 .collect(),
         })
@@ -2641,6 +2882,7 @@ impl Room {
                     .phase_len
                     .filter(|_| !secret_clock)
                     .map(|d| d.as_millis() as u64),
+                hurry: self.hurry.filter(|_| self.phase == Phase::Question),
                 // The correct answer is only sent once the question is closed.
                 reveal: question
                     .filter(|_| self.phase != Phase::Question)
@@ -2654,6 +2896,8 @@ impl Room {
                                 player_id: p.id,
                                 choice: self.answers.get(&p.id).map(|a| a.choice),
                                 points: self.last_points.get(&p.id).copied().unwrap_or(0),
+                                streak_bonus: self.last_bonus.get(&p.id).map_or(0, |b| b.0),
+                                comeback_bonus: self.last_bonus.get(&p.id).map_or(0, |b| b.1),
                             })
                             .collect(),
                         song: q.song.as_ref().map(|s| SongView {
@@ -2689,6 +2933,7 @@ impl Room {
                             player_id: p.id,
                             choice: None,
                             points: self.last_points.get(&p.id).copied().unwrap_or(0),
+                            ..Default::default()
                         })
                         .collect(),
                     outcome: self.hm.outcome.map(Outcome::name),
@@ -2762,12 +3007,47 @@ fn clean_name(raw: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::clean_name;
+    use super::*;
 
     #[test]
     fn names_are_trimmed_and_limited() {
         assert_eq!(clean_name("  Big   Dog ").unwrap(), "Big Dog");
         assert!(clean_name("   ").is_err());
         assert!(clean_name("abcdefghijklmnopq").is_err());
+    }
+
+    #[test]
+    fn streaks_pay_from_the_third_in_a_row() {
+        let pays: Vec<i64> = (1..=6).map(streak_bonus).collect();
+        assert_eq!(pays, [0, 0, 100, 200, 300, 300]);
+    }
+
+    #[test]
+    fn the_bottom_half_trails() {
+        let set = |v: &[u32]| v.iter().copied().collect::<HashSet<u32>>();
+        assert_eq!(trailing(&[(1, 0), (2, 0), (3, 0)]), set(&[]));
+        assert_eq!(trailing(&[(1, 900), (2, 400)]), set(&[2]));
+        assert_eq!(trailing(&[(1, 900), (2, 500), (3, 100)]), set(&[3]));
+        assert_eq!(
+            trailing(&[(1, 900), (2, 800), (3, 500), (4, 100)]),
+            set(&[3, 4])
+        );
+        // A tie for second keeps both of them out of it.
+        assert_eq!(trailing(&[(1, 900), (2, 500), (3, 500)]), set(&[]));
+        assert_eq!(trailing(&[]), set(&[]));
+    }
+
+    #[test]
+    fn beats_are_dropped_until_they_fit() {
+        let s = Duration::from_secs;
+        let lens = [s(3), s(4), s(5), s(4)];
+        // Everything fits: nothing goes.
+        assert_eq!(fit_beats(&lens, 1, None, &[1, 2, 3], s(20)), [0, 1, 2, 3]);
+        // `first` goes first, then the order given, until it fits.
+        assert_eq!(fit_beats(&lens, 1, Some(1), &[2, 3, 1], s(12)), [0, 2, 3]);
+        assert_eq!(fit_beats(&lens, 1, Some(1), &[2, 3, 1], s(8)), [0, 3]);
+        // The answer and one more beat always stay, however tight it is.
+        assert_eq!(fit_beats(&lens, 1, None, &[3, 2, 1], s(1)), [0, 1]);
+        assert_eq!(fit_beats(&lens[..1], 1, None, &[], s(1)), [0]);
     }
 }

@@ -124,6 +124,8 @@ pub struct StateView<'a> {
     /// Milliseconds until the current phase advances on its own.
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
+    /// Mid-question: the one player everyone else is waiting on, once their clock was cut short.
+    pub hurry: Option<u32>,
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
@@ -277,11 +279,22 @@ pub struct SongView<'a> {
     pub from_library: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Default)]
 pub struct ResultView {
     pub player_id: u32,
     pub choice: Option<usize>,
+    /// Everything won, bonuses included.
     pub points: i64,
+    /// Of `points`, what a streak of right answers added.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub streak_bonus: i64,
+    /// Of `points`, what being in the bottom half of the scoreboard added.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub comeback_bonus: i64,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Serialize)]

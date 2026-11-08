@@ -93,6 +93,10 @@ const Sfx = (() => {
       note(hz(14), 0.07, 0.18, { type: "sine", gain: 0.2 });
     },
     tick() { noise(0, 0.03, { gain: 0.12, freq: 4000 }); },
+    // Everyone's waiting on one last player: a quick alarm.
+    hurry() {
+      [0, 0.12, 0.24].forEach((at) => note(hz(12), at, 0.08, { type: "square", gain: 0.1 }));
+    },
   };
 
   // The thinking bed: a walking bass, hats and a ticking clock that speeds up near the end.
