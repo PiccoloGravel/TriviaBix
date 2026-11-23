@@ -260,7 +260,7 @@ let hurried = null;
 
 function renderQuestion(s, fresh) {
   const picked = s.you.answer;
-  // The clock was cut short for the last one to answer: restart the bar from the new time.
+  // The clock was cut short for the last few to answer: restart the bar from the new time.
   const hurry = s.hurry != null ? `${s.round}:${s.hurry}` : null;
   const rushed = hurry && hurry !== hurried;
   hurried = hurry;
@@ -277,14 +277,15 @@ function renderQuestion(s, fresh) {
   const buttons = [...$("#answers").children];
   buttons.forEach((b, i) => { b.disabled = picked != null; b.classList.toggle("picked", picked === i); });
   $("#answers").classList.toggle("locked", picked != null);
-  $("#question").classList.toggle("on-you", picked == null && s.hurry === s.you.player_id);
+  const onMe = (s.hurry_on || [s.hurry]).indexOf(s.you.player_id) >= 0;
+  $("#question").classList.toggle("on-you", picked == null && onMe);
   if (picked != null) {
     const waiting = s.players.filter((p) => p.connected && !p.answered && !p.waiting);
     const names = waiting.map((p) => p.name);
     $("#q-status").textContent = !waiting.length ? "Locked in!"
-      : waiting.length <= 3 ? `Locked in! Waiting on ${names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]}…`
+      : waiting.length <= 3 ? `Locked in! Waiting on ${TBX.nameList(names)}…`
       : `Locked in! Waiting on ${waiting.length} more…`;
-  } else if (s.hurry === s.you.player_id) {
+  } else if (onMe) {
     $("#q-status").textContent = "⏰ Everyone's waiting on you!";
     if (rushed && navigator.vibrate) navigator.vibrate([120, 80, 120]);
   } else if (s.round <= 2) {

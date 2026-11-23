@@ -2170,3 +2170,69 @@ async fn the_last_one_to_answer_gets_a_short_clock() {
     wait_state(&mut host, |s| s["phase"] == "reveal").await;
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }
+
+#[tokio::test]
+async fn a_full_room_cuts_the_clock_for_its_last_two() {
+    let (addr, _) = start_server_with(None).await;
+    let http = reqwest::Client::new();
+    let cookie = admin_login(&addr).await;
+    for (key, value) in [("QUESTION_SECS", "30"), ("HURRY_SECS", "3")] {
+        let res = http
+            .put(format!("http://{addr}/api/admin/settings"))
+            .header("cookie", &cookie)
+            .json(&json!({ "key": key, "value": value }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "{key}");
+    }
+    let (code, host_token) = create_room(&addr, 3).await;
+    let mut host = open(&addr, &format!("/ws/host?code={code}&token={host_token}")).await;
+    let names = [
+        "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "Slow1", "Slow2",
+    ];
+    let mut phones = Vec::new();
+    for name in names {
+        let mut p = open(&addr, &format!("/ws/play?code={code}&name={name}")).await;
+        recv(&mut p).await;
+        phones.push(p);
+    }
+    send(&mut host, json!({ "type": "start" })).await;
+    wait_state(&mut host, |s| s["phase"] == "question").await;
+    let answered = |s: &Value| {
+        s["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["answered"] == true)
+            .count()
+    };
+    // Three still thinking out of ten: everyone waits.
+    for p in phones.iter_mut().take(7) {
+        send(p, json!({ "type": "answer", "choice": 0 })).await;
+    }
+    let seven = wait_state(&mut host, |s| answered(s) == 7).await;
+    assert!(seven["hurry"].is_null(), "three still to answer");
+
+    // Two out of ten: the clock is cut for both of them.
+    send(&mut phones[7], json!({ "type": "answer", "choice": 0 })).await;
+    let rushed = wait_state(&mut host, |s| !s["hurry"].is_null()).await;
+    let ids = |want: &[&str]| -> Vec<Value> {
+        let mut v: Vec<Value> = rushed["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| want.contains(&p["name"].as_str().unwrap()))
+            .map(|p| p["id"].clone())
+            .collect();
+        v.sort_by_key(|id| id.as_u64());
+        v
+    };
+    let mut on: Vec<Value> = rushed["hurry_on"].as_array().unwrap().clone();
+    on.sort_by_key(|id| id.as_u64());
+    assert_eq!(on, ids(&["Slow1", "Slow2"]));
+    assert!(rushed["ms_left"].as_u64().unwrap() <= 3_000);
+    let started = std::time::Instant::now();
+    wait_state(&mut host, |s| s["phase"] == "reveal").await;
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}

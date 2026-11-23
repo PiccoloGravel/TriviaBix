@@ -85,12 +85,12 @@ pub const FIELDS: &[Field] = &[
     Field {
         key: "HURRY_SECS",
         group: SHOW,
-        label: "Last one to answer",
+        label: "Last ones to answer",
         kind: Kind::Choice {
             options: &["off", "3", "5", "8"],
         },
         default: Some("5"),
-        help: "With three or more playing, once everyone but one person has answered, the clock drops to this many seconds. Their phone says everyone is waiting on them and the TV calls them out, so one slow thumb never holds up the room. Off lets the clock run out as normal.",
+        help: "With three or more playing, once everyone but the last few has answered, the clock drops to this many seconds: everyone but one in a small room, and up to one in five in a full one (two of ten, three of fifteen). Their phones say everyone is waiting on them and the TV calls them out, so a couple of slow thumbs never hold up the room. Off lets the clock run out as normal.",
     },
     Field {
         key: "CHATTER",

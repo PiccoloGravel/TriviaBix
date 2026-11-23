@@ -30,6 +30,11 @@ if (!Array.prototype.flat) {
 const TBX = {
   SHAPES: ["▲", "◆", "●", "■"],
 
+  /** "Cy", "Cy and Dee", "Cy, Dee and Eli". */
+  nameList(names) {
+    return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0] || "";
+  },
+
   $(sel) { return document.querySelector(sel); },
 
   el(tag, attrs = {}, ...children) {

@@ -124,8 +124,11 @@ pub struct StateView<'a> {
     /// Milliseconds until the current phase advances on its own.
     pub ms_left: Option<u64>,
     pub phase_ms: Option<u64>,
-    /// Mid-question: the one player everyone else is waiting on, once their clock was cut short.
+    /// Mid-question: the first player everyone else is waiting on, once the clock was cut short.
     pub hurry: Option<u32>,
+    /// Everyone the clock was cut short for (`hurry` is the first of them): one in a small room,
+    /// up to one in five in a full one.
+    pub hurry_on: &'a [u32],
     pub reveal: Option<RevealView<'a>>,
     /// TV only: the next round's song preview, so it can load before it's needed.
     pub next_clip: Option<&'a str>,
