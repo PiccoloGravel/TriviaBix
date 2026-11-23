@@ -312,6 +312,7 @@ async fn eight_players_play_a_full_game() {
         .await
         .unwrap();
     assert_eq!(health["ok"], true);
+    assert_eq!(health["app"], "triviabix");
 
     // Back to the lobby for a rematch with scores reset.
     send(&mut host, json!({ "type": "play_again" })).await;
@@ -487,6 +488,13 @@ async fn static_pages_are_served() {
     assert!(apk.status().is_success(), "cast app: {}", apk.status());
     assert_eq!(
         apk.headers()["content-type"],
+        "application/vnd.android.package-archive"
+    );
+    // The short address for a TV remote leads to the same file.
+    let short = reqwest::get(format!("http://{addr}/app")).await.unwrap();
+    assert!(short.url().path().ends_with("/triviabix-cast.apk"));
+    assert_eq!(
+        short.headers()["content-type"],
         "application/vnd.android.package-archive"
     );
     let tv = reqwest::get(format!("http://{addr}/tv")).await.unwrap();

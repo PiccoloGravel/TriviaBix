@@ -147,3 +147,5 @@ function render() {
 
 // The cast app's download, as a QR code a phone can scan from a laptop.
 $("#cast-qr").src = `/api/qr?text=${encodeURIComponent(`${location.origin}/downloads/triviabix-cast.apk`)}`;
+// What to type with a TV remote: the shortest form of this server's address.
+$("#cast-short").textContent = `${location.host}/app`;
