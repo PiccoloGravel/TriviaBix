@@ -79,7 +79,7 @@ function render(s) {
       TBX.avatar(player, "40px"),
       el("span", { class: "name" }, player.name, you.is_vip ? " 👑" : ""),
       team ? el("span", { class: "team-chip", style: `background:${team.color}` }, team.name) : null,
-      el("span", { class: "score" }, player.score.toLocaleString()),
+      el("span", { class: "score" }, player.score.toLocaleString(), el("small", {}, "pts")),
     ].filter(Boolean));
   });
   document.querySelectorAll("[data-vip-next], [data-vip-end]").forEach((b) => b.classList.toggle("hidden", !you.is_vip));
@@ -106,7 +106,10 @@ function render(s) {
     $("#lobby-wait").classList.toggle("hidden", you.is_vip);
     const vip = s.players.find((p) => p.id === s.vip);
     $("#lobby-wait").textContent = `Up next: ${gameSummary(s.settings)}. ${vip ? vip.name : "The VIP"} picks the game and starts it.`;
+    // Only the VIP is likely to be the organizer; everyone else doesn't need the admin page.
     $("#admin-link").href = `/admin?room=${s.code}`;
+    $("#admin-link").classList.toggle("hidden", !you.is_vip);
+    renderHowTo(s.settings);
     if (you.is_vip) renderPicker(s);
     const taken = s.players.map((p) => p.character);
     TBX.characterGrid($("#lobby-chars"), player.character, taken, (id) => {
@@ -134,8 +137,8 @@ function render(s) {
     $("#r-text").textContent = right ? "Correct!" : result.choice == null ? "Too slow!" : "Nope!";
     $("#r-points").textContent = right ? `+${result.points}` : "";
     const bonus = [
-      result.streak_bonus ? `🔥 +${result.streak_bonus} streak` : "",
-      result.comeback_bonus ? `🚀 +${result.comeback_bonus} comeback` : "",
+      result.streak_bonus ? `🔥 +${result.streak_bonus} streak bonus for answers in a row` : "",
+      result.comeback_bonus ? `🚀 +${result.comeback_bonus} comeback bonus for catching up` : "",
     ].filter(Boolean).join(" · ");
     $("#r-bonus").textContent = bonus;
     $("#r-bonus").classList.toggle("hidden", !bonus);
@@ -156,7 +159,7 @@ function render(s) {
     const st = s.stages[s.stage - 1];
     $("#ri-title").textContent = st.final_round ? "Final round" : `Round ${st.number} of ${s.stages.length}`;
     $("#ri-cat").textContent = st.category;
-    $("#ri-points").textContent = `×${st.points_pct / 100} points`;
+    $("#ri-points").textContent = st.points_pct === 100 ? "Regular points" : `Points ×${st.points_pct / 100}`;
     $("#ri-diff").textContent = `${st.final_round ? "The hardest questions" : st.difficulty[0].toUpperCase() + st.difficulty.slice(1) + " questions"} · eyes on the TV!`;
     $("#ri-standing").textContent = s.stage > 1 ? standing(s) : "";
   } else if (s.phase === "recap") {
@@ -174,11 +177,39 @@ function render(s) {
     $("#s-standing").textContent = standing(s).replace(/^.*? · /, "");
   } else if (s.phase === "final") {
     $("#f-emoji").textContent = you.rank === 1 ? "🏆" : you.rank <= 3 ? "🎉" : "🫠";
-    $("#f-text").textContent = you.rank === 1 ? "You won!" : `You came ${ordinal(you.rank)}`;
+    const tied = s.players.some((p) => p.id !== player.id && !p.waiting && p.score === player.score);
+    $("#f-text").textContent = you.rank === 1 ? (tied ? "You tied for 1st!" : "You won!") : `You came ${ordinal(you.rank)}${tied ? " (tied)" : ""}`;
     $("#f-score").textContent = `${player.score.toLocaleString()} pts`;
     $("#again-btn").classList.toggle("hidden", !you.is_vip);
     $("#f-wait").classList.toggle("hidden", you.is_vip);
+    const vip = s.players.find((p) => p.id === s.vip);
+    $("#f-wait").textContent = `${vip && !you.is_vip ? vip.name + " (the VIP)" : "The VIP"} picks the next game. Stay on this screen to play again.`;
   }
+}
+
+/** A few plain lines on how the picked game works, so first-timers aren't lost. */
+const HOW_TO = {
+  trivia: (st) => [
+    "Each question shows on the TV and your phone. Tap the answer you think is right.",
+    "Right answers score up to 1,000 points. The faster you tap, the more you get.",
+    "Rounds get harder and are worth more as you go.",
+    st.minigames ? "Between rounds, quick mini games give bonus points. Bix explains each one on the TV first." : null,
+  ],
+  hangman: () => [
+    "A hidden phrase shows on the TV. Tap letters on your phone to guess (one a second).",
+    "Each letter you find scores 75 points. A wrong letter costs 50 and adds a strike for everyone.",
+    "Know the answer? Type it in the Solve box for a big bonus, but you only get one try per puzzle.",
+    "Six strikes and the puzzle is lost.",
+  ],
+  songs: () => [
+    "A short clip plays on the TV, so keep the sound up.",
+    "Tap the song you think it is on your phone. The faster you're right, the more points you get.",
+  ],
+};
+function renderHowTo(st) {
+  const lines = (HOW_TO[st.mode] || HOW_TO.trivia)(st).filter(Boolean);
+  lines.push("Keep your phone open. If it locks or you refresh, you'll rejoin as the same player.");
+  $("#howto-list").replaceChildren(...lines.map((t) => el("li", {}, t)));
 }
 
 /** Where you stand and what it takes to move up: "3rd place · 140 behind Sam". */
@@ -202,7 +233,7 @@ function gameSummary(st) {
   const teams = st.teams ? ` · ${st.teams} teams` : "";
   if (st.mode === "songs") return `Name That Tune, ${st.rounds} songs, ${st.clip_ms / 1000}-second clips, ${rated}${teams}`;
   if (st.mode === "hangman") return `Speed Hangman, ${st.rounds} puzzles, ${rated}${teams}`;
-  return `Trivia, ${st.trivia_rounds} rounds of ${st.per_round}${st.trivia_rounds > 3 ? " plus a final" : ""}${st.minigames ? " with mini games between" : ""}, ${rated}${teams}`;
+  return `Trivia, ${Math.min(st.trivia_rounds, 3)} rounds of ${st.per_round} questions${st.trivia_rounds > 3 ? " then a final round" : ""}${st.minigames ? " with mini games between" : ""}, ${rated}${teams}`;
 }
 
 function renderPicker(s) {
@@ -256,6 +287,11 @@ function renderQuestion(s, fresh) {
   } else if (s.hurry === s.you.player_id) {
     $("#q-status").textContent = "⏰ Everyone's waiting on you!";
     if (rushed && navigator.vibrate) navigator.vibrate([120, 80, 120]);
+  } else if (s.round <= 2) {
+    // The first couple of questions say how scoring works; after that everyone knows.
+    $("#q-status").textContent = "Tap your answer. The faster you're right, the more you score.";
+  } else {
+    $("#q-status").textContent = "";
   }
 }
 
@@ -432,6 +468,7 @@ function renderHangman(s, fresh) {
   $("#solve-input").disabled = mine.solve_locked;
   $("#solve-form button").disabled = mine.solve_locked;
   $("#solve-input").placeholder = mine.solve_locked ? "You blew your solve 😬" : "Know it? Solve it";
+  if (fresh && s.round <= 2) $("#h-status").textContent = "Tap letters to guess: +75 if it's there, −50 if not. One solve try each.";
 }
 
 function coolDown(ms) {
@@ -482,7 +519,7 @@ $("#join-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const code = $("#code-input").value.trim().toUpperCase();
   const name = $("#name-input").value.trim();
-  if (code.length !== 4) return ($("#join-error").textContent = "Room codes are 4 letters.");
+  if (code.length !== 4) return ($("#join-error").textContent = "Room codes are 4 letters. Look for them on the TV.");
   TBX.save("tbx:name", name);
   // A saved token for this room means we're rejoining as the same player.
   const saved = TBX.load(PLAYER_KEY);
@@ -499,10 +536,17 @@ let joinTaken = [];
 async function refreshJoinChars() {
   const code = $("#code-input").value;
   joinTaken = [];
+  const help = $("#code-help");
+  help.classList.remove("bad");
+  help.textContent = "The 4 letters on the TV screen";
   if (code.length === 4) {
     try {
       const res = await fetch(`/api/rooms/${code}`);
       if (res.ok) joinTaken = (await res.json()).taken_characters || [];
+      else if (res.status === 404) {
+        help.classList.add("bad");
+        help.textContent = "No game with that code. Check the letters on the TV.";
+      }
     } catch { /* offline; the server still checks */ }
   }
   if (picked && joinTaken.includes(picked)) picked = null;
