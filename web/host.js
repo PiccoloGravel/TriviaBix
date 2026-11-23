@@ -892,7 +892,7 @@ function renderQuestion(s, changed) {
   $("#question").classList.toggle("song", song);
   $("#q-eq").classList.toggle("hidden", !song);
   $("#q-listen").classList.toggle("hidden", !song);
-  // Everyone but one has answered and the clock was cut short for them.
+  // Nearly everyone has answered and the clock was cut short for the last few.
   const hurry = s.hurry != null ? s.round + ":" + s.hurry : null;
   const rushed = hurry && hurry !== tvHurried;
   tvHurried = hurry;
@@ -908,17 +908,18 @@ function renderQuestion(s, changed) {
     Sfx.play("hurry");
   }
   const late = s.players.length - playing(s).length;
-  const slow = s.hurry != null ? s.players.find((p) => p.id === s.hurry) : null;
+  const hurryOn = s.hurry_on || (s.hurry != null ? [s.hurry] : []);
+  const slow = s.players.filter((p) => hurryOn.indexOf(p.id) >= 0 && !p.answered);
   $("#q-answered").replaceChildren(...playing(s).map((p) => {
     const a = TBX.avatar(p, "6vh");
     if (!p.answered) a.classList.add("waiting");
-    if (slow && p.id === slow.id && !p.answered) a.classList.add("on-you");
+    if (!p.answered && hurryOn.indexOf(p.id) >= 0) a.classList.add("on-you");
     a.title = p.name;
     return a;
-  }), ...(slow && !slow.answered ? [el("span", { class: "hurry-call" }, "Waiting on " + slow.name + "!")] : []),
+  }), ...(slow.length ? [el("span", { class: "hurry-call" }, "Waiting on " + TBX.nameList(slow.map((p) => p.name)) + "!")] : []),
   ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []),
   // Early on, remind the room where answers go.
-  ...(!slow && s.round <= 2 && !playing(s).some((p) => p.answered) ? [el("span", { class: "muted" }, "Answer on your phone!")] : []));
+  ...(s.hurry == null && s.round <= 2 && !playing(s).some((p) => p.answered) ? [el("span", { class: "muted" }, "Answer on your phone!")] : []));
 }
 
 let tvHurried = null;

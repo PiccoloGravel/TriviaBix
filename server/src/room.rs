@@ -50,6 +50,8 @@ const SOLVE_POINTS: i64 = 250;
 const SOLVE_POINTS_PER_BLANK: i64 = 50;
 const SOLVE_SPEED_POINTS: i64 = 250;
 /// Stops one fast thumb from running the whole alphabet.
+/// Hangman and Name That Tune show the scoreboard after every this many puzzles or songs.
+const SCORES_EVERY: usize = 3;
 const GUESS_COOLDOWN: Duration = Duration::from_millis(1000);
 const MAX_SOLVE_CHARS: usize = 80;
 const FEED_LEN: usize = 6;
@@ -137,6 +139,13 @@ impl Chatter {
             Self::Full => None,
         }
     }
+}
+
+/// How many players can still be thinking when the clock gets cut short for them: one in a
+/// small room, and one in five in a full one, so a big group isn't held up by a couple of
+/// people chatting.
+pub fn stragglers(active: usize) -> usize {
+    (active / 5).max(1)
 }
 
 /// Which bonuses right answers can earn: BONUSES on the admin Settings page.
@@ -560,8 +569,8 @@ pub struct Room {
     leader: Option<u32>,
     /// How much of the question's time is the host reading it out.
     question_talk: Duration,
-    /// The one player everyone is waiting on, once the clock has been cut short for them.
-    hurry: Option<u32>,
+    /// The few players everyone is waiting on, once the clock has been cut short for them.
+    hurry: Vec<u32>,
     answers: HashMap<u32, Answer>,
     last_points: HashMap<u32, i64>,
     /// Streak and comeback points inside `last_points`, for the phones to show.
@@ -628,7 +637,7 @@ impl Room {
             question_started: Instant::now(),
             question_len: Duration::ZERO,
             question_talk: Duration::ZERO,
-            hurry: None,
+            hurry: Vec::new(),
             last_bonus: HashMap::new(),
             leader: None,
             answers: HashMap::new(),
@@ -1681,7 +1690,7 @@ impl Room {
         self.answers.clear();
         self.last_points.clear();
         self.last_bonus.clear();
-        self.hurry = None;
+        self.hurry.clear();
         self.hm = HangmanRound::default();
         let total = self.game_len();
         let (event, cue) = match self.round {
@@ -1760,6 +1769,14 @@ impl Room {
             }
             // Trivia goes straight to the next question; the scores wait for the end of the round.
             Phase::Reveal if !self.stages.is_empty() => {
+                self.round += 1;
+                self.begin_question();
+                return;
+            }
+            // Hangman and Name That Tune show the scores every few puzzles or songs, not after
+            // each one: a full room cracks a phrase in seconds, and a scoreboard every time
+            // doubled the wait for the next one.
+            Phase::Reveal if (self.round + 1) % SCORES_EVERY != 0 => {
                 self.round += 1;
                 self.begin_question();
                 return;
@@ -2383,7 +2400,7 @@ impl Room {
     }
 
     fn maybe_hurry(&mut self) {
-        if self.hurry.is_some() || self.settings.mode != GameMode::Trivia {
+        if !self.hurry.is_empty() || self.settings.mode != GameMode::Trivia {
             return;
         }
         let Some(hurry) = self.hurry_time() else {
@@ -2400,7 +2417,7 @@ impl Room {
             .copied()
             .filter(|id| !self.answers.contains_key(id))
             .collect();
-        if active.len() < 3 || left.len() != 1 {
+        if active.len() < 3 || left.is_empty() || left.len() > stragglers(active.len()) {
             return;
         }
         // Never before the host has finished reading the question out.
@@ -2408,7 +2425,7 @@ impl Room {
         let soonest = read.max(Instant::now()) + hurry;
         if self.deadline.is_some_and(|d| d > soonest) {
             self.deadline = Some(soonest);
-            self.hurry = Some(left[0]);
+            self.hurry = left;
         }
     }
 
@@ -2882,7 +2899,16 @@ impl Room {
                     .phase_len
                     .filter(|_| !secret_clock)
                     .map(|d| d.as_millis() as u64),
-                hurry: self.hurry.filter(|_| self.phase == Phase::Question),
+                hurry: self
+                    .hurry
+                    .first()
+                    .copied()
+                    .filter(|_| self.phase == Phase::Question),
+                hurry_on: if self.phase == Phase::Question {
+                    &self.hurry
+                } else {
+                    &[]
+                },
                 // The correct answer is only sent once the question is closed.
                 reveal: question
                     .filter(|_| self.phase != Phase::Question)
@@ -3035,6 +3061,12 @@ mod tests {
         // A tie for second keeps both of them out of it.
         assert_eq!(trailing(&[(1, 900), (2, 500), (3, 500)]), set(&[]));
         assert_eq!(trailing(&[]), set(&[]));
+    }
+
+    #[test]
+    fn a_full_room_waits_on_fewer_of_its_players() {
+        let left: Vec<usize> = [3, 4, 5, 9, 10, 12, 14, 15, 16].map(stragglers).to_vec();
+        assert_eq!(left, [1, 1, 1, 1, 2, 2, 2, 3, 3]);
     }
 
     #[test]
