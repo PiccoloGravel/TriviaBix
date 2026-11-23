@@ -108,6 +108,8 @@ function select(options, value, onchange) {
 
 function roomCard(r) {
   const running = !["lobby", "final"].includes(r.phase);
+  // Hangman counts puzzles and Name That Tune counts songs, not questions.
+  const UNIT = { hangman: "Puzzle", songs: "Song" };
   const trivia = r.settings.mode === "trivia";
   const lobby = r.phase === "lobby";
   const tvLink = `/host?code=${r.code}&token=${encodeURIComponent(r.host_token)}`;
@@ -124,7 +126,7 @@ function roomCard(r) {
 
   const meta = el("div", { class: "meta" },
     r.stage ? el("span", {}, `${r.stage.title} (${r.stage.number}/${r.settings.trivia_rounds}): ${r.stage.category} (${r.stage.difficulty}, ×${r.stage.points_pct / 100})`) : null,
-    el("span", {}, running || r.phase === "final" ? `Question ${r.round} of ${r.total_rounds}` : `${r.total_rounds} questions`),
+    el("span", {}, running || r.phase === "final" ? `${UNIT[r.settings.mode] || "Question"} ${r.round} of ${r.total_rounds}` : `${r.total_rounds} ${(UNIT[r.settings.mode] || "Question").toLowerCase()}s`),
     el("span", {}, `Rated ${r.settings.max_rating}`),
     el("span", {}, `${r.players.length}/${r.max_players} players`),
     r.ms_left != null ? el("span", {}, `${Math.ceil(r.ms_left / 1000)}s left`) : null,
@@ -167,7 +169,7 @@ function roomCard(r) {
     lobby && r.settings.mode === "songs" ? el("label", { class: "inline" }, "Clip",
       select([[1000, "1 sec"], [2000, "2 sec"], [3000, "3 sec"]], r.settings.clip_ms, (v) => act(r.code, "settings", { clip_ms: Number(v) }))) : null,
     lobby && trivia ? el("label", { class: "inline" }, "Rounds",
-      select([3, 4].map((n) => [n, n]), r.settings.trivia_rounds, (v) => act(r.code, "settings", { trivia_rounds: Number(v) }))) : null,
+      select([[3, "3"], [4, "3 + final"]], r.settings.trivia_rounds, (v) => act(r.code, "settings", { trivia_rounds: Number(v) }))) : null,
     lobby && trivia ? el("label", { class: "inline" }, "Per round",
       select([3, 5, 7, 10].map((n) => [n, n]), r.settings.per_round, (v) => act(r.code, "settings", { per_round: Number(v) }))) : null,
     lobby && !trivia ? el("label", { class: "inline" }, "Questions",

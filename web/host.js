@@ -606,7 +606,7 @@ function renderLobby(s, changed) {
     ? `🎵 Name That Tune · ${s.settings.rounds} songs · ${s.settings.clip_ms / 1000}-second clips · rated ${s.settings.max_rating}`
     : s.settings.mode === "hangman"
     ? `Speed Hangman · ${s.settings.rounds} puzzles · rated ${s.settings.max_rating}`
-    : `${s.settings.trivia_rounds} rounds of ${s.settings.per_round} questions, easy to hard${s.settings.trivia_rounds > 3 ? " plus a final" : ""}${s.settings.minigames ? " · mini games between rounds" : ""} · rated ${s.settings.max_rating}`;
+    : `${Math.min(s.settings.trivia_rounds, 3)} rounds of ${s.settings.per_round} questions, easy to hard${s.settings.trivia_rounds > 3 ? ", then a final round" : ""}${s.settings.minigames ? " · mini games between rounds" : ""} · rated ${s.settings.max_rating}`;
   if (s.settings.teams) $("#lobby-settings").textContent += ` · ${s.settings.teams} teams`;
 
   const slots = $("#slots");
@@ -627,8 +627,8 @@ function renderLobby(s, changed) {
 
   const vip = s.players.find((p) => p.id === s.vip);
   $("#lobby-hint").textContent = s.players.length === 0
-    ? `Scan the code or go to ${url} on your phone. Up to ${s.max_players} players, and the first one in is the VIP.`
-    : `${s.players.length}/${s.max_players} in. ${vip ? vip.name + " is the VIP: pick the game and start it from your phone." : ""}`;
+    ? `Scan the QR code, or go to ${url} on your phone and type ${s.code}. The first one in is the VIP and starts the game.`
+    : `${s.players.length}/${s.max_players} in. ${vip ? vip.name + " is the VIP: " + vip.name + ", pick a game and tap Start on your phone." : ""}`;
 }
 
 function choiceTile(text, i) {
@@ -641,7 +641,7 @@ function choiceTile(text, i) {
 function roundLabel(s) {
   const st = stageOf(s);
   if (st && s.stage_question) {
-    return `${stageName(st)} · Question ${s.stage_question} of ${st.questions} · ${mult(st.points_pct)} points`;
+    return `${stageName(st)} · Question ${s.stage_question} of ${st.questions}${st.points_pct === 100 ? "" : " · " + pointsLabel(st.points_pct)}`;
   }
   const kind = s.hangman ? "Puzzle" : s.question && s.question.kind === "song" ? "Song" : "Question";
   return `${kind} ${s.round} of ${s.total_rounds}`;
@@ -653,6 +653,7 @@ const DIFFICULTY = { easy: "Easy", medium: "Medium", hard: "Hard" };
 const stageOf = (s) => (s.stage ? s.stages[s.stage - 1] : null);
 const stageName = (st) => (st.final_round ? "Final round" : `Round ${st.number}`);
 const mult = (pct) => `×${pct / 100}`;
+const pointsLabel = (pct) => (pct === 100 ? "Regular points" : `Points ×${pct / 100}`);
 const diffClass = (st) => `diff-${st.final_round ? "final" : st.difficulty}`;
 
 /** The rounds as a staircase, easiest first, with the current one lifted. */
@@ -674,7 +675,7 @@ function renderRoundIntro(s, changed) {
   $("#ri-title").textContent = st.final_round ? "Final round" : `Round ${st.number}`;
   $("#ri-cat").textContent = st.category;
   $("#ri-diff").textContent = st.final_round ? "Hardest" : DIFFICULTY[st.difficulty];
-  $("#ri-mult").textContent = `${mult(st.points_pct)} points`;
+  $("#ri-mult").textContent = pointsLabel(st.points_pct);
   $("#ri-qs").textContent = `${st.questions} question${st.questions === 1 ? "" : "s"}`;
   renderLadder(s, $("#ri-ladder"));
   // The category's generated title card, if art/generate.py has made one, behind the title.
@@ -915,7 +916,9 @@ function renderQuestion(s, changed) {
     a.title = p.name;
     return a;
   }), ...(slow && !slow.answered ? [el("span", { class: "hurry-call" }, "Waiting on " + slow.name + "!")] : []),
-  ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []));
+  ...(late ? [el("span", { class: "muted" }, `+${late} joining next question`)] : []),
+  // Early on, remind the room where answers go.
+  ...(!slow && s.round <= 2 && !playing(s).some((p) => p.answered) ? [el("span", { class: "muted" }, "Answer on your phone!")] : []));
 }
 
 let tvHurried = null;
@@ -1127,7 +1130,11 @@ function renderFinal(s, changed) {
   const order = [1, 0, 2].filter((i) => top[i]);
   const topTeam = s.teams[0];
   const teamTie = s.teams.length > 1 && s.teams[1].score === topTeam.score;
-  $("#f-title").textContent = topTeam && !teamTie ? `${topTeam.name} wins!` : top[0] ? `${top[0].name} wins!` : "Game over";
+  // A tie at the top is called a tie, so the phones ("You tied for 1st") and the TV agree.
+  const tiedTop = top[1] && top[1].score === top[0].score;
+  $("#f-title").textContent = topTeam && !teamTie ? `${topTeam.name} wins!`
+    : teamTie || tiedTop ? "It's a tie!"
+    : top[0] ? `${top[0].name} wins!` : "Game over";
   $("#f-teams").replaceChildren(...teamStrip(s));
   $("#f-podium").replaceChildren(...order.map((i) => el("div", { class: "step pop" },
     TBX.avatar(top[i], "10vh"),
@@ -1136,6 +1143,9 @@ function renderFinal(s, changed) {
     i === 0 ? el("div", { class: "crown" }, "👑") : null,
     el("div", { class: "block", style: `height:${heights[i]};background:${top[i].color}55` }, medal[i]))));
   $("#f-rest").textContent = ranked.slice(3).map((p, i) => `#${i + 4} ${p.name} (${p.score.toLocaleString()})`).join("   ·   ");
+  const vip = s.players.find((p) => p.id === s.vip);
+  const url = joinBase.replace(/^https?:\/\//, "");
+  $("#f-next").textContent = `${vip ? vip.name + " (the VIP)" : "The VIP"} picks the next game on their phone. New players can join at ${url} with code ${s.code}.`;
   if (changed && top[0]) confetti();
 }
 

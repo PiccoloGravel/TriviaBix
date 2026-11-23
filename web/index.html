@@ -95,6 +95,14 @@
     .mg-picks.locked button:not(.picked) { opacity: .3; }
     #mg-guess-form { display: flex; flex-direction: column; gap: 12px; }
     #mg-guess-input { font-family: "Bungee", sans-serif; font-size: 34px; text-align: center; }
+    .field-help { font-size: 14px; color: var(--muted); margin-top: 6px; min-height: 1.3em; }
+    .field-help.bad { color: var(--bad); font-weight: 900; }
+    .howto { background: var(--panel); border-radius: var(--radius); padding: 12px 16px; text-align: left; width: 100%; font-size: 16px; }
+    .howto summary { font-weight: 900; cursor: pointer; }
+    .howto ul { margin: 10px 0 0; padding-left: 20px; }
+    .howto li { margin-bottom: 6px; }
+    .hint { font-size: 15px; color: var(--muted); text-align: center; }
+    .me .score small { font-family: "Nunito", sans-serif; font-size: 12px; opacity: .75; margin-left: 3px; }
     .banner { position: fixed; top: 0; left: 0; right: 0; text-align: center; background: var(--bad); padding: 6px; font-size: 14px; z-index: 10; }
   </style>
 </head>
@@ -106,7 +114,8 @@
     <form id="join-form" style="width:100%;display:flex;flex-direction:column;gap:16px">
       <div>
         <label for="code-input">Room code</label>
-        <input id="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" required>
+        <input id="code-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="····" required aria-describedby="code-help">
+        <div class="field-help" id="code-help">The 4 letters on the TV screen</div>
       </div>
       <div>
         <label for="name-input">Your name</label>
@@ -147,6 +156,10 @@
         </div>
       </div>
       <div class="muted" id="lobby-wait"></div>
+      <details class="howto" id="howto" open>
+        <summary>How to play</summary>
+        <ul id="howto-list"></ul>
+      </details>
       <div class="hidden" id="team-box">
         <label>Pick your team</label>
         <div id="team-buttons"></div>
@@ -161,7 +174,7 @@
         <p class="error" id="lobby-error" style="margin:0;font-size:14px"></p>
       </div>
       <button class="secondary" type="button" data-tv-help>📺 Put the game on the TV</button>
-      <a class="muted" id="admin-link" href="/admin" style="font-size:14px">Admin? Change the rating, length and teams here ↗</a>
+      <a class="muted hidden" id="admin-link" href="/admin" style="font-size:14px">Admin? Change the rating, length and teams here ↗</a>
     </div>
   </section>
 
@@ -207,7 +220,7 @@
     <div class="timer" style="height:10px"><div class="timer-track"><div class="timer-fill" id="q-timer"></div></div></div>
     <div class="prompt" id="q-prompt"></div>
     <div class="answers" id="answers"></div>
-    <div class="muted" id="q-status" style="text-align:center;min-height:1.4em"></div>
+    <div class="muted" id="q-status" style="text-align:center;min-height:2.8em"></div>
   </section>
 
   <section id="hangman" class="screen hidden" data-screen>
@@ -221,7 +234,7 @@
       <input id="solve-input" maxlength="80" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Know it? Solve it">
       <button type="submit">Solve</button>
     </form>
-    <div class="muted" id="h-status" style="text-align:center;min-height:1.4em"></div>
+    <div class="muted" id="h-status" style="text-align:center;min-height:2.8em"></div>
   </section>
 
   <section id="reveal" class="screen hidden" data-screen>
@@ -303,7 +316,7 @@
       <div class="status" id="f-text"></div>
       <div class="points" id="f-score"></div>
     </div>
-    <div class="muted hidden" id="f-wait" style="text-align:center">The VIP picks what's next.</div>
+    <div class="muted hidden" id="f-wait" style="text-align:center">The VIP picks what's next. Stay on this screen to play again.</div>
     <button class="big hidden" id="again-btn">Pick the next game</button>
     <button class="secondary" id="leave-btn">Leave game</button>
   </section>
