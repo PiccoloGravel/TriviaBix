@@ -9,7 +9,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use futures_util::{SinkExt, StreamExt};
@@ -211,6 +211,11 @@ pub async fn router(config: Config) -> anyhow::Result<Router> {
         .route_service("/host", ServeFile::new(dir.join("host.html")))
         // A short address to type with a TV remote.
         .route_service("/tv", ServeFile::new(dir.join("host.html")))
+        // A short address to type into a TV stick's Downloader app to get the TriviaBix app.
+        .route(
+            "/app",
+            get(|| async { Redirect::temporary("/downloads/triviabix-cast.apk") }),
+        )
         .route_service("/admin", ServeFile::new(dir.join("admin.html")))
         .route_service(
             "/admin/questions",
@@ -295,7 +300,8 @@ async fn themed_art(State(app): State<AppState>, req: axum::extract::Request) ->
 async fn health(State(app): State<AppState>) -> Response {
     match app.db.question_count().await {
         Ok(questions) => {
-            Json(json!({ "ok": true, "rooms": app.rooms.len(), "questions": questions }))
+            // `app` lets the Android app tell TriviaBix apart when it looks around the Wi-Fi.
+            Json(json!({ "ok": true, "app": "triviabix", "rooms": app.rooms.len(), "questions": questions }))
                 .into_response()
         }
         Err(e) => (

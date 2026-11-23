@@ -605,12 +605,14 @@ async function tvAddress() {
     const cfg = await (await fetch("/api/config")).json();
     base = TBX.joinBase(cfg.public_url);
   } catch { /* this page's address works for the TV too */ }
-  return `${base.replace(/^https?:\/\//, "")}/tv`;
+  return base.replace(/^https?:\/\//, "");
 }
 document.querySelectorAll("[data-tv-help]").forEach((b) => b.addEventListener("click", async () => {
   // Inside the cast app, the app walks through Smart View itself.
   if (window.TriviaBixApp) return window.TriviaBixApp.cast();
-  $("#tv-addr").textContent = await tvAddress();
+  const base = await tvAddress();
+  $("#tv-addr").textContent = `${base}/tv`;
+  $("#tv-app-addr").textContent = `${base}/app`;
   $("#tv-sheet").classList.remove("hidden");
 }));
 // The app is for Android; iPhones get the other ways.
