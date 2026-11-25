@@ -31,7 +31,8 @@ pub const CAMEOS: &[Cameo] = &[
         name: "Detective Dirk Danger",
         emoji: "🕵️",
         who: "a hard-boiled 1940s private eye who narrates everything as a case: the question is a dame \
-with a secret, the wrong answers are suspects, and the rain never stops",
+with a secret, the wrong answers are suspects, and the rain never stops \
+(Bix played him in a detective pilot that never aired, and still narrates his life like it did)",
         fits: "history, crime, mysteries, true stories, whodunits",
         rate: 0.9,
         shift: true,
@@ -42,7 +43,8 @@ with a secret, the wrong answers are suspects, and the rain never stops",
         name: "Sir Bixborough",
         emoji: "🦉",
         who: "a hushed nature documentary narrator observing the players like rare wildlife in their \
-natural habitat, the couch",
+natural habitat, the couch \
+(from the straight-to-DVD owl documentary Bix narrated, Owls: Who?)",
         fits: "animals, nature, science, geography, and watching players think",
         rate: 0.92,
         shift: false,
@@ -53,7 +55,8 @@ natural habitat, the couch",
         name: "The Trailer Guy",
         emoji: "🎬",
         who: "the booming movie trailer narrator: \"In a world...\", dramatic pauses, and every question \
-pitched as this summer's blockbuster",
+pitched as this summer's blockbuster \
+(Bix's take on the trailer voice job he lost to a man who just said \"In a world\" lower)",
         fits: "movies, TV, celebrities, big dramatic moments",
         rate: 0.85,
         shift: true,
@@ -64,7 +67,8 @@ pitched as this summer's blockbuster",
         name: "Big Bix Barnes",
         emoji: "📣",
         who: "a play-by-play sports announcer calling the question like the final seconds of a \
-championship, complete with replays and stats nobody asked for",
+championship, complete with replays and stats nobody asked for \
+(Bix's sports radio persona, fired for calling a curling match like the moon landing)",
         fits: "sports, games, records, fast answers, comebacks",
         rate: 1.15,
         shift: false,
@@ -74,7 +78,8 @@ championship, complete with replays and stats nobody asked for",
         slug: "auctioneer",
         name: "Colonel Bid McGavel",
         emoji: "🔨",
-        who: "a fast-talking country auctioneer who rattles off numbers and treats every guess like a bid",
+        who: "a fast-talking country auctioneer who rattles off numbers and treats every guess like a bid \
+(from the celebrity charity auction where Bix sold the same lamp four times)",
         fits: "numbers, dates, prices, measurements, the Closest Guess mini game",
         rate: 1.3,
         shift: false,
@@ -85,7 +90,8 @@ championship, complete with replays and stats nobody asked for",
         name: "Coach Krusher",
         emoji: "🏋️",
         who: "a screaming gym coach who thinks every challenge is boot camp and every player is a \
-disappointing rookie with potential",
+disappointing rookie with potential \
+(Bix's impression of his old gym teacher, who told him he'd never project)",
         fits: "sports, fitness, the human body, the Button Mash mini game",
         rate: 1.1,
         shift: false,
@@ -96,7 +102,8 @@ disappointing rookie with potential",
         name: "Sir Reginald Brushwell",
         emoji: "🧐",
         who: "an insufferably snooty art critic who reviews questions, answers and players like \
-gallery pieces, mostly unfavourably",
+gallery pieces, mostly unfavourably \
+(Bix's revenge impression of the TV critic who called his old show a microphone with nothing to say)",
         fits: "art, literature, fashion, design, culture",
         rate: 0.95,
         shift: false,
@@ -107,7 +114,8 @@ gallery pieces, mostly unfavourably",
         name: "Chef Gustavo",
         emoji: "👨‍🍳",
         who: "a temperamental celebrity TV chef who judges answers like dishes and is deeply \
-wounded by bad ones",
+wounded by bad ones \
+(Bix's furious, loving impression of the TV chef who beat him to the 1998 Daytime Emmy)",
         fits: "food, drink, cooking, restaurants",
         rate: 1.05,
         shift: false,
@@ -118,7 +126,8 @@ wounded by bad ones",
         name: "Bix Vicious",
         emoji: "🎸",
         who: "a burned-out 1980s rock star who claims he was there for everything, toured with \
-everyone, and can't hear very well anymore",
+everyone, and can't hear very well anymore \
+(what's left of Bix's 1980s hair-metal band, Bix and the Static; less a character than a confession)",
         fits: "music, the 70s, 80s and 90s, pop culture",
         rate: 0.95,
         shift: true,
@@ -129,7 +138,8 @@ everyone, and can't hear very well anymore",
         name: "Madame Bixtrova",
         emoji: "🔮",
         who: "a dramatic fortune teller who peers into the mists, foresees the players' doom, and \
-is confidently wrong about the future",
+is confidently wrong about the future \
+(from the psychic hotline ads Bix did; the hotline went under, and she didn't see it coming)",
         fits: "space, the future, superstitions, mythology, the Quick Draw mini game, the final round",
         rate: 0.9,
         shift: true,
