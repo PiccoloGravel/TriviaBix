@@ -49,7 +49,10 @@ import java.util.List;
 public class MainActivity extends Activity implements DisplayManager.DisplayListener {
     private static final String PREFS = "triviabix";
     private static final String KEY_SERVER = "server";
-    private static final String DEFAULT_SERVER = "http://10.0.0.123:8080";
+    /** The game's public address (a Cloudflare Tunnel to the server at home). */
+    static final String DEFAULT_SERVER = "https://trivia.jegan.online";
+    /** Addresses older versions saved by themselves; they move to the public address. */
+    private static final String[] OLD_DEFAULTS = { "http://10.0.0.123:8080" };
     private static final int BG = Color.parseColor("#1A0B3D");
 
     private SharedPreferences prefs;
@@ -70,6 +73,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        forgetOldDefault();
         displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
         isTv = isTvDevice();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -116,8 +120,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         setContentView(root);
 
         if (isTv) bar.setVisibility(View.GONE);
-        if (prefs.contains(KEY_SERVER)) openHome();
-        else findServer(false);
+        // The public address works at home and away, so it opens straight away; the Wi-Fi search
+        // only runs if it can't be reached.
+        openHome();
         showStatus();
     }
 
@@ -273,7 +278,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         if (tv != null && (target == null || tv.getDisplay().getDisplayId() != target.getDisplayId())) {
             closeTv();
         }
-        if (target != null && tv == null && prefs.contains(KEY_SERVER)) {
+        if (target != null && tv == null) {
             tv = new TvScreen(this, target, server() + "/tv");
             tv.setOnDismissListener(d -> { if (tv == d) { tv = null; showStatus(); } });
             try {
@@ -304,6 +309,14 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         return prefs.getString(KEY_SERVER, DEFAULT_SERVER);
     }
 
+    /** The old built-in address (the stopped VM) gives way to the public one. */
+    private void forgetOldDefault() {
+        String saved = prefs.getString(KEY_SERVER, null);
+        for (String old : OLD_DEFAULTS) {
+            if (old.equals(saved)) prefs.edit().remove(KEY_SERVER).apply();
+        }
+    }
+
     private void useServer(String url) {
         if (dialog != null) dialog.dismiss();
         prefs.edit().putString(KEY_SERVER, url).apply();
@@ -331,7 +344,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                 askServer("Couldn't find TriviaBix on this Wi-Fi. Check this "
                         + (isTv ? "TV" : "phone") + " is on the home Wi-Fi and the server is running, "
                         + "or type the address you open TriviaBix at.");
-            } else if (found.size() == 1 && !failed && !prefs.contains(KEY_SERVER)) {
+            } else if (found.size() == 1 && !prefs.contains(KEY_SERVER)) {
                 useServer(found.get(0).url);
             } else if (found.size() == 1 && found.get(0).url.equals(server())) {
                 useServer(server()); // it's back
@@ -357,7 +370,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                     if (which < found.size()) useServer(found.get(which).url);
                     else askServer(null);
                 })
-                .setCancelable(prefs.contains(KEY_SERVER))
+                .setCancelable(true)
                 .show();
     }
 
@@ -370,8 +383,8 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         dialog = new AlertDialog.Builder(this)
                 .setTitle(problem != null ? "Can't find the game" : "Game server address")
                 .setMessage(problem != null ? problem
-                        : "The address you open TriviaBix at, like " + DEFAULT_SERVER
-                                + ". A Tailscale or other https address works too.")
+                        : "The address you open TriviaBix at. Normally " + DEFAULT_SERVER
+                                + ", or the server's home address like http://10.0.0.68:8090.")
                 .setView(input)
                 .setPositiveButton("Save", (d, w) -> {
                     String url = input.getText().toString().trim().replaceAll("/+$", "");
@@ -382,7 +395,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                     useServer(url);
                 })
                 .setNeutralButton("Find it", (d, w) -> findServer(false))
-                .setCancelable(prefs.contains(KEY_SERVER))
+                .setCancelable(true)
                 .show();
     }
 
@@ -416,7 +429,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         s.setDomStorageEnabled(true);
         // The host's voice and the music start on their own, with nobody to tap the TV.
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " TriviaBixCast/2");
+        s.setUserAgentString(s.getUserAgentString() + " TriviaBixCast/3");
         view.setBackgroundColor(BG);
         view.setFocusable(true);
         view.setFocusableInTouchMode(true);
