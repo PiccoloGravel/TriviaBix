@@ -26,9 +26,9 @@ import java.util.regex.Pattern;
 
 /**
  * Finds TriviaBix servers on this Wi-Fi without anyone typing an address: it asks every address
- * on the local network (the /24 around this device) for /healthz on the game's port, and keeps
- * the ones that answer like TriviaBix. The saved address and the public address are tried too, so
- * a remote-play (https) address still counts when it answers.
+ * on the local network (the /24 around this device) for /healthz on the game's usual ports, and
+ * keeps the ones that answer like TriviaBix. The saved address and the public address are tried
+ * too, so an https address still counts when it answers.
  */
 final class ServerFinder {
     interface Done { void found(List<Found> servers); }
@@ -47,7 +47,8 @@ final class ServerFinder {
         }
     }
 
-    private static final int PORT = 8080;
+    /** The server's own port, and the one the Unraid install publishes it on. */
+    private static final int[] PORTS = { 8080, 8090 };
     private static final Pattern QUESTIONS = Pattern.compile("\"questions\"\\s*:\\s*(\\d+)");
 
     private final Context context;
@@ -75,11 +76,13 @@ final class ServerFinder {
         Set<String> candidates = new LinkedHashSet<>();
         candidates.add(saved);
         candidates.add(MainActivity.DEFAULT_SERVER);
+        Set<Integer> ports = new LinkedHashSet<>();
+        for (int p : PORTS) ports.add(p);
         int savedPort = Uri.parse(saved).getPort();
+        if (savedPort > 0 && saved.startsWith("http://")) ports.add(savedPort);
         for (String prefix : localPrefixes()) {
             for (int i = 1; i < 255; i++) {
-                candidates.add("http://" + prefix + i + ":" + PORT);
-                if (savedPort > 0 && savedPort != PORT) candidates.add("http://" + prefix + i + ":" + savedPort);
+                for (int port : ports) candidates.add("http://" + prefix + i + ":" + port);
             }
         }
         List<Found> found = Collections.synchronizedList(new ArrayList<>());
@@ -87,7 +90,8 @@ final class ServerFinder {
         for (String url : candidates) {
             pool.execute(() -> {
                 if (cancelled) return;
-                int q = probe(url, url.startsWith("https://") || url.equals(saved) ? 3000 : 700);
+                boolean named = url.equals(saved) || url.equals(MainActivity.DEFAULT_SERVER);
+                int q = probe(url, named ? 3000 : 700);
                 if (q >= 0) found.add(new Found(url, q));
             });
         }
@@ -104,7 +108,8 @@ final class ServerFinder {
             sorted = new ArrayList<>(found);
         }
         // The saved address first, then the public one, then by address.
-        sorted.sort((a, b) -> rank(a.url) != rank(b.url) ? rank(a.url) - rank(b.url) : a.url.compareTo(b.url));
+        sorted.sort((a, b) -> Integer.compare(rank(a.url), rank(b.url)) != 0
+                ? Integer.compare(rank(a.url), rank(b.url)) : a.url.compareTo(b.url));
         done.found(sorted);
     }
 
