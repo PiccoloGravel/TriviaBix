@@ -49,7 +49,10 @@ import java.util.List;
 public class MainActivity extends Activity implements DisplayManager.DisplayListener {
     private static final String PREFS = "triviabix";
     private static final String KEY_SERVER = "server";
-    private static final String DEFAULT_SERVER = "http://10.0.0.123:8080";
+    /** The game's public address (Cloudflare Tunnel). Works at home and away. */
+    static final String DEFAULT_SERVER = "https://trivia.jegan.online";
+    /** Addresses older versions saved that no longer run the game; moved to DEFAULT_SERVER. */
+    private static final String[] OLD_SERVERS = { "http://10.0.0.123:8080" };
     private static final int BG = Color.parseColor("#1A0B3D");
 
     private SharedPreferences prefs;
@@ -116,6 +119,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         setContentView(root);
 
         if (isTv) bar.setVisibility(View.GONE);
+        for (String old : OLD_SERVERS) {
+            if (old.equals(prefs.getString(KEY_SERVER, null))) prefs.edit().putString(KEY_SERVER, DEFAULT_SERVER).apply();
+        }
         if (prefs.contains(KEY_SERVER)) openHome();
         else findServer(false);
         showStatus();

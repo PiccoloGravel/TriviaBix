@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
 /**
  * Finds TriviaBix servers on this Wi-Fi without anyone typing an address: it asks every address
  * on the local network (the /24 around this device) for /healthz on the game's port, and keeps
- * the ones that answer like TriviaBix. The saved address is tried first, so a remote-play
- * (https) address still counts when it answers.
+ * the ones that answer like TriviaBix. The saved address and the public address are tried too, so
+ * a remote-play (https) address still counts when it answers.
  */
 final class ServerFinder {
     interface Done { void found(List<Found> servers); }
@@ -43,7 +43,7 @@ final class ServerFinder {
         }
 
         String label() {
-            return url.replaceFirst("^http://", "") + (questions > 0 ? "   (" + questions + " questions)" : "");
+            return url.replaceFirst("^https?://", "") + (questions > 0 ? "   (" + questions + " questions)" : "");
         }
     }
 
@@ -74,6 +74,7 @@ final class ServerFinder {
     private void run() {
         Set<String> candidates = new LinkedHashSet<>();
         candidates.add(saved);
+        candidates.add(MainActivity.DEFAULT_SERVER);
         int savedPort = Uri.parse(saved).getPort();
         for (String prefix : localPrefixes()) {
             for (int i = 1; i < 255; i++) {
@@ -86,7 +87,7 @@ final class ServerFinder {
         for (String url : candidates) {
             pool.execute(() -> {
                 if (cancelled) return;
-                int q = probe(url, url.equals(saved) ? 3000 : 700);
+                int q = probe(url, url.startsWith("https://") || url.equals(saved) ? 3000 : 700);
                 if (q >= 0) found.add(new Found(url, q));
             });
         }
@@ -102,9 +103,13 @@ final class ServerFinder {
         synchronized (found) {
             sorted = new ArrayList<>(found);
         }
-        // The saved address first, then by address.
-        sorted.sort((a, b) -> a.url.equals(saved) ? -1 : b.url.equals(saved) ? 1 : a.url.compareTo(b.url));
+        // The saved address first, then the public one, then by address.
+        sorted.sort((a, b) -> rank(a.url) != rank(b.url) ? rank(a.url) - rank(b.url) : a.url.compareTo(b.url));
         done.found(sorted);
+    }
+
+    private int rank(String url) {
+        return url.equals(saved) ? 0 : url.equals(MainActivity.DEFAULT_SERVER) ? 1 : 2;
     }
 
     /** "10.0.0." for each IPv4 network this device is on (Wi-Fi or Ethernet on a TV stick). */

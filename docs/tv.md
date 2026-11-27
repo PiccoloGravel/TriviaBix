@@ -29,7 +29,7 @@ the short address `/app`.
 2. Allow it to install apps: on Fire TV, **Settings → My Fire TV → Developer options → Install unknown apps →
    Downloader**. If there are no Developer options, open **Settings → My Fire TV → About** and press OK on the
    device name 7 times first.
-3. In Downloader, type `<server>:8080/app` (for example `10.0.0.123:8080/app`) and install TriviaBix.
+3. In Downloader, type `<server>/app` (for example `trivia.jegan.online/app`, or a LAN address like `10.0.0.68:8090/app`) and install TriviaBix.
 4. Open TriviaBix from the apps row. It opens straight into the game screen with sound, keeps the screensaver off,
    and OK on the remote works like Enter (skip a scene, move on). Back or ☰ opens a menu to reload, find the server
    again, type its address, or close the app.
